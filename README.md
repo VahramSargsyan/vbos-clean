@@ -1,10 +1,10 @@
 # VBOS Clean-Start MVP
 
-Independent emergency mobile app in the same repository. Does not replace, delete or modify legacy VBOS.
+Standalone VBOS Clean mobile app. Source now lives in https://github.com/VahramSargsyan/vbos-clean; legacy VBOS remains independent and unchanged.
 
 - **Public TEST URL:** https://vbos-clean-mvp-2026.onrender.com/
-- **Source branch:** feature/vbos-mvp-clean-20261103
-- **Render service:** srv-dbkvfh2jnfac73a31nv0 (free, Frankfurt, autoDeploy OFF)
+- **Source authority:** vbos-clean/main, extracted from vbos-app feature/vbos-mvp-clean-20261103 @ e17643a0c399d859abe85c4057a7ec732ac25526. New repo import commit: 67a0fe2fabec014160ed90aa876880a67a7b0046.
+- **Render service:** srv-dbkvfh2jnfac73a31nv0 (free, Frankfurt, autoDeploy OFF). CURRENTLY CONNECTED TO OLD vbos-app REPOSITORY; new-repo cutover NOT PERFORMED.
 - **Database:** existing free Neon project proud-hat-90291191, new isolated database vbos_mvp_clean
 - **Data policy:** no old CRM, work orders, sessions or work logs imported.
 - **Legacy finance:** one immutable labeled summary snapshot (Finance TEST checked against Google on 2026-11-03). Different financial measures must not be summed.
@@ -12,6 +12,18 @@ Independent emergency mobile app in the same repository. Does not replace, delet
 - **Postgres credentials:** Render-only DATABASE_URL; not exposed in browser.
 - **No PROD authority switch** or accepted legacy runtime replacement was made.
 - **Data export:** authenticated Reports > Download JSON. Free service is not a substitute for a physical backup strategy.
+
+## Current repository handoff (CLEAN-REPO-SPLIT, 2026-11-14)
+
+- WORKFLOW MODE: PATCH_FIX / source-release adaptation; owner: Vahram; TEST: existing independent Clean Render TEST, not yet switched to this repo.
+- Runtime source: 316 exact Git blobs copied into the root from old repo commit e17643a0; independent main import 67a0fe2. Existing production and legacy authority are unchanged.
+- No application or SQL behavior changes in this handoff. New verification is STATIC ONLY until real Node/PostgreSQL and authenticated deployment checks complete.
+- Do not repoint the existing Render service until repo access, exact-source build, safe rollback and owner TEST acceptance are verified.
+- The Render service remains connected to the old repository; its current build/start settings still reference devtools/vbos-mvp-clean. For a NEW-repo deployment use root commands above.
+- A source transfer is not a data migration. Do not move cookies, credentials, users, financial records, CRM data or reuse another environment's TEST slot.
+- GitHub Actions spending gate: do not add or trigger workflows while owner is conserving Actions budget. This is not an exception to required tests before runtime release.
+- Rollback: keep existing live Render commit e17643a0; changing source repo requires a separately verified deploy and restore procedure. No PROD approval.
+- Original historical Build Packets below retain previous paths and checkpoint names as historical records.
 
 ## Android installation and owner registration
 Open the HTTPS URL once in Chrome on Android, choose **⋮ → Install app** / **Add to Home screen**. The manifest, PNG icons, standalone display and service worker make it installable like Investment Lab. The first-launch screen asks for a self-selected login/password and the one-time activation code. After registration, use the login/password; no automatic access through ChatGPT is claimed. No APK is produced; this is an installable PWA.
@@ -22,9 +34,9 @@ All new records are written to vbos_mvp_clean only. No backend Google calls.
 
 ## Repeatable setup
 Execute schema.sql against an *empty dedicated* database; do not run it against PROD or any shared legacy schema. Insert the owner-approved legacy report separately. Provide DATABASE_URL, CLAIM_TOKEN_SHA256 (SHA256 hex of a strong random one-time activation code) and COOKIE_KEY (40+ cryptographically random chars) in Render environment. Never commit or publish the plaintext claim code; provide it only to the owner. APP_PASSWORD_HASH is obsolete and ignored.
-Build command: cd devtools/vbos-mvp-clean && npm install --omit=dev --no-audit --no-fund
-Start command: node devtools/vbos-mvp-clean/server.mjs
-Unit/static: cd devtools/vbos-mvp-clean && npm test
+Build command for NEW repository root: npm install --omit=dev --no-audit --no-fund
+Start command for NEW repository root: node server.mjs
+Static source-layout check: npm run verify:source (no DB, no Actions). Unit tests: npm test. Disposable-PostgreSQL E2E: npm run test:e2e with isolated TEST_DATABASE_URL. No tests are triggered by adding these commands.
 
 ## Rollback
 Keep original VBOS untouched. Roll back the Render service to previous exact deployment. Do not delete the new PostgreSQL database to roll back code. Data exports should be captured before any major schema changes.
