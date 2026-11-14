@@ -1,0 +1,15 @@
+.ref-catalog{display:grid;gap:12px;min-width:0}
+.ref-catalog h2{margin:0}
+.ref-context{margin:0;opacity:.85;line-height:1.4}
+.ref-catalog form{display:grid;gap:10px;min-width:0}
+.ref-catalog form label{display:grid;gap:5px;min-width:0}
+.ref-catalog form input,.ref-catalog form select{min-width:0;width:100%}
+.ref-service-card{border:1px solid var(--hairline);border-radius:12px;padding:13px;display:grid;gap:6px;min-width:0;background:var(--s1)}
+.ref-service-card p,.ref-service-card small{margin:0;overflow-wrap:anywhere}
+.ref-header{display:flex;gap:8px;align-items:baseline;justify-content:space-between;flex-wrap:wrap}
+.ref-header strong{overflow-wrap:anywhere}
+.ref-header span{font-size:.8rem;opacity:.8}
+.ref-price{font-weight:600;line-height:1.35}
+.ref-no-price{opacity:.7;font-size:.92rem}
+.ref-service-card small{opacity:.7}
+.ref-catalog [data-ref-more]{min-height:44px}

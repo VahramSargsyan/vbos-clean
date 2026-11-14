@@ -1,0 +1,35 @@
+/* Scoped, owner-only historical order list. No legacy/public global CSS overrides. */
+.historical-orders-panel{width:100%;max-width:900px;margin:0 auto;color:inherit}
+.historical-orders-panel h2{margin:4px 0 8px;font-size:1.25rem}
+.historical-orders-panel>p{font-size:.875rem;line-height:1.5;color:#64748b}
+.historical-order-scopes{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}
+.historical-order-scopes button{min-height:44px;border:1px solid #cbd5e1;background:#fff;border-radius:11px;padding:9px 12px;text-align:left;white-space:normal;font-size:.875rem}
+.historical-order-scopes button.selected{background:#102f5c;border-color:#102f5c;color:#fff}
+.historical-orders-panel form[data-history-search]{display:flex;align-items:end;gap:8px;margin:14px 0 18px}
+.historical-orders-panel form label{flex:1;min-width:0;font-size:.8rem;font-weight:600}
+.historical-orders-panel form input{margin-top:6px;width:100%;min-height:44px}
+.historical-orders-panel form button{min-height:44px}
+.historical-order-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:10px}
+.historical-order{padding:16px 14px;border-radius:14px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 1px 2px #0e204010;overflow-wrap:anywhere}
+.historical-order-top{display:flex;justify-content:space-between;align-items:start;gap:12px}
+.historical-order-top strong{font-size:1rem;line-height:1.4}
+.historical-order-top span{font-size:.75rem;flex-shrink:0;color:#475569;background:#e2e8f0;padding:4px 8px;border-radius:9px}
+.historical-order p{font-size:.88rem;color:#475569;margin:8px 0}
+.historical-order .historical-estimate{font-weight:600;color:#173f71}
+.historical-order small{font-size:.74rem;color:#64748b}
+.historical-orders-panel [data-history-more]{margin:16px 0;min-height:44px;width:100%;font-weight:600}
+.historical-orders-panel [role="alert"]{color:#991b1b}
+.historical-orders-panel :is(button,input):focus-visible{outline:3px solid #60a5fa;outline-offset:2px}
+@media(max-width:480px){.historical-orders-panel form[data-history-search]{flex-direction:column;align-items:stretch}.historical-orders-panel form button{width:100%}.historical-order-scopes button{flex:1 1 145px}}
+
+/* V13a: source-only ClientAssessment. No editable fields and no finance action. */
+.historical-assessment-toggle{margin-top:12px;min-height:44px;padding:9px 12px;border-radius:10px;border:1px solid var(--hairline,#cbd5e1);background:var(--s2,#f1f5f9);color:inherit;cursor:pointer;width:100%;text-align:center}
+.historical-assessment{margin-top:12px;padding:12px;border:1px solid var(--hairline,#cbd5e1);border-radius:10px;background:var(--s1,#fff);display:grid;gap:8px;overflow-wrap:anywhere}
+.historical-assessment h3{margin:0;font-size:1rem}
+.historical-assessment p{margin:0;line-height:1.4;color:inherit}
+.historical-assessment dl{display:grid;gap:8px;margin:0}
+.historical-assessment dl>div{display:flex;gap:8px;justify-content:space-between;align-items:baseline;flex-wrap:wrap;border-bottom:1px solid var(--hairline,#e2e8f0);padding-bottom:6px}
+.historical-assessment dt{opacity:.8}
+.historical-assessment dd{margin:0;font-weight:600}
+.historical-assessment-comment{white-space:pre-wrap;overflow-wrap:anywhere}
+.historical-assessment-empty{opacity:.75}

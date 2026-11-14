@@ -1,0 +1,626 @@
+*{box-sizing:border-box}html{font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;color:#172033;background:#f5f7fa}body{margin:0;min-height:100vh}header{background:#10233f;color:#fff;padding:16px max(15px,calc((100vw - 880px)/2));display:flex;justify-content:space-between;align-items:center}.brand{display:flex;gap:3px;flex-direction:column}.brand strong{font-size:25px;letter-spacing:.3px}.brand small{font-size:11px;opacity:.8}main{width:min(900px,100%);margin:auto;padding:18px 14px 90px}h1{font-size:24px;margin:0 0 12px}h2{font-size:19px;margin:8px 0 15px}h3{font-size:15px;margin:0 0 8px}p{margin:6px 0 12px}.muted{color:#657184;font-size:13px}.small{font-size:12px}.card{background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin:10px 0;box-shadow:0 1px 2px #0e204010}.login{max-width:440px;margin:48px auto}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.grid .wide{grid-column:1/-1}label{display:block;font-size:13px;font-weight:600;margin:9px 0;color:#334155}input,select,textarea{display:block;border:1px solid #cbd5e1;border-radius:9px;width:100%;padding:11px;font:inherit;background:white;color:#172033;margin-top:6px;min-height:42px}textarea{resize:vertical;min-height:64px}button,.download{font:inherit;border:1px solid #cbd5e1;background:white;color:#172033;padding:10px 13px;border-radius:10px;cursor:pointer;min-height:40px;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}button:disabled{opacity:.55;cursor:not-allowed}.primary{background:#1557b0;color:white;border:1px solid #1557b0;font-weight:650}.ghost{background:transparent;color:white;border-color:#64748b}.danger{color:#9b3030}.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}#menuToggle{gap:8px;min-height:44px;white-space:nowrap}.menu-open{overflow:hidden}#menuBackdrop{position:fixed;inset:0;z-index:40;display:block;width:100%;height:100vh;height:100dvh;padding:0;margin:0;border:0;border-radius:0;background:rgba(9,22,42,.57)}#tabs{position:fixed;inset:0 auto 0 0;z-index:41;display:flex;flex-direction:column;gap:7px;width:min(340px,88vw);height:100vh;height:100dvh;overflow-y:auto;padding:calc(20px + env(safe-area-inset-top)) 17px calc(20px + env(safe-area-inset-bottom));background:#fff;box-shadow:3px 0 24px #0c204b3d}#tabs[hidden],#menuBackdrop[hidden]{display:none!important}.drawer-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:14px;padding:0 2px 10px;border-bottom:1px solid #e5eaf0}.drawer-head strong{font-size:18px}.drawer-head #menuClose{min-width:44px;min-height:44px;font-size:20px}#tabs .drawer-links>button[data-tab]{white-space:normal;text-align:left;justify-content:flex-start;width:100%;min-height:52px;font-size:16px;padding:13px 14px}#tabs .drawer-links>button[data-tab].active{background:#10233f;color:#fff;border-color:#10233f}#notice{margin:7px 0;min-height:20px;font-size:13px;color:#39576d}#notice.error{color:#b42318}section[hidden],button[hidden]{display:none!important}.record{padding:12px 0;border-top:1px solid #edf1f7}.record:first-child{border-top:0}.record strong{display:block;font-size:15px}.record .meta{font-size:12px;color:#6c778b;margin:4px 0}.tag{display:inline-block;border-radius:20px;padding:3px 9px;background:#e7eff9;color:#1e4c83;font-size:11px;font-weight:650}.row{display:flex;justify-content:space-between;gap:10px;align-items:center}.amount{font-size:22px;font-weight:750;color:#174c70}.summary{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.summary .card{margin:0}.summary span{font-size:12px;color:#67778a}.summary strong{display:block;font-size:22px;margin-top:5px}.sectionHeading{margin:22px 0 10px}.list{margin-top:6px}.compact{font-size:12px;padding:6px 9px;min-height:32px}.edit-panel{margin-top:9px;border-top:1px solid #e5eaf0;padding-top:8px}.edit-panel summary{color:#1557b0;min-height:40px;display:flex;align-items:center;font-weight:650}.history-record{padding:13px 0}.history-record summary{cursor:pointer;min-height:48px}.history-record summary b{font-size:15px}.history-record summary .meta{display:block}.wide-button{width:100%;min-height:48px}button.primary{min-height:44px}footer{font-size:11px;text-align:center;padding:15px;color:#7c8795}hr{border:0;border-top:1px solid #e5eaf0;margin:18px 0}details summary{cursor:pointer;font-weight:650;padding:6px 0}details[open] summary{margin-bottom:9px}a{color:#1557b0}@media(max-width:550px){main{padding:12px 10px 80px}header{padding:12px 14px}.card{padding:14px}.grid{grid-template-columns:1fr}.summary strong{font-size:19px}#tabs .drawer-links>button[data-tab]{padding:13px 14px}h1{font-size:21px}}
+
+@media(max-width:420px){header .brand strong{font-size:22px}header .brand small{font-size:10px}header .actions{gap:6px}#menuToggle,#logout{padding:9px 10px;font-size:14px}}
+
+.my-work-status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:9px}
+.status-item{display:flex;flex-direction:column;gap:6px;background:#f5f8fc;border:1px solid #e1e8f0;border-radius:11px;padding:12px;min-height:90px}
+.status-item strong{font-size:13px}.status-item span{color:#607080;font-size:12px;line-height:1.45}
+
+.a1-card{border-left:4px solid #1557b0}
+.a1-summary{padding:12px;border-radius:11px;background:#eef5ff;border:1px solid #d6e5f9;margin:12px 0}
+.a1-summary>strong{font-size:17px;line-height:1.45;overflow-wrap:anywhere}
+.a1-summary p{margin:10px 0}
+.a1-card textarea{min-height:80px}
+
+
+/* Layout: menu to the left, VBOS identity to the right. Drawer footer never scrolls away. */
+.app-header{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.app-header .brand{text-align:right;align-items:flex-end;margin-left:auto;min-width:0}
+.app-header .brand small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:min(72vw,280px)}
+#menuToggle{flex-shrink:0}
+#tabs{overflow:hidden;gap:0}
+#tabs .drawer-links{display:flex;flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;flex-direction:column;gap:7px;padding:0 0 12px}
+#tabs .drawer-links>button[data-tab]{white-space:normal;text-align:left;justify-content:flex-start;width:100%;min-height:52px;font-size:16px;padding:13px 14px}
+#tabs .drawer-links>button[data-tab].active{background:#10233f;color:#fff;border-color:#10233f}
+#tabs .drawer-footer{margin-top:auto;flex:0 0 auto;border-top:1px solid #e5eaf0;padding-top:12px;display:flex;flex-direction:column;gap:9px;background:#fff}
+#tabs .drawer-footer button{width:100%;min-height:49px;font-weight:650;justify-content:flex-start;text-align:left;padding:12px 14px}
+#themeToggle{background:#f1f5fb}
+#tabs .drawer-footer .logout-button{margin-top:2px;background:#fff7f7;color:#a33131;border-color:#e8c6c6}
+@media(max-width:420px){.app-header .brand strong{font-size:22px}.app-header .brand small{font-size:10px}}
+
+
+/* VBOS Design v0.1 / UI v2 — presentation-only adaptation, 2026-11-03.
+   Source: owner-approved VBOS_DESIGN_v0_1.md and Object Workspace prototype.
+   No business data, API, ID, or session contract changes. */
+/* LIGHT: warm mineral/pearl and restrained brass. */
+:root{
+ --canvas:#F6F4EF;--s1:#FFFFFF;--s2:#F1EEE7;--s3:#EAE6DD;--s4:#E2DDD1;
+ --hairline:#D9D3C8;--hairline-strong:#BEB6A9;
+ --ink:#24282B;--body:#4A4D4C;--mute:#646862;--faint:#73746E;
+ --accent:#98702C;--accent-hover:#826022;--accent-pressed:#6E511F;
+ --accent-soft:rgba(152,112,44,.10);--on-accent:#FFFFFF;
+ --success:#216C4B;--success-soft:#E6F4EC;
+ --warning:#865B20;--warning-soft:#F8EFDA;
+ --danger:#A6383F;--danger-soft:#FCEBEB;
+ --info:#2E648D;--info-soft:#E7F0F7;
+ --overlay:rgba(11,13,15,.60);--selection:rgba(152,112,44,.15);
+ --font-ui:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+ --font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+ --r-xs:4px;--r-sm:6px;--r-md:8px;--r-lg:12px;--r-xl:16px;
+ --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;--sp-6:24px;
+ --app-bg:var(--canvas);--panel:var(--s1);--text-main:var(--ink);
+ --text-soft:var(--mute);--field-bg:var(--s1);--field-border:var(--hairline-strong);
+ --panel-border:var(--hairline);--detail-border:var(--hairline);
+ --link:var(--accent);--heading:var(--ink);--tag-bg:var(--info-soft);
+ --tag-text:var(--info);--info-bg:var(--info-soft);
+}
+html[data-theme="dark"]{
+ --canvas:#0B0D0F;--s1:#111418;--s2:#171B20;--s3:#1D2228;--s4:#242A31;
+ --hairline:#2B323A;--hairline-strong:#3C4651;
+ --ink:#F4F1E8;--body:#C4BFB5;--mute:#AAA69D;--faint:#8E8A82;
+ --accent:#D2B06A;--accent-hover:#E0C27C;--accent-pressed:#B99550;
+ --accent-soft:rgba(210,176,106,.12);--on-accent:#151719;
+ --success:#5DBE8B;--success-soft:rgba(93,190,139,.12);
+ --warning:#E0A458;--warning-soft:rgba(224,164,88,.12);
+ --danger:#E17178;--danger-soft:rgba(225,113,120,.12);
+ --info:#72A8DC;--info-soft:rgba(114,168,220,.12);
+ --overlay:rgba(0,0,0,.62);--selection:rgba(210,176,106,.16);
+ color-scheme:dark;
+}
+/* App shell and hierarchy. Preserve mobile menu-left/identity-right contract. */
+html[data-theme]{font-family:var(--font-ui);font-size:14px;line-height:1.5;background:var(--canvas);color:var(--ink);scrollbar-color:var(--hairline-strong) var(--s1)}
+html[data-theme] body{background:var(--canvas);color:var(--ink);min-width:0;overflow-x:clip}
+html[data-theme] header{position:sticky;top:0;z-index:20;background:var(--s1);color:var(--ink);border-bottom:1px solid var(--hairline);padding:12px max(14px,calc((100vw - 1120px)/2));box-shadow:none}
+html[data-theme] .app-header{min-height:64px;gap:12px}
+html[data-theme] .brand strong{font-size:21px;font-weight:700;letter-spacing:.045em;line-height:1.15;color:var(--ink)}
+html[data-theme] .brand small{color:var(--mute);font-size:11px;font-weight:500;opacity:1;letter-spacing:.01em}
+html[data-theme] main{width:min(1120px,100%);margin:0 auto;padding:24px 16px 76px;background:var(--canvas);color:var(--ink);min-width:0}
+html[data-theme] #content{min-width:0}
+html[data-theme] #content>h1{font-size:24px;font-weight:650;letter-spacing:-.4px;line-height:1.25;margin:2px 0 16px}
+html[data-theme] h1{color:var(--ink);font-size:24px;line-height:1.25;font-weight:650;letter-spacing:-.4px}
+html[data-theme] h2{color:var(--ink);font-size:18px;line-height:1.3;letter-spacing:-.15px;font-weight:650;margin:0 0 12px}
+html[data-theme] h3{color:var(--ink);font-size:15px;font-weight:650;margin:0 0 8px}
+html[data-theme] p{color:var(--body);line-height:1.55}
+html[data-theme] strong,html[data-theme] b{color:var(--ink)}
+html[data-theme] .muted{color:var(--mute);font-size:13px}
+html[data-theme] .small{font-size:12px}
+html[data-theme] .card{background:var(--s1);border:1px solid var(--hairline);border-radius:var(--r-lg);padding:16px;margin:12px 0;box-shadow:none;min-width:0}
+html[data-theme] .card .card{background:var(--s2);margin:8px 0;border-color:var(--hairline)}
+html[data-theme] .login{margin:clamp(20px,6vh,64px) auto;max-width:440px;padding:24px}
+html[data-theme] .sectionHeading{margin:24px 0 12px}
+html[data-theme] .grid{gap:12px;min-width:0}
+html[data-theme] .grid>*{min-width:0}
+html[data-theme] label{font-size:12px;font-weight:600;color:var(--body);margin:8px 0 10px;min-width:0;overflow-wrap:anywhere}
+html[data-theme] input,html[data-theme] select,html[data-theme] textarea{
+ width:100%;max-width:100%;min-width:0;background:var(--field-bg);color:var(--ink);
+ border:1px solid var(--field-border);border-radius:var(--r-md);
+ padding:10px 12px;margin-top:6px;min-height:44px;font:400 14px/1.4 var(--font-ui);
+ box-shadow:none;outline-offset:2px;transition:border-color 150ms,box-shadow 150ms;
+}
+html[data-theme] textarea{min-height:88px;resize:vertical}
+html[data-theme] input::placeholder,html[data-theme] textarea::placeholder{color:var(--faint);opacity:1}
+html[data-theme] input:hover,html[data-theme] select:hover,html[data-theme] textarea:hover{border-color:var(--accent)}
+html[data-theme] input:focus-visible,html[data-theme] select:focus-visible,html[data-theme] textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+html[data-theme] input:disabled,html[data-theme] select:disabled,html[data-theme] textarea:disabled{opacity:.65;background:var(--s2)}
+html[data-theme] input[type="date"]{color-scheme:inherit}
+html[data-theme] button,html[data-theme] .download{
+ font:600 13px/1.3 var(--font-ui);text-decoration:none;min-height:44px;max-width:100%;
+ padding:10px 14px;border:1px solid var(--hairline-strong);border-radius:var(--r-md);
+ background:var(--s2);color:var(--ink);box-shadow:none;cursor:pointer;
+ transition:background-color 150ms,border-color 150ms,color 150ms;
+}
+html[data-theme] button:hover:not(:disabled),html[data-theme] .download:hover{background:var(--s3);border-color:var(--hairline-strong)}
+html[data-theme] button:active:not(:disabled){background:var(--s4)}
+html[data-theme] button:disabled{opacity:.5;cursor:not-allowed}
+html[data-theme] button.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:700}
+html[data-theme] button.primary:hover:not(:disabled){background:var(--accent-hover);border-color:var(--accent-hover)}
+html[data-theme] button.primary:active:not(:disabled){background:var(--accent-pressed)}
+html[data-theme] button.ghost{background:transparent;color:var(--ink);border-color:var(--hairline)}
+html[data-theme] button.ghost:hover:not(:disabled){background:var(--s2)}
+html[data-theme] button.danger,html[data-theme] .danger{color:var(--danger);border-color:var(--danger)}
+html[data-theme] .compact{font-size:12px;padding:8px 12px;min-height:36px}
+html[data-theme] .wide-button{width:100%;min-height:44px}
+html[data-theme] button:focus-visible,html[data-theme] .download:focus-visible,
+html[data-theme] a:focus-visible,html[data-theme] summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+html[data-theme] a{color:var(--link);text-underline-offset:3px}
+html[data-theme] a:hover{text-decoration-thickness:2px}
+html[data-theme] .actions{gap:8px;margin-top:10px;flex-wrap:wrap;max-width:100%}
+html[data-theme] .row{gap:12px;flex-wrap:wrap;min-width:0}
+html[data-theme] .row>*{min-width:0;overflow-wrap:anywhere}
+html[data-theme] .summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0 16px}
+html[data-theme] .summary .card{background:var(--s1);padding:12px 16px;margin:0;min-width:0}
+html[data-theme] .summary span{color:var(--mute);font-size:12px;line-height:1.4;overflow-wrap:anywhere}
+html[data-theme] .summary strong{color:var(--ink);font:650 23px/1.2 var(--font-ui);letter-spacing:-.45px;overflow-wrap:anywhere;margin:6px 0 0}
+html[data-theme] .record{padding:13px 0;border-top:1px solid var(--hairline);min-width:0;overflow-wrap:anywhere}
+html[data-theme] .record:first-child{border-top:0}
+html[data-theme] .record strong{font-size:14px;line-height:1.4;font-weight:650;color:var(--ink)}
+html[data-theme] .record .meta{color:var(--mute);font-size:12px;line-height:1.5;overflow-wrap:anywhere;margin:4px 0 6px}
+html[data-theme] .amount{color:var(--ink);font-size:22px;font-weight:650}
+html[data-theme] .tag{background:var(--tag-bg);color:var(--tag-text);border:1px solid transparent;padding:3px 8px;font-size:11px;font-weight:650;border-radius:9999px;line-height:1.5}
+html[data-theme] .tag[data-status="open"],html[data-theme] .tag[data-status="active"],html[data-theme] .tag[data-status="qualified"]{background:var(--info-soft);color:var(--info)}
+html[data-theme] .tag[data-status="done"],html[data-theme] .tag[data-status="closed"],html[data-theme] .tag[data-status="completed"],html[data-theme] .tag[data-status="won"]{background:var(--success-soft);color:var(--success)}
+html[data-theme] .tag[data-status="cancelled"],html[data-theme] .tag[data-status="lost"],html[data-theme] .tag[data-status="NOT_COMPLETED"]{background:var(--danger-soft);color:var(--danger)}
+html[data-theme] .tag[data-status="pending"],html[data-theme] .tag[data-status="PARTIAL"]{background:var(--warning-soft);color:var(--warning)}
+html[data-theme] details summary{position:relative;min-height:44px;display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:650;color:var(--ink);overflow-wrap:anywhere}
+html[data-theme] details.card>summary{padding:0 0 0 2px}
+html[data-theme] details[open]>summary{margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--hairline)}
+html[data-theme] .edit-panel{border-top:1px solid var(--hairline);padding-top:6px}
+html[data-theme] .edit-panel summary{color:var(--accent);min-height:44px}
+html[data-theme] .history-record summary{min-height:48px}
+html[data-theme] .history-record summary b{color:var(--ink);font-size:14px}
+html[data-theme] hr{border:0;border-top:1px solid var(--hairline);margin:20px 0}
+html[data-theme] .status-item{min-height:88px;padding:12px;background:var(--s2);border:1px solid var(--hairline);border-radius:var(--r-md)}
+html[data-theme] .status-item strong{font-size:13px;color:var(--ink)}
+html[data-theme] .status-item span{font-size:12px;color:var(--mute)}
+html[data-theme] .my-work-status-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:8px}
+html[data-theme] .a1-card{border-left:3px solid var(--accent);padding-left:16px}
+html[data-theme] .a1-summary{background:var(--s2);border:1px solid var(--hairline);border-radius:var(--r-md);padding:12px}
+html[data-theme] .a1-summary>strong{font-size:16px;color:var(--ink);overflow-wrap:anywhere}
+html[data-theme] .a1-card textarea{min-height:88px}
+html[data-theme] #notice{min-height:16px;margin:4px 0 8px;color:var(--info);line-height:1.5;overflow-wrap:anywhere}
+html[data-theme] #notice.error{color:var(--danger);background:var(--danger-soft);border-radius:var(--r-md);padding:10px 12px}
+html[data-theme] footer{font-size:11px;color:var(--mute);border-top:1px solid var(--hairline);padding:16px 12px 24px;background:var(--canvas)}
+/* Navigation overlays are not marketing cards. Footer is independently anchored. */
+html[data-theme] #menuBackdrop{background:var(--overlay)}
+html[data-theme] #tabs{background:var(--s1);color:var(--ink);border-right:1px solid var(--hairline);box-shadow:6px 0 24px rgba(0,0,0,.20);width:min(332px,88vw);padding:calc(16px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));overscroll-behavior:contain}
+html[data-theme] #tabs .drawer-head{border-bottom:1px solid var(--hairline);padding:0 2px 10px;margin-bottom:10px;gap:8px}
+html[data-theme] #tabs .drawer-head strong{font-size:15px;color:var(--ink);letter-spacing:.02em}
+html[data-theme] #tabs .drawer-head #menuClose{border:0;background:transparent;color:var(--mute);font-size:20px;min-width:44px;min-height:44px}
+html[data-theme] #tabs .drawer-links{gap:3px;padding:0 0 12px;scrollbar-width:thin;scrollbar-color:var(--hairline-strong) transparent}
+html[data-theme] #tabs .drawer-links>button[data-tab]{
+ min-height:46px;width:100%;justify-content:flex-start;text-align:left;padding:10px 12px;
+ font-size:14px;font-weight:550;border:1px solid transparent;background:transparent;color:var(--body);
+ border-radius:var(--r-md)
+}
+html[data-theme] #tabs .drawer-links>button[data-tab]:hover{background:var(--s2);color:var(--ink)}
+html[data-theme] #tabs .drawer-links>button[data-tab].active{background:var(--accent-soft);color:var(--accent);border-color:var(--hairline);font-weight:700}
+html[data-theme] #tabs .drawer-footer{background:var(--s1);border-top:1px solid var(--hairline);padding-top:12px;gap:6px}
+html[data-theme] #tabs .drawer-footer button{width:100%;min-height:48px;text-align:left;justify-content:flex-start;font-size:13px;font-weight:600}
+html[data-theme] #themeToggle{background:var(--s2);color:var(--body);border-color:var(--hairline)}
+html[data-theme] #tabs .drawer-footer .logout-button{margin-top:2px;background:var(--danger-soft);border:1px solid var(--hairline);color:var(--danger)}
+html[data-theme] #tabs .drawer-footer .logout-button:hover{border-color:var(--danger)}
+html[data-theme] #menuToggle{min-height:44px;min-width:84px;padding:9px 12px;border-color:var(--hairline);background:var(--s2);white-space:nowrap}
+html[data-theme] #menuToggle span:first-child{font-size:17px;line-height:1}
+html[data-theme] ::selection{background:var(--selection);color:var(--ink)}
+@media(max-width:768px){
+ html[data-theme] main{padding:16px 12px 72px}
+ html[data-theme] .card{padding:12px}
+ html[data-theme] .app-header{min-height:56px}
+ html[data-theme] header{padding:10px 12px}
+ html[data-theme] .compact{min-height:44px}
+ html[data-theme] .summary .card{padding:12px}
+ html[data-theme] .record strong{font-size:14px}
+}
+@media(max-width:550px){
+ html[data-theme] .grid{grid-template-columns:minmax(0,1fr)}
+ html[data-theme] #content>h1{font-size:21px;margin-bottom:12px}
+ html[data-theme] h2{font-size:17px}
+ html[data-theme] .summary strong{font-size:20px}
+ html[data-theme] .row>.primary{flex-shrink:0}
+ html[data-theme] #tabs{width:min(332px,90vw)}
+}
+@media(max-width:380px){
+ html[data-theme] .brand strong{font-size:20px}
+ html[data-theme] .brand small{font-size:10px;max-width:150px}
+ html[data-theme] main{padding:12px 10px 64px}
+ html[data-theme] .summary{gap:6px}
+ html[data-theme] .summary .card{padding:10px}
+}
+@media(prefers-reduced-motion:reduce){
+ html[data-theme] *,html[data-theme] *::before,html[data-theme] *::after{
+  animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important
+ }
+}
+
+/* V7 — independent per-object presence inside My Work */
+.presence-card{border-left:4px solid var(--accent,#1660a8)}
+.presence-active{padding:13px;background:var(--surface-muted,#edf5ff);border:1px solid var(--border,#d0e4fa);border-radius:12px;margin:12px 0}
+.presence-active p{margin:7px 0}
+.presence-card input[type=time],.presence-card input[type=date]{min-height:44px}
+
+/* Clients V2.2 — legacy-style card list, editing only inside an opened card. */
+html[data-theme] .client-list{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;margin:16px 0}
+html[data-theme] button.client-list-card{
+ display:flex;flex-direction:row;align-items:center;justify-content:space-between;
+ gap:14px;width:100%;min-width:0;min-height:112px;padding:18px;
+ text-align:left;border:1px solid var(--hairline-strong);border-radius:16px;
+ background:var(--s2);color:var(--ink);box-shadow:none
+}
+html[data-theme] button.client-list-card:hover:not(:disabled){background:var(--s3);border-color:var(--accent)}
+html[data-theme] button.client-list-card:active:not(:disabled){background:var(--s4)}
+html[data-theme] .client-list-info{display:flex;flex:1 1 auto;min-width:0;flex-direction:column;gap:5px}
+html[data-theme] .client-list-name{display:block;font-size:17px;font-weight:700;line-height:1.35;color:var(--ink);overflow-wrap:anywhere}
+html[data-theme] .client-list-phone{display:block;font-size:14px;font-weight:450;line-height:1.45;color:var(--mute);overflow-wrap:anywhere}
+html[data-theme] .client-list-open{flex:0 0 auto;font-size:15px;color:var(--body);white-space:nowrap}
+html[data-theme] .client-detail{max-width:760px;margin:auto}
+html[data-theme] button.client-back{min-height:44px;margin:0 0 12px;background:transparent;border-color:var(--hairline);color:var(--body)}
+html[data-theme] .client-detail-card{padding:22px}
+html[data-theme] .client-detail-card h1{font-size:23px;overflow-wrap:anywhere}
+html[data-theme] .client-detail-phone{color:var(--mute);font-size:16px;overflow-wrap:anywhere}
+html[data-theme] .client-detail-notes{white-space:pre-wrap;overflow-wrap:anywhere}
+html[data-theme] .client-detail-card>h2{margin-top:24px;font-size:16px}
+html[data-theme] .client-detail-card .edit-panel{margin-top:0}
+@media(max-width:550px){
+ html[data-theme] button.client-list-card{min-height:112px;padding:17px 16px;gap:10px}
+ html[data-theme] .client-list-name{font-size:16px}
+ html[data-theme] .client-list-open{font-size:14px}
+ html[data-theme] .client-detail-card{padding:16px}
+}
+
+/* Objects and Orders reuse the accepted Clients card layout. */
+html[data-theme] .entity-list-extra{
+ display:block;color:var(--mute);font-size:12px;line-height:1.45;overflow-wrap:anywhere
+}
+html[data-theme] .entity-detail-meta{
+ color:var(--body);font-size:14px;margin:7px 0;overflow-wrap:anywhere
+}
+
+/* Client hub — source-backed relations and existing create actions, no new schema. */
+html[data-theme] .client-hub{display:grid;gap:8px}
+html[data-theme] .client-hub-summary{margin:18px 0}
+html[data-theme] .client-hub-summary .card{margin:0;background:var(--s2)}
+html[data-theme] .client-hub-related{display:grid;gap:8px;margin:12px 0}
+html[data-theme] .client-hub-related button.client-list-card{min-height:76px;padding:12px 14px;border-radius:var(--r-lg)}
+html[data-theme] .client-hub-related .client-list-name{font-size:15px}
+html[data-theme] .client-hub-related .client-list-phone{font-size:13px}
+html[data-theme] .client-hub>section.card>h2{margin-bottom:8px}
+html[data-theme] .client-hub .edit-panel{margin-bottom:12px}
+html[data-theme] .client-hub .client-detail-card .summary strong{font-size:20px}
+
+/* V8 — owner business time / mobile */
+.owner-activity-card{border-left:4px solid var(--accent,#1861a8)}
+.owner-activity-card .summary{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.owner-activity-card input[type=datetime-local]{min-height:44px}
+.owner-activity-card .presence-active{margin:12px 0}
+
+
+/* V9A manual ScheduleItems — responsive week/month calendar */
+.schedule-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}
+.schedule-toolbar button{min-height:44px;min-width:52px}
+.schedule-day-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;margin:12px 0}
+.schedule-day{min-height:48px;padding:5px 1px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-radius:8px;font-weight:600;border:1px solid var(--border,#d3dde7);background:var(--surface,#fff)}
+.schedule-day small{font-size:11px;color:var(--accent,#2268a8)}
+.schedule-day.selected{outline:2px solid var(--accent,#2268a8);outline-offset:0}
+.schedule-item{border-left:4px solid var(--border,#d3dde7);margin:9px 0}
+.schedule-item.schedule-done{border-left-color:#28885a}
+.schedule-item.schedule-overdue{border-left-color:#c85848}
+.schedule-item.schedule-cancelled{opacity:.7}
+.schedule-item .row strong{min-width:0;overflow-wrap:anywhere}
+.schedule-item .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+
+/* Plan Day Workflow V1: quick status filters and explicit order handoff. */
+.schedule-day-filters{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}
+.schedule-day-filters button{min-height:44px;padding:9px 12px}
+.schedule-handoff{margin:10px 0 3px}
+.schedule-handoff button{min-height:44px;white-space:normal;text-align:center}
+.schedule-load-error{color:var(--danger,#a6383f)!important;overflow-wrap:anywhere}
+@media(max-width:420px){
+ .schedule-day-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+ .schedule-day-filters button{width:100%;min-width:0}
+ .schedule-handoff{display:grid;grid-template-columns:1fr}
+ .schedule-handoff button{width:100%}
+}
+
+/* V9A focused calendar alignment: Monday-based weekday headers and inert pre-month cells. */
+.schedule-weekday{min-width:0;text-align:center;font-size:12px;font-weight:700;color:var(--muted,#686868);padding:4px 0}
+.schedule-day-empty{display:block;min-height:1px;pointer-events:none}
+
+/* V13b.0 read-only WorkOrder close preflight, both themes */
+.order-close-preview{display:grid;gap:10px;min-width:0;margin-top:12px}
+.order-close-preview h2{margin:0}
+.order-close-preview>button{min-height:44px}
+.order-close-preview-result{display:grid;gap:8px;overflow-wrap:anywhere}
+.order-close-preview-result h4,.order-close-preview-result p{margin:0}
+.order-close-preview-result ul{margin:0;padding-left:22px}
+.order-close-preview-result li{padding:3px 0}
+.order-close-preview-result dl{display:grid;gap:6px;margin:0}
+.order-close-preview-result dl>div{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;border-bottom:1px solid var(--hairline);padding:4px 0}
+.order-close-preview-result dd{margin:0;font-weight:600}
+.order-close-preview-result small{opacity:.8}
+
+
+/* CRM-13A: logic/layout from owner legacy mobile screenshots.
+   Use only existing VBOS Design theme tokens. No inherited legacy colors. */
+html[data-theme] .crm-new-lead>details{margin:0 0 14px}
+html[data-theme] .crm-new-lead>details>summary{min-height:48px;font-size:15px;justify-content:center}
+html[data-theme] .crm-focus-section .row,
+html[data-theme] .crm-priority-section .row{align-items:flex-start}
+html[data-theme] .crm-focus-section .row h2,
+html[data-theme] .crm-priority-section .row h2{margin:0 0 3px}
+html[data-theme] .crm-focus-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0}
+html[data-theme] .crm-focus-tile{display:flex;flex-direction:column;align-items:center;gap:6px;
+ text-align:center;justify-content:center;min-height:85px;padding:12px 8px;
+ background:var(--s2);border:1px solid var(--hairline);border-radius:var(--r-lg)}
+html[data-theme] .crm-focus-tile span{font-size:13px;color:var(--body);font-weight:600}
+html[data-theme] .crm-focus-tile strong{font-size:23px;line-height:1.25;color:var(--ink)}
+html[data-theme] .crm-focus-tile[aria-pressed="true"]{border:2px solid var(--accent);background:var(--accent-soft)}
+html[data-theme] .crm-work-lead,
+html[data-theme] .crm-lead-entry{border:1px solid var(--hairline);border-radius:var(--r-lg);
+ padding:14px;margin:12px 0;background:var(--s1);overflow-wrap:anywhere}
+html[data-theme] .crm-work-lead-head{display:flex;justify-content:space-between;align-items:flex-start;
+ flex-wrap:wrap;gap:9px;min-width:0}
+html[data-theme] .crm-work-lead-head>div{flex:1 1 170px;min-width:0}
+html[data-theme] .crm-work-lead-head strong{font-size:16px;font-weight:700;line-height:1.35}
+html[data-theme] .crm-work-lead-head .tag{flex:0 0 auto;max-width:100%;white-space:normal}
+html[data-theme] .crm-work-lead-head p{margin:4px 0}
+html[data-theme] .crm-score-line{font-weight:650;font-size:13px;margin:11px 0 4px}
+html[data-theme] .crm-work-next{font-size:13px;margin:8px 0;color:var(--ink)}
+html[data-theme] .crm-quick-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0 8px}
+html[data-theme] .crm-quick-actions button{width:100%;min-width:0;min-height:46px;white-space:normal;text-align:center}
+html[data-theme] .crm-quick-form{padding:12px;background:var(--s2);border:1px solid var(--hairline);
+ border-radius:var(--r-lg);margin:10px 0 12px}
+html[data-theme] .crm-quick-form label{margin:0}
+html[data-theme] .crm-quick-form .actions{justify-content:flex-start;margin:0}
+html[data-theme] .crm-open-lead{margin-top:4px}
+html[data-theme] .crm-focus-results>h3{margin:16px 0 6px}
+html[data-theme] .crm-all-leads .crm-lead-entry{padding:14px;margin:11px 0;border-top:1px solid var(--hairline)}
+html[data-theme] .crm-lead-expanded{border-top:1px solid var(--hairline);margin-top:12px;padding-top:12px}
+html[data-theme] .crm-lead-expanded>.actions{margin-bottom:9px}
+html[data-theme] .crm-lead-expanded .card{margin:9px 0}
+html[data-theme] .crm-capacity-section p{max-width:75ch}
+@media(max-width:550px){
+ html[data-theme] .crm-work-lead,
+ html[data-theme] .crm-lead-entry{padding:13px}
+ html[data-theme] .crm-focus-grid{gap:8px}
+ html[data-theme] .crm-focus-tile{min-height:88px}
+ html[data-theme] .crm-quick-actions button{min-height:48px}
+}
+
+
+/* CRM-14A: isolated Lead page. Overview rows remain one large tap target;
+   detail fills the content area instead of nesting a form in the list. */
+html[data-theme] .crm-lead-list-open{display:flex;align-items:flex-start;justify-content:space-between;
+ flex-wrap:wrap;gap:10px;width:100%;min-height:56px;padding:4px 0;border:0;background:transparent;
+ color:var(--ink);text-align:left;font:inherit;cursor:pointer}
+html[data-theme] .crm-lead-list-open:focus-visible,
+html[data-theme] .crm-work-lead-title:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+html[data-theme] .crm-lead-list-content{display:flex;flex:1 1 160px;min-width:0;flex-direction:column;gap:6px}
+html[data-theme] .crm-lead-list-content strong{font-size:16px;font-weight:700;line-height:1.4}
+html[data-theme] .crm-lead-list-content .crm-score-line{display:block;margin:2px 0}
+html[data-theme] .crm-lead-list-meta{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+html[data-theme] .crm-list-open-hint{font-size:13px;font-weight:650;color:var(--accent)}
+html[data-theme] .crm-work-lead-title{display:inline-block;max-width:100%;padding:0;border:0;background:transparent;
+ color:var(--ink);font:inherit;text-align:left;text-decoration:underline;text-decoration-color:var(--hairline);
+ text-underline-offset:3px;cursor:pointer}
+html[data-theme] .crm-work-lead-title strong{font-size:16px}
+html[data-theme] .crm-detail-page{display:grid;gap:12px;min-width:0}
+html[data-theme] .crm-detail-page>.card{margin:0}
+html[data-theme] .crm-detail-top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+html[data-theme] .crm-detail-top button,html[data-theme] .crm-detail-bottom button{min-height:48px}
+html[data-theme] .crm-detail-header h1{margin:0 0 12px;overflow-wrap:anywhere}
+html[data-theme] .crm-detail-header .tag{display:inline-block;margin-bottom:8px}
+html[data-theme] .crm-detail-bottom{padding:5px 0 24px}
+html[data-theme] .crm-detail-page .edit-panel[open]>summary{margin-bottom:12px}
+@media(max-width:520px){
+ html[data-theme] .crm-lead-list-open{padding:6px 0}
+ html[data-theme] .crm-lead-list-meta{align-items:flex-end}
+ html[data-theme] .crm-detail-top{align-items:stretch}
+ html[data-theme] .crm-detail-top button{width:100%}
+}
+
+/* CRM-17A Estimator selection controls, same theme & mobile hit targets */
+.plumbing-choice{display:flex;align-items:center;gap:10px;line-height:1.4;cursor:pointer}
+.plumbing-choice input[type=checkbox]{width:20px;height:20px;min-width:20px;min-height:20px;display:inline-block;margin:0;accent-color:var(--accent,#2055a3)}
+#plumbingEstimatorInputs button,#plumbingEstimatorInputs select{min-height:44px}
+
+/* CRM-17B: separate Estimator screen and legacy-style multi-card wizard. */
+.plumbing-steps{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 16px}
+.plumbing-steps span{padding:8px 11px;border-radius:18px;border:1px solid var(--border,#cbd5e1);font-size:12px}
+.plumbing-steps .active{font-weight:750;border-width:2px}
+.plumbing-pick-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,245px),1fr));gap:12px;margin:14px 0}
+.plumbing-pick{border:1px solid var(--border,#cbd5e1);border-radius:12px;padding:14px}
+.plumbing-pick[hidden]{display:none}
+.plumbing-pick .plumbing-choice{margin:8px 0;min-height:44px}
+.plumbing-pick input[type=number]{max-width:125px}
+.plumbing-pick-grid+.plumbing-choice{margin-bottom:18px}
+.plumbing-steps~h2{margin-top:8px}
+[data-estimate-workspace] button{min-height:44px}
+@media(max-width:520px){.plumbing-steps span{flex:1;text-align:center}.plumbing-pick-grid{grid-template-columns:minmax(0,1fr)}}
+
+/* CRM-17C: keep the freshly calculated result and local validation in view below sticky header. */
+[data-plumbing-wizard]{scroll-margin-top:96px}
+[data-pw-error]{margin:12px 0;padding:10px 12px;border-radius:9px}
+[data-pw-error][hidden]{display:none!important}
+
+
+/* CRM-17D: old VBOS v1.5.6 result hierarchy, mobile-first; theme inherited. */
+.plumbing-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:10px;margin:12px 0}
+.plumbing-summary-box{border:1px solid var(--hairline,#d2d5dc);border-radius:13px;padding:15px;display:grid;gap:5px}
+.plumbing-summary-box span{font-size:13px;opacity:.72}
+.plumbing-summary-box strong{font-size:21px;font-weight:750;font-variant-numeric:tabular-nums;line-height:1.35}
+.plumbing-materials-summary,.plumbing-compact-result-card{border:1px solid var(--hairline,#d2d5dc);border-radius:13px;margin:10px 0;overflow:hidden}
+.plumbing-materials-summary>summary,.plumbing-compact-result-card>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;min-height:56px;cursor:pointer;list-style:none}
+.plumbing-materials-summary>summary::-webkit-details-marker,.plumbing-compact-result-card>summary::-webkit-details-marker{display:none}
+.plumbing-materials-summary>summary::after,.plumbing-compact-result-card>summary::after{content:'›';font-size:22px;line-height:1;opacity:.6;transform:rotate(0deg);transition:transform .15s}
+.plumbing-materials-summary[open]>summary::after,.plumbing-compact-result-card[open]>summary::after{transform:rotate(90deg)}
+.plumbing-materials-summary>summary>strong:last-of-type{white-space:nowrap;margin-left:auto;font-variant-numeric:tabular-nums}
+.plumbing-result-title{display:grid;gap:3px;min-width:0;flex:1}
+.plumbing-result-title strong{font-size:16px}
+.plumbing-result-title small{font-size:12px;opacity:.7}
+.plumbing-result-price{white-space:nowrap;margin-left:auto;font-variant-numeric:tabular-nums}
+.plumbing-materials-body,.plumbing-compact-detail{padding:12px 15px;border-top:1px solid var(--hairline,#d2d5dc)}
+.plumbing-material-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:8px 0;border-bottom:1px solid var(--hairline,#d2d5dc)}
+.plumbing-material-row:last-child{border-bottom:0}
+.plumbing-material-row strong{white-space:nowrap}
+.plumbing-result-detail-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;padding:9px 0;align-items:baseline;border-bottom:1px solid var(--hairline,#d2d5dc);font-size:13px}
+.plumbing-result-detail-row:last-child{border-bottom:0}
+.plumbing-draft-expander{margin-top:16px}
+.plumbing-draft-expander>summary{cursor:pointer;min-height:44px;display:flex;justify-content:space-between;gap:12px;align-items:center}
+.plumbing-draft-expander>summary>span{text-align:right}
+@media(max-width:650px){
+ .plumbing-summary-grid{grid-template-columns:minmax(0,1fr)}
+ .plumbing-summary-box{min-height:82px}
+ .plumbing-result-detail-row{grid-template-columns:minmax(0,1fr) auto}
+ .plumbing-result-detail-row span:last-child{grid-column:1/-1;opacity:.78}
+ .plumbing-draft-expander>summary{display:grid;gap:4px}
+ .plumbing-draft-expander>summary>span{text-align:left}
+}
+
+
+/* CRM18A: owner unit-price editor is collapsed so legacy Estimator totals remain compact. */
+.plumbing-price-editor{border:1px solid var(--hairline,#d2d5dc);border-radius:13px;margin:12px 0;overflow:hidden;scroll-margin-top:100px}
+.plumbing-price-editor>summary{list-style:none;cursor:pointer;min-height:55px;padding:12px 14px;display:flex;gap:10px;align-items:center;justify-content:space-between}
+.plumbing-price-editor>summary::-webkit-details-marker{display:none}
+.plumbing-price-editor>summary>span{text-align:right}
+.plumbing-price-body{border-top:1px solid var(--hairline,#d2d5dc);padding:12px 14px}
+.plumbing-price-line{display:grid;grid-template-columns:minmax(0,1fr) minmax(155px,215px);gap:12px;align-items:start;padding:10px 0;border-bottom:1px solid var(--hairline,#d2d5dc)}
+.plumbing-price-line>div{min-width:0;display:grid;gap:5px}
+.plumbing-price-line strong{font-size:13px;overflow-wrap:anywhere}
+.plumbing-price-line small{font-size:12px;opacity:.72}
+.plumbing-price-line label{margin:0;font-weight:500}
+.plumbing-price-line input{margin-top:5px;min-height:44px}
+.plumbing-priced-status{border-top:1px solid var(--hairline,#d2d5dc);padding:10px 0;margin-top:12px;font-variant-numeric:tabular-nums}
+[data-pw-price-error][hidden]{display:none!important}
+@media(max-width:630px){.plumbing-price-line{grid-template-columns:minmax(0,1fr)}.plumbing-price-editor>summary{align-items:start;flex-direction:column}.plumbing-price-editor>summary>span{text-align:left}}
+
+/* CRM20A: quiet, owner-only Client assessment history by completed order. */
+.client-assessment-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:12px 0}
+.client-assessment-summary>.card{margin:0}
+.client-assessment-history{display:grid;gap:8px;margin-top:10px}
+.client-assessment-item{margin:0}
+.client-assessment-item>summary{display:flex;justify-content:space-between;align-items:center;gap:12px;cursor:pointer;min-height:48px}
+.client-assessment-item>summary>strong{min-width:0;overflow-wrap:anywhere}
+.client-assessment-item>summary>span{white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* CRM21A duplicate warning is advisory; server guards full canonical DB. */
+[data-client-duplicate-hint]{border:1px solid var(--border,#d1d5db);border-radius:10px;padding:10px 12px;margin:6px 0 12px;line-height:1.45}
+[data-client-duplicate-hint][hidden]{display:none!important}
+[data-client-duplicate-hint] button{margin:7px 6px 3px 0;min-height:44px}
+
+/* CRM22A: compact transfer receipt and mobile-accessible manual recipient action. */
+[data-crm-transfer-receipt]{scroll-margin-top:90px}
+[data-crm-lead-transfer]>summary{min-height:48px;cursor:pointer}
+[data-crm-lead-transfer] select,[data-crm-lead-transfer] input{min-height:44px}
+
+/* CRM23A verified read-only legacy contacts, compact mobile detail cards. */
+.crm23-archive-items{display:grid;gap:8px;margin-top:12px}
+.crm23-archive-item{margin:0}
+.crm23-archive-item>summary{display:flex;justify-content:space-between;gap:10px;align-items:center;cursor:pointer;min-height:48px}
+.crm23-archive-item>summary>strong{min-width:0;overflow-wrap:anywhere}
+.crm23-archive-item>summary>span{font-size:.8rem;opacity:.7;white-space:nowrap}
+
+/* Clean WorkLog form: local, persistent save/validation feedback on mobile. */
+.full-worklog-feedback,.full-worklog-receipt{grid-column:1/-1;font-size:14px;line-height:1.45;margin:6px 0 10px;font-weight:600;overflow-wrap:anywhere}
+.full-worklog-feedback[data-state="error"]{color:var(--danger,#a6383f)}
+.full-worklog-feedback[data-state="pending"]{color:var(--info,#2e648d)}
+.full-worklog-feedback[data-state="success"],.full-worklog-receipt{color:var(--success,#216c4b)}
+
+/* Legacy My Work modal parity. Responsive, accessible, single foreground action. */
+.work-flow-modal-open{overflow:hidden}
+.work-flow-backdrop{position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;padding:12px;background:rgba(15,20,24,.70)}
+.work-flow-dialog{width:min(700px,100%);max-height:calc(100dvh - 24px);display:flex;flex-direction:column;background:var(--s1,#fff);color:var(--ink,#222);border-radius:16px;border:1px solid var(--hairline,#ddd);box-shadow:0 16px 55px rgba(0,0,0,.35)}
+.work-flow-dialog-head{position:sticky;top:0;display:flex;justify-content:space-between;align-items:center;gap:12px;flex:0 0 auto;padding:14px 18px;border-bottom:1px solid var(--hairline,#ddd);background:var(--s1,#fff);border-radius:16px 16px 0 0;color:var(--ink,#222)}
+.work-flow-dialog-head h2{margin:0;font-size:18px;color:var(--ink,#222)}
+.work-flow-dialog-head button{min-width:44px;min-height:44px;font-size:22px}
+.work-flow-dialog-body{padding:16px 20px 22px;overflow-y:auto;overscroll-behavior:contain;min-height:0}
+.work-flow-dialog-body [data-full-worklog-panel]{box-shadow:none;margin:0;padding:0;border:0;background:transparent}
+.work-flow-dialog-body [data-full-worklog-panel]>summary{display:none}
+.work-flow-dialog-body .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.work-flow-dialog-body .grid>p[role=status],.work-flow-dialog-body .grid>details{grid-column:1/-1}
+.work-flow-dialog-body [data-full-worklog-form]>button[type=submit]{position:sticky;bottom:0;min-height:48px;box-shadow:0 2px 16px rgba(0,0,0,.12)}
+.work-flow-dialog-body [data-workflow-feedback]{font-size:14px;font-weight:600;grid-column:1/-1;overflow-wrap:anywhere}
+.work-flow-dialog-body .workflow-check{display:flex;align-items:center;gap:12px}
+.work-flow-dialog-body .workflow-check input{width:auto}
+[data-workflow-secondary]>summary{font-weight:650;min-height:46px}
+[data-workflow-quick] .primary{min-height:54px;font-size:16px}
+@media(max-width:560px){
+ .work-flow-backdrop{padding:0;align-items:stretch}
+ .work-flow-dialog{width:100%;max-height:100dvh;border-radius:0}
+ .work-flow-dialog-head{border-radius:0;padding:12px 14px}
+ .work-flow-dialog-body{padding:12px 14px calc(20px + env(safe-area-inset-bottom))}
+ .work-flow-dialog-body .grid{grid-template-columns:1fr}
+}
+
+/* Finance Legacy Parity B2 — isolated mobile preview; financial writer stays closed. */
+html[data-theme] dialog.finance-legacy-dialog{
+ width:min(650px,calc(100vw - 20px));max-width:calc(100vw - 20px);
+ max-height:min(94dvh,850px);overflow:hidden;padding:0;
+ border:1px solid var(--hairline);border-radius:var(--r-lg);
+ background:var(--s1);color:var(--ink);
+ box-shadow:0 16px 48px rgba(0,0,0,.32);
+}
+html[data-theme] dialog.finance-legacy-dialog::backdrop{background:rgba(11,19,28,.68)}
+html[data-theme] .finance-legacy-head{
+ display:flex;align-items:center;justify-content:space-between;gap:12px;
+ padding:14px 16px;border-bottom:1px solid var(--hairline);background:var(--s1)
+}
+html[data-theme] .finance-legacy-head h2{margin:0}
+html[data-theme] .finance-legacy-body{
+ padding:14px 18px 18px;max-height:calc(94dvh - 76px);
+ overflow-y:auto;overscroll-behavior:contain
+}
+html[data-theme] .finance-legacy-warning{
+ padding:12px;border-radius:var(--r-md);border:1px solid var(--hairline-strong);
+ background:var(--s2);margin:0 0 12px
+}
+html[data-theme] .finance-legacy-form-actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+html[data-theme] .finance-legacy-body [data-finance-legacy-result]{font-weight:650;overflow-wrap:anywhere}
+@media(max-width:550px){
+ html[data-theme] dialog.finance-legacy-dialog{
+  width:100vw;max-width:100vw;max-height:100dvh;height:100dvh;border:0;border-radius:0
+ }
+ html[data-theme] .finance-legacy-body{
+  max-height:calc(100dvh - 68px);padding:12px 14px calc(22px + env(safe-area-inset-bottom))
+ }
+ html[data-theme] .finance-legacy-form-actions{flex-direction:column}
+ html[data-theme] .finance-legacy-form-actions>button{width:100%;max-width:100%}
+}
+
+/* Finance B3: compact, touch-friendly reference search inside protected legacy form */
+html[data-theme] .finance-legacy-reference-search{
+ border:1px solid var(--hairline);border-radius:var(--r-md);
+ background:var(--s2);padding:12px;margin:12px 0
+}
+html[data-theme] .finance-legacy-search-fields{
+ display:grid;grid-template-columns:minmax(130px,1fr) minmax(150px,2fr) auto;
+ gap:8px;align-items:end;margin-top:8px
+}
+html[data-theme] .finance-legacy-search-fields>*{margin:0;min-width:0}
+html[data-theme] .finance-legacy-reference-search [data-finance-legacy-search-more]{
+ min-height:44px;margin-top:8px
+}
+@media(max-width:550px){
+ html[data-theme] .finance-legacy-search-fields{grid-template-columns:1fr}
+ html[data-theme] .finance-legacy-search-fields button{width:100%}
+}
+
+/* EST-PARITY-UI-ACTIONS: quote-only controls inside the legacy 3-step wizard. */
+.plumbing-action-prices{margin-top:10px;padding:8px 10px;border:1px solid var(--line,#ddd);border-radius:10px}
+.plumbing-action-prices>summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:600}
+.plumbing-action-prices>label,.plumbing-special-fields>label{display:block;margin:8px 0}
+.plumbing-special-fields{border:1px solid var(--line,#ddd);border-radius:10px;padding:10px 12px;margin:12px 0}
+.plumbing-special-fields h3{margin:0 0 10px;font-size:1rem}
+.plumbing-special-fields input,.plumbing-special-fields textarea,.plumbing-action-prices input{width:100%;box-sizing:border-box}
+
+/* EST-PARITY-NAV: old three-tab Estimator access on mobile. */
+.estimator-section-head{margin:8px 0 10px}
+.estimator-legacy-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 16px}
+.estimator-legacy-tabs button{min-height:48px;flex:1 1 100px;font-weight:650}
+.estimator-legacy-tabs button.active{background:var(--accent-soft,#e6efff);border:2px solid var(--accent,#1557b0);color:var(--accent,#1557b0)}
+.estimator-lead-chooser{display:flex;flex-direction:column;gap:9px}
+.estimator-lead-chooser button{min-height:48px;width:100%}
+.estimator-lead-chooser label{margin:0}
+.estimator-price-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.estimator-price-scroll table{border-collapse:collapse;min-width:520px;width:100%}
+.estimator-price-scroll th,.estimator-price-scroll td{text-align:left;padding:10px;border-bottom:1px solid var(--hairline,#d9e0e7);font-size:13px;white-space:nowrap}
+.estimator-card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:10px}
+.estimator-source-card{padding:12px;border:1px solid var(--hairline,#d9e0e7);border-radius:12px;min-width:0}
+.estimator-source-card button{width:100%;min-height:44px}
+@media(max-width:520px){.estimator-legacy-tabs{gap:5px}.estimator-legacy-tabs button{padding:12px 8px;flex:1;min-width:0}.estimator-card-grid{grid-template-columns:minmax(0,1fr)}}
+
+/* EST-CARDS-01: owner mobile card editor; content stays within 320px. */
+.estimator-card-editor{scroll-margin-top:95px}
+.estimator-card-editor .estimator-card-actions{display:flex;flex-wrap:wrap;gap:10px}
+.estimator-material-edit{border:1px solid var(--hairline,#d2d5dc);border-radius:12px;padding:12px;margin:12px 0;min-width:0}
+.estimator-material-edit button{min-height:44px;width:100%}
+.estimator-card-editor .actions button{min-height:48px;flex:1 1 120px}
+.estimator-source-card button{margin:4px 0}
+@media(max-width:550px){.estimator-card-editor .estimator-card-actions{display:grid}.estimator-material-edit .grid{grid-template-columns:1fr}}
+
+/* EST-PRICES-01: readable inherited legacy price editor on Android. */
+.estimator-price-rule{margin:12px 0;padding:12px;border:1px solid var(--hairline,#d9e0e7);border-radius:12px;min-width:0}
+.estimator-price-rule h3{margin:0 0 10px;font-size:1rem}
+.estimator-price-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:10px}
+.estimator-price-rule button{min-height:48px;margin-top:9px}
+.estimator-price-rule input{min-height:44px;width:100%;box-sizing:border-box}
+@media(max-width:520px){.estimator-price-fields{grid-template-columns:1fr}.estimator-price-rule button{width:100%}}

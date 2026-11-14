@@ -1,0 +1,40 @@
+/* Old Google Calendar Hourly v1.10.1 & DayTimeline v1.10.2 display */
+.legacy-hour-mini,.legacy-hour-track{position:relative;display:block;overflow:hidden;border-radius:999px;background:var(--hairline,#ddd)}
+.legacy-hour-mini{height:6px;width:100%;margin-top:3px}
+.legacy-hour-track{height:18px;margin:12px 0}
+.legacy-hour-bar{position:absolute;top:0;bottom:0;border-left:1px solid rgba(255,255,255,.3);background:hsla(34,70%,48%,.82)}
+.legacy-hour-personal{background:hsla(285,70%,48%,.82)}
+.legacy-hour-firm{background:hsla(34,70%,48%,.82)}
+.legacy-hour-client{background:hsla(210,70%,48%,.88)}
+.legacy-hour-crm{background:hsla(210,70%,48%,.34)}
+.legacy-hourly-day{border:1px solid var(--hairline,#ddd);border-radius:10px;padding:12px;margin:12px 0;overflow-wrap:anywhere}
+.legacy-hourly-title{display:flex;gap:12px;justify-content:space-between;flex-wrap:wrap}
+.legacy-hourly-title span{color:var(--mute,#666);font-size:12px}
+.legacy-hour-free{font-size:13px;line-height:1.5}
+.legacy-hour-legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.legacy-hour-legend span{font-size:11px;border:1px solid var(--hairline,#ddd);border-radius:999px;padding:4px 8px}
+.legacy-hour-legend span:before{content:"";display:inline-block;width:8px;height:8px;margin-right:5px;border-radius:50%;background:hsla(34,70%,48%,.82)}
+.legacy-hour-legend-personal:before{background:hsla(285,70%,48%,.82)!important}
+.legacy-hour-legend-client:before{background:hsla(210,70%,48%,.88)!important}
+.legacy-hour-legend-crm:before{background:hsla(210,70%,48%,.34)!important}
+
+
+/* Legacy Hourly v1.10.1: manual new-task buttons within the same Plan editor. */
+.legacy-hourly-assistant{display:grid;gap:9px;padding:12px;border:1px solid var(--hairline,#d8dee5);border-radius:10px;margin:12px 0}
+.legacy-hourly-assistant>strong{font-size:14px}
+.legacy-hourly-picks{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.legacy-hourly-picks button{min-height:44px;min-width:56px}
+.legacy-hourly-picks button[aria-pressed="true"]{border-color:var(--accent,#2268a8);font-weight:800}
+.legacy-hourly-assistant>button{min-height:44px}
+.legacy-hourly-assistant [data-hourly-status]{overflow-wrap:anywhere;line-height:1.45;margin:0}
+button[data-hourly-add-day]{min-height:44px;margin:9px 0 11px}
+@media(max-width:420px){
+ .legacy-hourly-picks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+ .legacy-hourly-picks button{width:100%;min-width:0;white-space:normal}
+}
+
+/* Existing legacy Calendar v1.8.1–v1.8.5 edit/shift/duration actions; never auto-save. */
+.schedule-range-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:10px 0 2px}
+.schedule-range-actions button{min-height:40px;border-radius:9px;padding:8px 10px;white-space:normal;line-height:1.25}
+.schedule-range-notice:not([hidden]){display:block;padding:9px 10px;border-radius:9px;background:var(--info-soft,rgba(127,127,127,.08));color:var(--body,inherit);margin:6px 0 10px;line-height:1.45}
+@media(max-width:420px){.schedule-range-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.schedule-range-actions button{width:100%;min-width:0;min-height:44px}.schedule-range-actions button:last-child{grid-column:1/-1}}

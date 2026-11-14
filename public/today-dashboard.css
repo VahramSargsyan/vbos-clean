@@ -1,0 +1,24 @@
+/* Today Command Center V1 — visual layer only, aligns with VBOS Clean theme. */
+.today-command{display:flex;flex-direction:column;gap:4px;min-width:0}
+.today-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:2px 0 6px}
+.today-head h1{margin:0 0 5px}
+.today-head .muted{margin:0}
+.today-head button{flex-shrink:0;min-height:44px}
+.today-quick-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:9px}
+.today-quick-actions button{min-width:0;min-height:48px;white-space:normal;text-align:center;font-weight:650}
+.today-mini-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:12px 0}
+.today-mini-grid .card{min-width:0;padding:12px;margin:0}
+.today-mini-grid .card>span{display:block;font-size:12px;line-height:1.45;color:var(--mute,#67778a)}
+.today-mini-grid .card>strong{display:block;font-size:21px;line-height:1.25;margin-top:5px;overflow-wrap:anywhere}
+.today-mini-grid .card>p{margin:8px 0 0}
+.today-command .row{align-items:flex-start}
+.today-command .row h2{margin:4px 0 10px}
+.today-command .row>button{flex:0 0 auto}
+.today-command .record{overflow-wrap:anywhere}
+.today-command .today-more summary{min-height:44px}
+@media(max-width:620px){
+ .today-quick-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .today-mini-grid .card>strong{font-size:19px}
+ .today-command .card{padding:13px}
+}
+@media(max-width:360px){.today-head{flex-direction:column}.today-head button{align-self:flex-end}}

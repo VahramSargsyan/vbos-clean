@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#F6F4EF"><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icon-192.png"><title>VBOS · Business Operating System</title>
+<script src="/theme.js"></script><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/history-orders-view.css"><link rel="stylesheet" href="/service-reference.css"><link rel="stylesheet" href="/engineering-preview.css"><link rel="stylesheet" href="/engineering-calculator.css"><link rel="stylesheet" href="/engineering-drawing.css"><link rel="stylesheet" href="/engineering-floor.css"><link rel="stylesheet" href="/menu-groups.css"><link rel="stylesheet" href="/today-dashboard.css"><link rel="stylesheet" href="/capacity.css"><link rel="stylesheet" href="/schedule-hourly.css"><link rel="stylesheet" href="/schedule-conflicts.css"><link rel="stylesheet" href="/schedule-overlap.css"><script src="/a1.js" defer></script><script src="/presence.js" defer></script><script src="/owner-activity.js" defer></script><script src="/worklog-full-ui.js" defer></script><script src="/workday-legacy-ui.js" defer></script><script src="/my-work.js" defer></script><script src="/schedule.js" defer></script><script src="/capacity.js" defer></script><script src="/schedule-hourly.js" defer></script><script src="/schedule-conflicts.js" defer></script><script src="/schedule-overlap.js" defer></script><script src="/today-dashboard.js" defer></script><script src="/workers.js" defer></script><script src="/app.js" defer></script></head>
+<body>
+<header class="app-header"><button id="menuToggle" hidden class="ghost menu-toggle" type="button" aria-controls="tabs" aria-expanded="false" aria-label="Открыть меню"><span aria-hidden="true">☰</span><span>Меню</span></button><div class="brand"><strong>VBOS</strong><small>Business Operating System</small></div></header>
+<main>
+<section id="setupPanel" class="login card" hidden><h1>Первый запуск VBOS</h1><p class="muted">Создай собственную учётную запись. Это отдельный рабочий VBOS. Существующая система не меняется.</p>
+<form id="setupForm">
+<label>Логин (латиницей)<input name="login" type="text" pattern="[A-Za-z0-9_.-]{3,48}" autocomplete="username" required placeholder="Придумай логин"></label>
+<label>Код активации<input name="claimCode" type="text" autocapitalize="off" autocomplete="off" required placeholder="Одноразовый код из чата"></label>
+<label>Придумай пароль (от 10 символов)<input name="password" type="password" minlength="10" autocomplete="new-password" required></label>
+<label>Повтори пароль<input name="confirmPassword" type="password" minlength="10" autocomplete="new-password" required></label>
+<button class="primary" type="submit">Создать мою учётную запись</button></form></section>
+<section id="loginPanel" class="login card" hidden><h1>Вход в VBOS</h1><p class="muted">Вход под логином и паролем, которые ты выбрал при первом запуске.</p>
+<form id="loginForm"><label>Логин<input name="login" type="text" autocomplete="username" required></label>
+<label>Пароль<input name="password" type="password" autocomplete="current-password" required></label>
+<button class="primary" type="submit">Войти</button></form></section>
+<section id="appPanel" hidden><button id="menuBackdrop" class="menu-backdrop" type="button" aria-label="Закрыть меню" hidden></button><nav id="tabs" class="drawer-nav" aria-label="Разделы" hidden><div class="drawer-head"><strong>Разделы VBOS</strong><button type="button" id="menuClose" aria-label="Закрыть меню">✕</button></div><div class="drawer-links">
+  <button data-tab="today">Сегодня</button>
+  <button data-tab="myWork">Моя работа</button>
+  <button data-tab="schedule">План</button>
+  <button data-tab="crm">CRM</button>
+  <button data-tab="estimator">Калькуляция</button>
+  <button data-tab="catalog">Поиск</button>
+  <div class="nav-section-label">Разделы по направлениям</div>
+  <details class="nav-group" name="vbos-nav-group">
+    <summary><span class="nav-group-label">Клиенты и продажи</span><span class="nav-chevron" aria-hidden="true">▼</span></summary>
+    <div class="nav-submenu">
+      <button data-tab="clients">Клиенты</button>
+      <button data-tab="objects">Объекты</button>
+      <button data-tab="orders">Заказы</button>
+    </div>
+  </details>
+  <details class="nav-group" name="vbos-nav-group">
+    <summary><span class="nav-group-label">Исполнение и история</span><span class="nav-chevron" aria-hidden="true">▼</span></summary>
+    <div class="nav-submenu">
+      <button data-tab="workers">Исполнители</button>
+      <button data-tab="history">История работ</button>
+      <button data-tab="historyOrders">История заказов</button>
+    </div>
+  </details>
+  <details class="nav-group" name="vbos-nav-group">
+    <summary><span class="nav-group-label">Финансы и отчёты</span><span class="nav-chevron" aria-hidden="true">▼</span></summary>
+    <div class="nav-submenu">
+      <button data-tab="finance">Финансы</button>
+      <button data-tab="capital">Капитал · фонды</button>
+      <button data-tab="report">Отчёты</button>
+    </div>
+  </details>
+  <details class="nav-group" name="vbos-nav-group">
+    <summary><span class="nav-group-label">Инструменты</span><span class="nav-chevron" aria-hidden="true">▼</span></summary>
+    <div class="nav-submenu">
+      <button data-tab="engineering">Инженерия · чертёж</button>
+      <button data-tab="serviceReference">Услуги и цены</button>
+    </div>
+  </details>
+</div><div class="drawer-footer"><button id="themeToggle" type="button" aria-pressed="false">☾ Тёмная тема</button><button id="installApp" hidden type="button">Установить приложение</button><button id="logout" type="button" class="logout-button">Выход</button></div></nav>
+<div id="notice" role="status"></div><div id="content"></div></section>
+</main><footer>VBOS · UI v2 · 03.11.2026 · TEST PostgreSQL · Legacy без изменений</footer>
+</body></html>

@@ -1,0 +1,19 @@
+.ef-floor{display:grid;gap:12px;min-width:0}
+.ef-floor h2{margin:0;font-size:1.06rem}
+.ef-floor p{margin:2px 0;line-height:1.4}
+.ef-overview{width:min(100%,480px);max-width:100%;display:block;aspect-ratio:1;border-radius:10px;border:1px solid #acaca5;background:#faf9f5}
+.ef-room-list{display:grid;gap:8px}
+.ef-room{display:flex;justify-content:space-between;gap:8px;align-items:center;border:1px solid color-mix(in srgb,currentColor 18%,transparent);border-radius:9px;padding:10px}
+.ef-room span:first-child{display:grid;gap:4px;min-width:0;overflow-wrap:anywhere}
+.ef-room small{font-size:.82rem;opacity:.8}
+.ef-room span:last-child{display:flex;gap:6px;flex-wrap:wrap}
+.ef-room button,.ef-actions button{background:transparent;color:inherit;border:1px solid color-mix(in srgb,currentColor 35%,transparent);border-radius:9px;padding:8px;cursor:pointer}
+.ef-room button:disabled{opacity:.55;cursor:default}
+.ef-total{display:grid;gap:5px;padding:12px;border-radius:9px;border:1px solid #157b62}
+.ef-total strong{font-size:1.5rem}
+.ef-total span{font-size:.85rem}
+.ef-warning{padding:8px;border-left:3px solid #c56d15;overflow-wrap:anywhere}
+.ef-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.ef-file{display:block;border:1px solid #888;border-radius:9px;padding:8px;font-size:.84rem}
+.ef-file input{display:block;max-width:100%;font-size:.8rem}
+@media(max-width:550px){.ef-actions{grid-template-columns:1fr}.ef-room{align-items:flex-start;flex-direction:column}.ef-room span:last-child{width:100%}}

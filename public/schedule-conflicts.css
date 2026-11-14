@@ -1,0 +1,10 @@
+/* VBOS Clean Capacity V1F: legacy v1.10.5 warning panel style only. */
+.schedule-conflict-alert{display:grid;gap:8px;border:1px solid rgba(210,78,58,.34);background:rgba(210,78,58,.08);border-radius:12px;padding:10px;margin-top:4px}
+.schedule-conflict-alert[hidden]{display:none!important}
+.schedule-conflict-alert strong{font-size:.82rem}
+.schedule-conflict-list{display:grid;gap:5px;font-size:.72rem;line-height:1.35}
+.schedule-conflict-item{padding:6px 8px;border-radius:8px;background:rgba(127,127,127,.07)}
+.schedule-conflict-actions{display:flex;gap:6px;flex-wrap:wrap}
+.schedule-conflict-actions button{min-height:32px;border-radius:8px;padding:5px 9px;font:inherit;font-size:.72rem;cursor:pointer}
+.schedule-conflict-actions button[data-schedule-conflict-nearest]{border:1px solid rgba(55,120,210,.34);background:rgba(55,120,210,.10);color:inherit}
+.schedule-conflict-actions button[data-schedule-conflict-override]{border:1px solid rgba(210,78,58,.45);background:rgba(210,78,58,.12);color:inherit}

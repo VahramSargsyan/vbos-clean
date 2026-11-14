@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {test} from 'node:test';
+const source=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
+const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+test('CRM06 owner flow binds the Lead and Client cards without replacing CRM04',()=>{
+ assert.match(source,/crmInteractionView\('Lead',x\.id\)/);
+ assert.match(source,/crmInteractionView\('Client',x\.id\)/);
+ assert.match(source,/crm04ResultCard\(x\)/);
+ assert.match(source,/data-act="crm_interaction_add"/);
+ assert.match(source,/data-crm-interaction-more/);
+ assert.match(source,/encodeURIComponent\(state\.entityId\)/);
+ assert.match(source,/esc\(x\.summary\)/);
+ assert.match(source,/esc\(x\.notes\)/);
+ assert.match(source,/timeZone:'Asia\/Yerevan'/);
+ assert.match(server,/if\(!sessionValid\(req\)\)throw new AppError\(401/);
+ assert.match(server,/if\(req\.method==='POST'\)originCheck\(req\)/);
+ assert.match(server,/crmInteractionAction/);
+ assert.match(server,/crmInteractionsPage/);
+});

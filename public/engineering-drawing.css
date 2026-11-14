@@ -1,0 +1,30 @@
+.ed-editor{display:grid;gap:14px;min-width:0}
+.ed-editor h2,.ed-editor h3{margin:0}
+.ed-editor p{line-height:1.4;margin:2px 0}
+.ed-canvas{display:block;max-width:100%;width:min(100%,480px);height:auto;aspect-ratio:1;background:#faf9f5;border:1px solid #9d9d95;border-radius:10px;touch-action:manipulation;cursor:crosshair}
+.ed-grid line{stroke:#d6d6d0;stroke-width:16}
+.ed-room{fill:#f1b36b33;stroke:#7c6e54;stroke-width:70}
+.ed-wall{stroke:#a49f91;stroke-width:120;stroke-linecap:round}
+.ed-wall.ed-exterior{stroke:#155f7c}
+.ed-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ed-tools button,.ed-import{border:1px solid #8d938f;background:transparent;border-radius:10px;padding:8px 11px;color:inherit;font-size:0.88rem}
+.ed-import input{display:block;max-width:190px;font-size:0.75rem}
+.ed-editor fieldset{margin:0;padding:10px;border:1px solid #b1b1ab;border-radius:10px;display:grid;gap:10px;min-width:0}
+.ed-editor legend{font-weight:700}
+.ed-editor form{display:grid;gap:12px}
+.ed-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.ed-field{display:grid;gap:5px;font-size:0.84rem;min-width:0}
+.ed-field input,.ed-field select{width:100%;min-width:0;border:1px solid #999b9a;border-radius:8px;padding:10px;background:Canvas;color:CanvasText;font:inherit;box-sizing:border-box}
+.ed-editor button.primary{border:0;border-radius:10px;padding:13px}
+.ed-warning{padding:9px;border-left:3px solid #c76b20;overflow-wrap:anywhere}
+.ed-output{display:grid;gap:8px;border-top:1px solid #bbb;padding-top:10px}
+.ed-results{display:grid;gap:5px;border:1px solid #888;border-radius:9px;padding:12px}
+.ed-results strong{font-size:1.65rem}
+.ed-results span{font-size:0.83rem}
+.ed-openings{display:flex;gap:6px;flex-wrap:wrap}
+.ed-openings button{padding:8px;border:1px solid #aaa;background:transparent;color:inherit;border-radius:8px}
+@media(max-width:540px){.ed-two{grid-template-columns:1fr}}
+
+.ed-neighbors{pointer-events:none}
+.ed-neighbor{fill:#8aa7ac33;stroke:#6d8181;stroke-width:65;stroke-dasharray:170 110}
+.ed-neighbor-label{fill:#46666c;font-size:260px}
