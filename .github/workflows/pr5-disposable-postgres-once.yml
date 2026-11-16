@@ -77,6 +77,39 @@ jobs:
           }
           console.log('CI_TWO_DISTINCT_EMPTY_LOOPBACK_DATABASES_PASS');
           NODE
+      - name: Install canonical empty base schema for Finance E2E foreign keys
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import pg from 'pg';
+          import {readFileSync} from 'node:fs';
+          const url = new URL(process.env.FINANCE_TEST_DATABASE_URL);
+          if (url.hostname !== '127.0.0.1' || url.pathname !== '/vbos_mvp_ci')
+            throw new Error('CI_FINANCE_BASE_SCHEMA_GUARD');
+          const client = new pg.Client({connectionString:url.toString(),ssl:false});
+          await client.connect();
+          try {
+            const migrations = [
+              'schema.sql',
+              'migrations/0004_schedule_manual.sql',
+              'migrations/0006_worker_assignments.sql'
+            ];
+            for (const file of migrations) await client.query(readFileSync(file,'utf8'));
+            const {rows} = await client.query(
+              "SELECT to_regclass('public.mvp_clients') IS NOT NULL AS clients,"+
+              "to_regclass('public.mvp_objects') IS NOT NULL AS objects,"+
+              "to_regclass('public.mvp_orders') IS NOT NULL AS orders,"+
+              "to_regclass('public.mvp_workers') IS NOT NULL AS workers,"+
+              "(SELECT count(*)::int FROM public.mvp_clients) AS client_rows,"+
+              "(SELECT count(*)::int FROM public.mvp_workers) AS worker_rows");
+            const z = rows[0];
+            if (!z.clients || !z.objects || !z.orders || !z.workers ||
+                z.client_rows !== 0 || z.worker_rows !== 0)
+              throw new Error('CI_FINANCE_FOREIGN_KEY_BASELINE_UNVERIFIED');
+            console.log('CI_FINANCE_CANONICAL_EMPTY_FK_BASELINE_PASS');
+          } finally { await client.end(); }
+          NODE
       - name: Source layout preflight
         run: npm run verify:source
       - name: Existing full unit/UI regression
