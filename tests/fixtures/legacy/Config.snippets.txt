@@ -1,0 +1,12 @@
+# PINNED_LEGACY_EVIDENCE_SOURCE=Config.js
+# ORIGINAL_REPO=VahramSargsyan/vbos-app
+# ORIGINAL_COMMIT=e17643a0c399d859abe85c4057a7ec732ac25526
+# ORIGINAL_GIT_BLOB_SHA1=ac5b0fd5665751ab31cc11b1a153b7551e2cca7c
+# SNAPSHOT_TYPE=VERBATIM_MATCHED_LINES_ONLY
+# NOT_A_CURRENT_LIVE_AUTHORITY
+  LeadTransfers: ['transferId', 'createdAt', 'updatedAt', 'status', 'leadId', 'recipientName', 'reason', 'transferredAt', 'comment', 'clientRequestId', 'masterId'],
+  Masters: ['masterId', 'createdAt', 'updatedAt', 'status', 'name', 'phone', 'email', 'serviceArea', 'notes', 'clientRequestId', 'qualityTier', 'messengerType', 'messengerContact'],
+  masterStatus: ['active', 'unavailable', 'archived'],
+  masterQualityTier: ['good', 'normal', 'problematic'],
+  masterMessengerType: ['whatsapp', 'viber', 'telegram', 'other', 'none'],
+  leadTransferReason: ['no_time', 'not_my_specialty', 'budget_mismatch', 'too_far', 'different_specialist_needed', 'do_not_want_order', 'other'],

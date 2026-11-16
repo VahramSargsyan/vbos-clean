@@ -1,0 +1,31 @@
+# PINNED_LEGACY_EVIDENCE_SOURCE=CrmService.js
+# ORIGINAL_REPO=VahramSargsyan/vbos-app
+# ORIGINAL_COMMIT=e17643a0c399d859abe85c4057a7ec732ac25526
+# ORIGINAL_GIT_BLOB_SHA1=c3f0501ee96eb6f99afabfb9c272cb0efeebefde
+# SNAPSHOT_TYPE=VERBATIM_MATCHED_LINES_ONLY
+# NOT_A_CURRENT_LIVE_AUTHORITY
+  result.items=result.items.map(function(lead){const copy=Object.assign({},lead);copy.latestTransfer=lead.lastTransferId ? {transferId:lead.lastTransferId,leadId:lead.leadId,recipientName:lead.lastTransferRecipient,reason:lead.lastTransferReason,transferredAt:lead.lastTransferredAt,status:'active'} : null;return copy;});
+  const leadHistoryStage=linkedClient && String(linkedClient.sourceLeadId || '')!==String(lead.leadId) ? 'repeat_lead' : 'before_client';
+  const interactions=linkedClient ? mergeInteractionHistory_([{items:leadInteractions,historyStage:leadHistoryStage},{items:interactionMap['Client|'+String(linkedClient.clientId)] || [],historyStage:'after_client'}]) : mergeInteractionHistory_([{items:leadInteractions,historyStage:''}]);
+function parseAnyLeadClientRelation_(interaction) {return parseLeadClientRelation_(interaction) || parsePendingLeadClientRelation_(interaction);}
+function getRelatedLeadsForClient_(client) {
+function getClientService_(clientId) {
+  const assessments=findRecordsByColumnValues_('ClientAssessments','clientId',[client.clientId],{newestFirst:true}).filter(function(item){return String(item.status || '')!=='archived';}).map(function(item){return ensureClientAssessmentScore_(item);});
+  const assessmentOrders=getRecordProjectionMapByIdSet_('WorkOrders','workOrderId',assessmentOrderIds,['title','status','completionDate'],getCurrentChangeVersion_());
+  const scored=clientAssessmentHistory.filter(function(item){return item.scoreComplete && item.score!=='' && item.score!==null && item.score!==undefined && Number.isFinite(Number(item.score));});
+  return {client:client,interactions:mergeInteractionHistory_(historyGroups),objects:objects,sourceLead:sourceLead,relatedLeads:relatedLeads,clientAssessmentHistory:clientAssessmentHistory,clientAssessmentAverage:average,clientAssessmentCount:clientAssessmentHistory.length,clientAssessmentScoredCount:scored.length,lastSeenVersion:getCurrentChangeVersion_()};
+function mergeInteractionHistory_(groups) {
+  const seen={},merged=[]; (groups || []).forEach(function(group) {(group.items || []).forEach(function(item) {const id=String(item.interactionId || ''); if (!id || seen[id]) return; seen[id]=true; const copy=Object.assign({},item);copy.historyStage=group.historyStage || '';merged.push(copy);});});
+  return merged.sort(function(a,b) {const at=new Date(a.createdAt || 0).getTime(),bt=new Date(b.createdAt || 0).getTime(); return at!==bt ? bt-at : String(b.interactionId || '').localeCompare(String(a.interactionId || ''));});
+function saveClientService_(payload) {
+      const duplicate=findActiveClientByPhone_(changes.phone,existing.clientId); if (duplicate) throw makeVbosError_(VBOS_ERROR_CODES.SAVE_CLIENT,'Клиент с таким телефоном уже существует: ' + duplicate.name + '.','Duplicate normalized phone: ' + duplicate.clientId);
+function normalizePhoneForMatch_(value) {
+  if (digits.indexOf('00')===0 && digits.length>10) digits=digits.slice(2);
+  if (digits.length===9 && digits.charAt(0)==='0') return '374' + digits.slice(1);
+function findCanonicalNonArchivedClientsByPhone_(phone,excludeClientId) {
+function findNonArchivedClientsByPhone_(phone,excludeClientId) {
+    if(client && String(client.status)!=='archived' && normalizePhoneForMatch_(client.phone)===normalized) indexedMatches.push(client);
+function transferLeadService_(payload) {
+    if (findRecordByValue_('LeadTransfers','leadId',leadId)) throw makeVbosError_(VBOS_ERROR_CODES.TRANSFER_LEAD,'Лид уже был передан.','Repeated transfer forbidden: ' + leadId);
+    if(masterId){const master=findRecordByValue_('Masters','masterId',masterId);if(!master) throw makeVbosError_(VBOS_ERROR_CODES.TRANSFER_LEAD,'Выбранный мастер не найден.','Master not found for transfer: ' + masterId);if(String(master.status)==='archived') throw makeVbosError_(VBOS_ERROR_CODES.TRANSFER_LEAD,'Архивному мастеру нельзя передать лид.','Archived master transfer forbidden: ' + masterId);recipientName=requireString_(master.name,'Имя мастера',300);}else recipientName=requireString_(payload.recipientName,'Кому передан',300);
+      const updatedLead=updateRecordById_('Leads','leadId',leadId,{status:'transferred',updatedAt:timestamp,lastTransferId:transferId,lastTransferredAt:record.transferredAt,lastTransferRecipient:record.recipientName,lastTransferReason:record.reason}); if (!updatedLead) throw new Error('Lead update returned null'); leadUpdated=true;

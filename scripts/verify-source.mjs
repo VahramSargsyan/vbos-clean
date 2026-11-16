@@ -39,6 +39,18 @@ for (const file of sources) {
     const path = resolve(dirname(file), spec);
     if (!existsSync(path)) errors.push('MISSING_IMPORT '+file.slice(root.length)+' -> '+spec);
   }
+  // Fail closed if a source-relative file read escapes this standalone checkout.
+  // This includes historical parity fixtures: they must be shipped in THIS repository.
+  const fileUrls = [...code.matchAll(/\bnew\s+URL\(\s*['"](\.[^'"]+)['"]\s*,\s*import\.meta\.url\s*\)/g)];
+  for (const match of fileUrls) {
+    const p = resolve(dirname(file), match[1]);
+    const source = file.slice(root.length);
+    if (!(p === resolve(root) || p.startsWith(resolve(root) + '/'))) {
+      errors.push('EXTERNAL_SOURCE_REF '+source+' -> '+match[1]);
+    } else if (!existsSync(p)) {
+      errors.push('MISSING_SOURCE_FILE_REF '+source+' -> '+match[1]);
+    }
+  }
 }
 if (errors.length) {
   console.error('SOURCE_PREFLIGHT_FAIL files='+sources.length+' imports='+references);

@@ -184,8 +184,8 @@ test('payload validation rejects malformed operation, UUID, date, money and extr
   balances(),reverseCtx()),'CAPITAL_B6_EXTRA_FIELDS_FORBIDDEN');
 });
 
-test('native Fund movement effects match the exact original CapitalService.js source',()=>{
- const src=readFileSync(new URL('../../../../../CapitalService.js',import.meta.url),'utf8');
+test('native Fund movement effects match pinned exact CapitalService.js function excerpts',()=>{
+ const src=readFileSync(new URL('../../../tests/fixtures/legacy/CapitalService.excerpts.js.txt',import.meta.url),'utf8');
  const extract=name=>{
   const i=src.indexOf('function '+name+'(');
   assert.ok(i>=0,name+' missing from original');

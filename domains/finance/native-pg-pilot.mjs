@@ -1,6 +1,6 @@
 /**
  * FINANCE_NATIVE_SYNTHETIC_POSTING_PILOT_V1
- * Isolated PostgreSQL adapter for the ORIGINAL FinanceService.js and CapitalService.js.
+ * Isolated PostgreSQL adapter for source-pinned ORIGINAL FinanceService.js and CapitalService.js excerpts (test-only).
  * NO HTTP endpoint, NO live Clean writer, NO Google / historical import / PROD.
  * The database MUST be the disposable CI database or an explicitly named pilot-only DB.
  */
@@ -9,9 +9,9 @@ import {createHash,randomUUID} from 'node:crypto';
 import vm from 'node:vm';
 import {prepareNewFinanceInvestmentAllocation} from './capital-waterfall.mjs';
 
-const financeSource=readFileSync(new URL('../../../../FinanceService.js',import.meta.url),'utf8');
-const capitalSource=readFileSync(new URL('../../../../CapitalService.js',import.meta.url),'utf8');
-const configSource=readFileSync(new URL('../../../../Config.js',import.meta.url),'utf8');
+const financeSource=readFileSync(new URL('../../tests/fixtures/legacy/FinanceService.pilot-excerpts.txt',import.meta.url),'utf8');
+const capitalSource=readFileSync(new URL('../../tests/fixtures/legacy/CapitalService.pilot-excerpts.txt',import.meta.url),'utf8');
+const configSource=readFileSync(new URL('../../tests/fixtures/legacy/Config.pilot-excerpts.txt',import.meta.url),'utf8');
 const sqlSource=readFileSync(new URL('./native-pilot-isolated.sql',import.meta.url),'utf8');
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const table='finance_pilot';
