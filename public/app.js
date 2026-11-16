@@ -3044,7 +3044,7 @@ if(f.id==='presenceFilters'){
   }
   const type=f.dataset.act;if(!type)return;
  if(type==='lead_create'&&f.hasAttribute('data-client-lead-form')&&
-  (!crmClientLeadContext||payload.clientId!==crmClientLeadContext.clientId)){
+  (!crmClientLeadContext||new FormData(f).get('clientId')!==crmClientLeadContext.clientId)){
   message('Выбранный клиент изменился. Вернись к его карточке и начни обращение заново.',true);return;
  }
  if(type==='estimate_accept_handoff'&&!confirm('Согласовать сохранённую смету и создать один новый заказ? Это не создаёт оплату или запись в календаре.'))return;
