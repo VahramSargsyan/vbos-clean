@@ -1,0 +1,59 @@
+# PINNED_LEGACY_EVIDENCE_SOURCE=CapitalService.js
+# ORIGINAL_REPO=VahramSargsyan/vbos-app
+# ORIGINAL_COMMIT=e17643a0c399d859abe85c4057a7ec732ac25526
+# ORIGINAL_GIT_BLOB_SHA1=f4c822abb0d86b10d4d01229b7adeceae5341451
+# SNAPSHOT_TYPE=EXACT_EXECUTABLE_FUNCTION_EXCERPTS
+# NOT_A_CURRENT_LIVE_AUTHORITY
+function capitalEffectAdd_(map,fundId,changes) {
+  const id=String(fundId || '');
+  if(!id) return;
+  if(!map[id]) map[id]={fundId:id,balanceBase:0,allocatedBase:0,transferredInBase:0,transferredOutBase:0,spentBase:0,transactionCount:0};
+  Object.keys(changes || {}).forEach(function(field){map[id][field]=financeRound_(Number(map[id][field] || 0)+Number(changes[field] || 0));});
+}
+
+function capitalTransactionEffects_(record,originalOverride) {
+  record=record || {};
+  const type=String(record.movementType || ''),amount=financeRound_(Number(record.amountBase || 0)),effects={};
+  if(type==='ALLOCATION') {
+    capitalEffectAdd_(effects,record.toFundId,{balanceBase:amount,allocatedBase:amount,transactionCount:1});
+  } else if(type==='TRANSFER') {
+    capitalEffectAdd_(effects,record.fromFundId,{balanceBase:-amount,transferredOutBase:amount,transactionCount:1});
+    capitalEffectAdd_(effects,record.toFundId,{balanceBase:amount,transferredInBase:amount,transactionCount:1});
+  } else if(type==='SPEND') {
+    capitalEffectAdd_(effects,record.fromFundId,{balanceBase:-amount,spentBase:amount,transactionCount:1});
+  } else if(type==='REVERSAL') {
+    const original=originalOverride || findRecordByValue_('CapitalFundTransactions','fundTransactionId',record.reversalOfTransactionId);
+    if(!original) throw makeVbosError_(VBOS_ERROR_CODES.CAPITAL_VALIDATION,'Исходная операция для сторно не найдена.','Missing reversed capital transaction: '+String(record.reversalOfTransactionId || ''));
+    const baseEffects=capitalTransactionEffects_(original,null);
+    Object.keys(baseEffects).forEach(function(fundId){
+      const source=baseEffects[fundId];
+      capitalEffectAdd_(effects,fundId,{balanceBase:-Number(source.balanceBase || 0),allocatedBase:-Number(source.allocatedBase || 0),transferredInBase:-Number(source.transferredInBase || 0),transferredOutBase:-Number(source.transferredOutBase || 0),spentBase:-Number(source.spentBase || 0),transactionCount:1});
+    });
+  } else {
+    throw makeVbosError_(VBOS_ERROR_CODES.CAPITAL_VALIDATION,'Неизвестный тип движения фонда.','Unsupported capital movementType: '+type);
+  }
+  return effects;
+}
+
+function capitalPolicyShareForFund_(fund) {
+  const code=String(fund && fund.code || '');
+  if(code==='OPERATING_RESERVE') return Math.max(0,Number(VBOS_CONFIG.CAPITAL_OPERATING_RESERVE_SHARE_PCT || 15));
+  if(code==='WARRANTY_RESERVE') return Math.max(0,Number(VBOS_CONFIG.CAPITAL_WARRANTY_RESERVE_SHARE_PCT || 15));
+  return 0;
+}
+
+function capitalWaterfallAllocationsUnlocked_(totalAmountBase) {
+  const total=capitalMoneyNumber_(totalAmountBase,'Сумма распределения',false),funds=listRecentRecords_('CapitalFunds',{excludeStatuses:['archived'],limit:50,cursor:''}).items || [];
+  const active=funds.filter(function(fund){return String(fund.status || '')==='active';}),allocations=[],reservedByFund={};let used=0;
+  ['OPERATING_RESERVE','WARRANTY_RESERVE'].forEach(function(code){
+    const fund=active.find(function(item){return String(item.code || '')===code;});if(!fund)return;
+    const sharePct=capitalPolicyShareForFund_(fund),desired=financeRound_(total*sharePct/100),target=Math.max(0,Number(fund.targetAmountBase || 0)),balance=Math.max(0,Number(getCapitalFundBalanceRecord_(fund.fundId).balanceBase || 0)),remaining=target>0?Math.max(0,target-balance):desired,amount=financeRound_(Math.min(desired,remaining));
+    if(amount>0){allocations.push({fundId:String(fund.fundId),amountBase:amount});reservedByFund[code]=amount;used=financeRound_(used+amount);}else reservedByFund[code]=0;
+  });
+  let growthPool=financeRound_(total-used),growth=active.filter(function(fund){return String(fund.groupType || '')==='GROWTH' && Number(fund.allocationSharePct || 0)>0;}),weightTotal=growth.reduce(function(sum,fund){return sum+Number(fund.allocationSharePct || 0);},0);
+  if(growthPool>0.001 && (!growth.length || weightTotal<=0)) throw makeVbosError_(VBOS_ERROR_CODES.CAPITAL_VALIDATION,'Нет активных фондов роста с долями. Активируй хотя бы один фонд роста или настрой его долю.','No active growth fund weights for waterfall allocation.');
+  let growthUsed=0;growth.forEach(function(fund,index){const amount=index===growth.length-1?financeRound_(growthPool-growthUsed):financeRound_(growthPool*Number(fund.allocationSharePct || 0)/weightTotal);if(amount>0){allocations.push({fundId:String(fund.fundId),amountBase:amount});growthUsed=financeRound_(growthUsed+amount);}});
+  const sum=financeRound_(allocations.reduce(function(acc,line){return acc+Number(line.amountBase || 0);},0));
+  if(Math.abs(sum-total)>0.01 && allocations.length){allocations[allocations.length-1].amountBase=financeRound_(Number(allocations[allocations.length-1].amountBase || 0)+(total-sum));}
+  return {totalAmountBase:total,allocations:allocations,policy:{operatingReserveSharePct:Number(VBOS_CONFIG.CAPITAL_OPERATING_RESERVE_SHARE_PCT || 15),warrantyReserveSharePct:Number(VBOS_CONFIG.CAPITAL_WARRANTY_RESERVE_SHARE_PCT || 15),growthBaseSharePct:Math.max(0,100-Number(VBOS_CONFIG.CAPITAL_OPERATING_RESERVE_SHARE_PCT || 15)-Number(VBOS_CONFIG.CAPITAL_WARRANTY_RESERVE_SHARE_PCT || 15)),releasedProtectiveShareFlowsToGrowth:true,targetAware:true},reservedByFund:reservedByFund};
+}

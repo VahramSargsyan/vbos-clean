@@ -4,10 +4,10 @@ Standalone VBOS Clean mobile app. Source now lives in https://github.com/VahramS
 
 - **Public TEST URL:** https://vbos-clean-mvp-2026.onrender.com/
 - **Source authority:** vbos-clean/main, extracted from vbos-app feature/vbos-mvp-clean-20261103 @ e17643a0c399d859abe85c4057a7ec732ac25526. New repo import commit: 67a0fe2fabec014160ed90aa876880a67a7b0046.
-- **Render service:** srv-dbkvfh2jnfac73a31nv0 (free, Frankfurt, autoDeploy OFF). CURRENTLY CONNECTED TO OLD vbos-app REPOSITORY; new-repo cutover NOT PERFORMED.
+- **Render service:** srv-dbkvfh2jnfac73a31nv0 (free, Frankfurt, autoDeploy OFF). Connected to this repository main; TEST LIVE deploy dep-dbtbjat6e07s73c0i9k0 at 1cf42345b35ce15f397c5fb1bd59821d5df8f7dc. Owner source-switch smoke accepted 2026-11-16.
 - **Database:** existing free Neon project proud-hat-90291191, new isolated database vbos_mvp_clean
-- **Data policy:** no old CRM, work orders, sessions or work logs imported.
-- **Legacy finance:** one immutable labeled summary snapshot (Finance TEST checked against Google on 2026-11-03). Different financial measures must not be summed.
+- **Data policy:** historical legacy archive imported separately (131 source_records and additional CRM archive), but it does not automatically turn those into writable Clean-native CRM or WorkLog records. See the acceptance/migration register.
+- **Legacy finance:** historical archive/read-only views and opening previews exist. Native finance cutover remains BLOCKED with GOOGLE write authority, 0 native transactions. Financial measures must not be silently added together.
 - **Auth:** first-launch owner registration with a one-time claim code; owner picks their own login/password; scrypt owner-password hash resides in PostgreSQL, claim code is stored only as SHA256 in Render env, and the cookie HMAC secret resides only in Render env.
 - **Postgres credentials:** Render-only DATABASE_URL; not exposed in browser.
 - **No PROD authority switch** or accepted legacy runtime replacement was made.
@@ -15,15 +15,20 @@ Standalone VBOS Clean mobile app. Source now lives in https://github.com/VahramS
 
 ## Current repository handoff (CLEAN-REPO-SPLIT, 2026-11-14)
 
-- WORKFLOW MODE: PATCH_FIX / source-release adaptation; owner: Vahram; TEST: existing independent Clean Render TEST, not yet switched to this repo.
+- WORKFLOW MODE: PATCH_FIX / source-release adaptation; owner: Vahram; TEST: existing independent Clean Render TEST now switched to this repo and smoke accepted (issue #2, 2026-11-16).
 - Runtime source: 316 exact Git blobs copied into the root from old repo commit e17643a0; independent main import 67a0fe2. Existing production and legacy authority are unchanged.
-- No application or SQL behavior changes in this handoff. New verification is STATIC ONLY until real Node/PostgreSQL and authenticated deployment checks complete.
-- Do not repoint the existing Render service until repo access, exact-source build, safe rollback and owner TEST acceptance are verified.
-- The Render service remains connected to the old repository; its current build/start settings still reference devtools/vbos-mvp-clean. For a NEW-repo deployment use root commands above.
+- No application or SQL behavior changed in this source handoff. Later deployment checks confirmed exact Render source, transactional PostgreSQL health, 96/96 table readback and owner mobile smoke. Full standalone tests still needed independent legacy fixtures.
+- Existing Render TEST has already been repointed safely and accepted; do not repoint or redeploy it again without a separate bounded release.
+- The Render service uses the NEW repository root: build npm install --omit=dev --no-audit --no-fund; start node server.mjs; autoDeploy remains OFF.
 - A source transfer is not a data migration. Do not move cookies, credentials, users, financial records, CRM data or reuse another environment's TEST slot.
 - GitHub Actions spending gate: do not add or trigger workflows while owner is conserving Actions budget. This is not an exception to required tests before runtime release.
 - Rollback: keep existing live Render commit e17643a0; changing source repo requires a separately verified deploy and restore procedure. No PROD approval.
 - Original historical Build Packets below retain previous paths and checkpoint names as historical records.
+
+
+## Capability and migration status as of 2026-11-16
+
+Authoritative current TEST status and the remaining user/financial migration gates: [VBOS Clean acceptance & migration register](docs/status/VBOS_CLEAN_ACCEPTANCE_MIGRATION_REGISTER_20261116.md). Historical Build Packets below describe their own original checkpoints and may contain older not-yet-released statements; do not override the current exact release receipt.
 
 ## Android installation and owner registration
 Open the HTTPS URL once in Chrome on Android, choose **⋮ → Install app** / **Add to Home screen**. The manifest, PNG icons, standalone display and service worker make it installable like Investment Lab. The first-launch screen asks for a self-selected login/password and the one-time activation code. After registration, use the login/password; no automatic access through ChatGPT is claimed. No APK is produced; this is an installable PWA.
@@ -42,7 +47,7 @@ Static source-layout check: npm run verify:source (no DB, no Actions). Unit test
 Keep original VBOS untouched. Roll back the Render service to previous exact deployment. Do not delete the new PostgreSQL database to roll back code. Data exports should be captured before any major schema changes.
 
 ## Not yet proven
-This MVP has not passed an authenticated end-to-end browser write/readback test using the deployed service. CI has confirmed hosted PWA manifest/icons, owner-bootstrap endpoint, rejected unauthenticated data access, and public DB health; startup verifies real transactional PostgreSQL write/readback/rollback. It is a new small app, not the complete old CRM / Today UI. Verify functionality before recording real important data.
+The exact 2026-11-16 source-switch TEST and owner login/existing-record Android smoke were accepted; full business-workflow authenticated write/readback tests for every module remain NOT_RUN. CI has confirmed hosted PWA manifest/icons, owner-bootstrap endpoint, rejected unauthenticated data access, and public DB health; startup verifies real transactional PostgreSQL write/readback/rollback. It is a new small app, not the complete old CRM / Today UI. Verify functionality before recording real important data.
 
 ## Functional block V2 — edit + bounded work history (2026-11-03)
 - Client: edit name/phone/notes via revision-guarded UPDATE (same client UUID and object relations).
@@ -991,3 +996,11 @@ The existing V1G `Свободный →` navigator originally counted all zero-
 - **UI flow:** `Калькуляция → Цены`: edit Economy multiplier (fixed 1), Standard+/VIP multiplier and rounding, global WATER/SEWER/CHASING Economy+floors, per-card installation Economy+floors. Save individual row, refresh, check effective auto/floor; wizard new quote receives book as input with manual quote priority and explicit price confirmation. `Калькуляция → Карточки` behavior remains. **OUT OF SCOPE:** material master/prices, global finance/service wages, multiple stored estimates, data backfill.
 - **SCOPE FILES:** `public/estimate-pricebook.mjs`, `estimator-pricebook.mjs`, `public/estimate-plumbing.mjs`, `server.mjs`, `public/app.js`, `public/style.css`, targeted tests, migrations, package, this README. **Shared hotspots:** server action router and shared Clean TEST; no Finance routes changed.
 - **GATES:** CI full Clean, disposable PG two-cycle DDL replay/revision/idempotence/owner card status, exact candidate Render health. New migration requires named recovery Neon branch and source lease, then apply TEST only, DDL/count readback and single exact Render TEST deployment. **ROLLBACK:** exact previous `9e518cf7a92f7a98c17b92ad069e8dcc83c99523`; leave additive tables and later owner entered rows intact. **Owner acceptance:** edit profile + water/install rule; verify floor and auto on refresh; new quote vs saved unchanged; mobile touches. **NOT RUN:** live owner signed-session save/replay until user test. No PROD, files to copy none.
+
+## CLEAN_TEST_AUTONOMY_AND_ACCEPTANCE_REGISTER — bounded checkpoint (2026-11-16)
+
+- **CAPABILITY_ID:** CLEAN_TEST_AUTONOMY_20261116; **MODE:** PATCH_FIX + AUDIT_ONLY for the separate register; **RISK:** L1 tests/documentation only; **BASE:** `1cf42345b35ce15f397c5fb1bd59821d5df8f7dc`; **OWNER:** Vahram; **TARGET:** source-only isolated branch, no occupied Render/Neon changes.
+- **RESULT:** replace 12 test references to six external legacy source files by source-pinned narrow fixtures in `tests/fixtures/legacy/`; preserve actual original Capital functions for executable parity (not a mock). Add a static check for escaping local fixture paths. Publish current evidence-based statuses in the linked register; do not call archived rows writable/native.
+- **SCOPE:** only test source, fixture evidence, `scripts/verify-source.mjs`, governance/release status docs and this existing Build Packet. **OUT:** application business code, SQL, new server, paid Actions/Codex, finance cutover, PROD.
+- **VERIFICATION:** pinned original Git commit+blob for all six; fixture exact-line/function readback; all changed test paths resolve within repo. Full `npm test`, local disposable PostgreSQL E2E and authenticated hosted runtime are separately reported PASS or NOT_RUN in the PR receipt, never assumed.
+- **ROLLBACK:** revert this source-only PR. No data migration. Files to copy: none. **NEXT:** owner functional acceptance and subsequently separately authorized migration steps.

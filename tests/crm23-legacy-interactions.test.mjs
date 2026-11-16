@@ -6,7 +6,7 @@ import {
 } from '../crm-legacy-interactions.mjs';
 
 const get=path=>readFileSync(new URL(path,import.meta.url),'utf8');
-const legacy=get('../../../CrmService.js'),ui=get('../public/app.js'),
+const legacy=get('./fixtures/legacy/CrmService.snippets.txt'),ui=get('../public/app.js'),
  server=get('../server.mjs'),source=get('../crm-legacy-interactions.mjs');
 const migration=get('../migrations/0027_crm23a_legacy_interactions_CANDIDATE.sql');
 const clientId='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';

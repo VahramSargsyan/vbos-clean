@@ -10,7 +10,7 @@ const safeRevision=x=>{if(!Number.isInteger(+x)||+x<1)throw new AppError(400,'Re
 const file=p=>readFileSync(new URL(p,import.meta.url),'utf8');
 const schema=file('../migrations/0028_crm25a_master_directory_CANDIDATE.sql');
 const plan=file('../migrations/0028_crm25a_master_directory_MIGRATION_PLAN.md');
-const legacy=file('../../../Config.js');
+const legacy=file('./fixtures/legacy/Config.snippets.txt');
 const ui=file('../public/app.js'),server=file('../server.mjs');
 const good={name:'Внешний мастер',phone:'',email:'',serviceArea:'Ереван',notes:'',status:'active',qualityTier:'normal',messengerType:'none',messengerContact:''};
 

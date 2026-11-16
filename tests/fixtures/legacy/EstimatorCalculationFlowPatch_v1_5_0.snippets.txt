@@ -1,0 +1,10 @@
+# PINNED_LEGACY_EVIDENCE_SOURCE=EstimatorCalculationFlowPatch_v1_5_0.html
+# ORIGINAL_REPO=VahramSargsyan/vbos-app
+# ORIGINAL_COMMIT=e17643a0c399d859abe85c4057a7ec732ac25526
+# ORIGINAL_GIT_BLOB_SHA1=e30bdc77c1959e5b482e73b6c0410385ae31348a
+# SNAPSHOT_TYPE=VERBATIM_MATCHED_LINES_ONLY
+# NOT_A_CURRENT_LIVE_AUTHORITY
+  let extraMaterials={selected:false,amount:'',note:''};
+    configs[key]={water:false,sewer:false,install:false,cold:0,hot:0,sewerPoints:0,waterPrice:'',sewerPrice:'',installPrice:''};
+      '<label class="est-wiz-select-all"><input type="checkbox" data-est-wiz-select-all '+(allSelected?'checked':'')+'> Всё</label>'+
+      '<div class="est-v150-actions"><button type="button" class="secondary-button" data-est-wiz-action="back-config">Изменить действия</button><button type="button" class="primary-button" data-est-wiz-action="new">Новый расчёт</button></div>';

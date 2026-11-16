@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {leadTransferAction,LEAD_TRANSFER_REASONS} from '../crm-lead-transfer.mjs';
 
 const get=path=>readFileSync(new URL(path,import.meta.url),'utf8');
-const legacy=get('../../../CrmService.js'),config=get('../../../Config.js');
+const legacy=get('./fixtures/legacy/CrmService.snippets.txt'),config=get('./fixtures/legacy/Config.snippets.txt');
 const sql=get('../migrations/0025_crm22a_lead_transfer_TEST_ONLY.sql');
 const plan=get('../migrations/0025_crm22a_lead_transfer_MIGRATION_PLAN.md');
 const ui=get('../public/app.js'),server=get('../server.mjs');

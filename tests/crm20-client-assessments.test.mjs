@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {clientAssessmentHistoryRead} from '../crm-client-assessments.mjs';
 
-const legacy=readFileSync(new URL('../../../CrmService.js',import.meta.url),'utf8');
+const legacy=readFileSync(new URL('./fixtures/legacy/CrmService.snippets.txt',import.meta.url),'utf8');
 const ui=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const id='00000000-0000-4000-8000-000000000001';

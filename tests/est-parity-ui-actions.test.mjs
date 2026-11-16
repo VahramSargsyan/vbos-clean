@@ -8,7 +8,7 @@ import {
 } from '../public/estimate-plumbing.mjs';
 
 const ui=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
-const legacy=readFileSync(new URL('../../../EstimatorCalculationFlowPatch_v1_5_0.html',import.meta.url),'utf8');
+const legacy=readFileSync(new URL('./fixtures/legacy/EstimatorCalculationFlowPatch_v1_5_0.snippets.txt',import.meta.url),'utf8');
 const htmlEscape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const demo=()=>calculatePlumbingEstimateBatch({tariff:'STANDARD_PLUS',
  cards:[{cardKey:'WC',quantity:2,water:true,sewer:true,install:true,

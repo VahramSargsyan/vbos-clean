@@ -1,0 +1,9 @@
+# PINNED_LEGACY_EVIDENCE_SOURCE=EstimatorUi_v1_5_0.html
+# ORIGINAL_REPO=VahramSargsyan/vbos-app
+# ORIGINAL_COMMIT=e17643a0c399d859abe85c4057a7ec732ac25526
+# ORIGINAL_GIT_BLOB_SHA1=fcba8af0bc427b356f12d14d5982df7172883522
+# SNAPSHOT_TYPE=VERBATIM_MATCHED_LINES_ONLY
+# NOT_A_CURRENT_LIVE_AUTHORITY
+      '<button type="button" class="secondary-button est-v150-tab ' + (currentTab==='calculator'?'active':'') + '" data-est-action="tab" data-tab="calculator">Расчёт</button>' +
+      '<button type="button" class="secondary-button est-v150-tab ' + (currentTab==='prices'?'active':'') + '" data-est-action="tab" data-tab="prices">Цены</button>' +
+      '<button type="button" class="secondary-button est-v150-tab ' + (currentTab==='cards'?'active':'') + '" data-est-action="tab" data-tab="cards">Карточки</button>' +

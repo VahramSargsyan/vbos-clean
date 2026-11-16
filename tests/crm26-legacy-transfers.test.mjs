@@ -29,7 +29,7 @@ const synthetic=()=>{
 };
 test('CRM26 source exact enums and immutable separate history schema',()=>{
  const schema=src('../migrations/0029_crm26a_legacy_transfer_archive_CANDIDATE.sql');
- const old=src('../../../Config.js'),transfer=src('../../../CrmService.js'),server=src('../server.mjs');
+ const old=src('./fixtures/legacy/Config.snippets.txt'),transfer=src('./fixtures/legacy/CrmService.snippets.txt'),server=src('../server.mjs');
  assert.match(old,/LeadTransfers:\s*\['transferId',\s*'createdAt'/);
  assert.match(transfer,/function transferLeadService_\(/);
  assert.match(schema,/CREATE TABLE IF NOT EXISTS mvp_history\.crm_legacy_transfer_batches/);

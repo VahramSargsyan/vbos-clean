@@ -77,9 +77,9 @@ test('growth weight normalization works if weights do not add to 100%',()=>{
  assert.equal(sum(p.allocations),700000000n);
 });
 
-test('checks against actual unmodified CapitalService.js original function',()=>{
- // Deliberately execute original source functions, not copied JS formula.
- const source=readFileSync(new URL('../../../../../CapitalService.js',import.meta.url),'utf8');
+test('checks against pinned verbatim original CapitalService.js functions',()=>{
+ // Execute exact source-frozen function excerpts, not Clean implementation or an invented formula.
+ const source=readFileSync(new URL('../../../tests/fixtures/legacy/CapitalService.excerpts.js.txt',import.meta.url),'utf8');
  const extract=name=>{
   const start=source.indexOf('function '+name+'(');
   assert.ok(start>=0,'Missing original '+name);

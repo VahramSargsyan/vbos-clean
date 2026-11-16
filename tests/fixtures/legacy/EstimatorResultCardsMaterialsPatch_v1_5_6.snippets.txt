@@ -1,0 +1,10 @@
+# PINNED_LEGACY_EVIDENCE_SOURCE=EstimatorResultCardsMaterialsPatch_v1_5_6.html
+# ORIGINAL_REPO=VahramSargsyan/vbos-app
+# ORIGINAL_COMMIT=e17643a0c399d859abe85c4057a7ec732ac25526
+# ORIGINAL_GIT_BLOB_SHA1=34af2f4b6574a3131eee5b54df8618477598526c
+# SNAPSHOT_TYPE=VERBATIM_MATCHED_LINES_ONLY
+# NOT_A_CURRENT_LIVE_AUTHORITY
+  .est-v156-result-card{border:0;margin:0}
+      if(!title||title==='Доп. материалы'||title==='Материалы'||title==='Материалы из карточек')return;
+      details.innerHTML='<summary><div class="est-v156-result-summary-main"><span>'+escape_(title)+'</span><small>Нажми, чтобы посмотреть подробно</small></div><strong class="est-v156-result-summary-price">'+escape_(moneyText_(subtotal))+'</strong></summary><div class="est-v156-card-body"></div>';
+    details.innerHTML='<summary><span>Материалы из карточек</span><strong>'+escape_(aggregate.length)+' поз.</strong></summary><div class="est-v156-material-total-body">'+

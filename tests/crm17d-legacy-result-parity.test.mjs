@@ -8,7 +8,7 @@ import {
 
 const ui=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../public/style.css',import.meta.url),'utf8');
-const legacy=readFileSync(new URL('../../../EstimatorResultCardsMaterialsPatch_v1_5_6.html',import.meta.url),'utf8');
+const legacy=readFileSync(new URL('./fixtures/legacy/EstimatorResultCardsMaterialsPatch_v1_5_6.snippets.txt',import.meta.url),'utf8');
 const htmlEscape=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const demo=()=>calculatePlumbingEstimateBatch({
  tariff:'STANDARD_PLUS',

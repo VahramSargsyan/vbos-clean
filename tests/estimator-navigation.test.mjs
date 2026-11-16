@@ -10,7 +10,7 @@ import {
 const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
 const app=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../public/style.css',import.meta.url),'utf8');
-const legacy=readFileSync(new URL('../../../EstimatorUi_v1_5_0.html',import.meta.url),'utf8');
+const legacy=readFileSync(new URL('./fixtures/legacy/EstimatorUi_v1_5_0.snippets.txt',import.meta.url),'utf8');
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const moduleRef={listPlumbingItems,plumbingStandardForCard,calculatePlumbingEstimate,
  calculatePlumbingEstimateBatch,summarizePlumbingEstimateBatch,plumbingQuoteRows};

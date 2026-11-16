@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {guardedClientAction} from '../crm-client-duplicates.mjs';
 
-const legacy=readFileSync(new URL('../../../CrmService.js',import.meta.url),'utf8');
+const legacy=readFileSync(new URL('./fixtures/legacy/CrmService.snippets.txt',import.meta.url),'utf8');
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const ui=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
 const allowed=(value,options)=>{if(!options.includes(value))throw Error('INVALID_ENUM');return value;};
