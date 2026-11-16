@@ -1,0 +1,56 @@
+# One-time, owner-authorized PR #5 PostgreSQL E2E verification.
+# Separate CI branch. No deploy, no cloud DB, no caches/artifact storage.
+name: PR5 disposable PostgreSQL E2E
+on:
+  push:
+    branches:
+      - ci/pr5-disposable-postgres-once-20261116
+    paths:
+      - .github/workflows/pr5-disposable-postgres-once.yml
+permissions:
+  contents: read
+jobs:
+  isolated-postgres-e2e:
+    name: Exact-source E2E on ephemeral PostgreSQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: clean_ci
+          POSTGRES_PASSWORD: ci_only_disposable_20261116
+          POSTGRES_DB: clean_ci_ephemeral
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U clean_ci -d clean_ci_ephemeral"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      TEST_DATABASE_URL: postgresql://clean_ci:ci_only_disposable_20261116@127.0.0.1:5432/clean_ci_ephemeral
+    steps:
+      - name: Checkout exact approved PR #5 candidate
+        uses: actions/checkout@v4
+        with:
+          ref: fe772dbef62edde1d15ba6f3066ac54bfeb4779a
+          persist-credentials: false
+      - name: Assert exact source and loopback-only test target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "fe772dbef62edde1d15ba6f3066ac54bfeb4779a"
+          node -e "const u=new URL(process.env.TEST_DATABASE_URL);if(u.hostname!=='127.0.0.1'||u.pathname!=='/clean_ci_ephemeral')process.exit(3);"
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install existing production dependencies
+        run: npm install --omit=dev --no-audit --no-fund
+      - name: Source layout preflight
+        run: npm run verify:source
+      - name: Existing full unit/UI regression
+        run: npm test
+      - name: PostgreSQL end-to-end regression (ephemeral only)
+        run: npm run test:e2e
