@@ -97,6 +97,17 @@ jobs:
               'migrations/0023_crm15a_client_profile_TEST_ONLY.sql'
             ];
             for (const file of migrations) await client.query(readFileSync(file,'utf8'));
+            // B14 checks that historical Finance evidence remains untouched.
+            // Original V11H migration 0011 is GATED for a populated, backed-up Neon TEST:
+            // NEVER run it here. A no-FROM, non-updatable view creates a strictly read-only
+            // empty synthetic history boundary, not a claim of full V11H migration parity.
+            const guard = await client.query(
+              "SELECT current_database() AS db,to_regclass('mvp_history.source_records') AS history");
+            if (guard.rows[0]?.db !== 'vbos_mvp_ci' || guard.rows[0]?.history !== null)
+              throw new Error('CI_SYNTHETIC_HISTORY_PRECONDITION_FAIL');
+            await client.query('CREATE SCHEMA mvp_history');
+            await client.query(
+              'CREATE VIEW mvp_history.source_records AS SELECT NULL::text AS source_kind WHERE FALSE');
             const {rows} = await client.query(
               "SELECT to_regclass('public.mvp_clients') IS NOT NULL AS clients,"+
               "to_regclass('public.mvp_objects') IS NOT NULL AS objects,"+
@@ -104,12 +115,16 @@ jobs:
               "to_regclass('public.mvp_workers') IS NOT NULL AS workers,"+
               "(SELECT count(*)::int FROM public.mvp_clients) AS client_rows,"+
               "(SELECT count(*)::int FROM public.mvp_workers) AS worker_rows,"+
-              "(SELECT count(*)::int FROM information_schema.columns WHERE table_schema='public' AND table_name='mvp_clients' AND column_name='status') AS client_status_columns");
+              "(SELECT count(*)::int FROM information_schema.columns WHERE table_schema='public' AND table_name='mvp_clients' AND column_name='status') AS client_status_columns,"+
+              "(SELECT count(*)::int FROM mvp_history.source_records WHERE source_kind='FINANCE_TRANSACTION') AS historical_finance_rows,"+
+              "pg_relation_is_updatable('mvp_history.source_records'::regclass,false) AS history_write_flags");
             const z = rows[0];
             if (!z.clients || !z.objects || !z.orders || !z.workers ||
-                z.client_rows !== 0 || z.worker_rows !== 0 || z.client_status_columns !== 1)
+                z.client_rows !== 0 || z.worker_rows !== 0 || z.client_status_columns !== 1 ||
+                z.historical_finance_rows !== 0 || z.history_write_flags !== 0)
               throw new Error('CI_FINANCE_FOREIGN_KEY_BASELINE_UNVERIFIED');
             console.log('CI_FINANCE_CANONICAL_EMPTY_FK_BASELINE_PASS');
+            console.log('CI_EMPTY_NONUPDATABLE_HISTORY_VIEW_PASS');
           } finally { await client.end(); }
           NODE
       - name: Source layout preflight
