@@ -93,7 +93,8 @@ jobs:
             const migrations = [
               'schema.sql',
               'migrations/0004_schedule_manual.sql',
-              'migrations/0006_worker_assignments.sql'
+              'migrations/0006_worker_assignments.sql',
+              'migrations/0023_crm15a_client_profile_TEST_ONLY.sql'
             ];
             for (const file of migrations) await client.query(readFileSync(file,'utf8'));
             const {rows} = await client.query(
@@ -102,10 +103,11 @@ jobs:
               "to_regclass('public.mvp_orders') IS NOT NULL AS orders,"+
               "to_regclass('public.mvp_workers') IS NOT NULL AS workers,"+
               "(SELECT count(*)::int FROM public.mvp_clients) AS client_rows,"+
-              "(SELECT count(*)::int FROM public.mvp_workers) AS worker_rows");
+              "(SELECT count(*)::int FROM public.mvp_workers) AS worker_rows,"+
+              "(SELECT count(*)::int FROM information_schema.columns WHERE table_schema='public' AND table_name='mvp_clients' AND column_name='status') AS client_status_columns");
             const z = rows[0];
             if (!z.clients || !z.objects || !z.orders || !z.workers ||
-                z.client_rows !== 0 || z.worker_rows !== 0)
+                z.client_rows !== 0 || z.worker_rows !== 0 || z.client_status_columns !== 1)
               throw new Error('CI_FINANCE_FOREIGN_KEY_BASELINE_UNVERIFIED');
             console.log('CI_FINANCE_CANONICAL_EMPTY_FK_BASELINE_PASS');
           } finally { await client.end(); }
