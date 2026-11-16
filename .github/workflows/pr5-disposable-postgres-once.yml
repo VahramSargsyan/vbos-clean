@@ -1,4 +1,4 @@
-# Owner-authorized second run: same exact PR #5 source, two separate disposable databases.
+# Owner-authorized ONE free full-suite run on patched PR #5 source with two disposable PostgreSQL databases.
 # CI branch only; no deployment, cloud data access, cache or persisted artifacts.
 name: PR5 disposable PostgreSQL E2E
 on:
@@ -35,13 +35,13 @@ jobs:
       - name: Checkout exact approved PR #5 candidate
         uses: actions/checkout@v4
         with:
-          ref: fe772dbef62edde1d15ba6f3066ac54bfeb4779a
+          ref: 97fcbcccf3f22ec0ab1dca5f8852ac9f4edf8c3f
           persist-credentials: false
       - name: Assert exact source and loopback-only database targets
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "fe772dbef62edde1d15ba6f3066ac54bfeb4779a"
+          test "$(git rev-parse HEAD)" = "97fcbcccf3f22ec0ab1dca5f8852ac9f4edf8c3f"
           node -e "const a=new URL(process.env.TEST_DATABASE_URL),b=new URL(process.env.FINANCE_TEST_DATABASE_URL);if(a.hostname!=='127.0.0.1'||b.hostname!=='127.0.0.1'||a.pathname!=='/clean_ci_ephemeral'||b.pathname!=='/vbos_mvp_ci'||a.pathname===b.pathname)process.exit(3);"
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
