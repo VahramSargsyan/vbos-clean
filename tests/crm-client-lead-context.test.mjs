@@ -67,7 +67,7 @@ test('Search-only Client beyond first 500 supports contextual Lead and returns t
 test('Navigation preserves existing repeat-order shortcut and blocks mismatched Client',()=>{
  for(const marker of ['data-client-new-lead','+ Новое обращение',
   '+ Повторная работа для существующего клиента','data-crm-client-lead-back',
-  'payload.clientId!==crmClientLeadContext.clientId',
+  "new FormData(f).get('clientId')!==crmClientLeadContext.clientId",
   'if(crmClientLeadContext)return crmClientLeadContextView()'])assert.ok(source.includes(marker),marker);
  assert.match(source,/if\(fromClientLead\)\{crmClientLeadContext=null;crmDetailId=null;\}/);
  assert.match(source,/if\(fromClientLead&&out\.item\?\.id\)/);
@@ -80,4 +80,63 @@ test('Existing CRM02 writer links one Lead to selected Client without new Object
  assert.match(intake,/payload_sha256/);
  assert.match(intake,/ROLLBACK/);
  assert.doesNotMatch(fragment,/fetch\(|pool\.query|\bINSERT\b|\bUPDATE\b|order_create|object_create/);
+});
+
+const submitMarker=' const type=f.dataset.act;if(!type)return;';
+const submitStart=source.indexOf(submitMarker,source.indexOf("$('#content').addEventListener('submit'"));
+const submitEnd=source.indexOf(' await sendAction(type,payload,f);',submitStart);
+assert.ok(submitStart>=0&&submitEnd>submitStart,'The real delegated submit handler must be found');
+const submitHandlerFragment=source.slice(submitStart,submitEnd+' await sendAction(type,payload,f);'.length);
+
+// Execute the ACTUAL delegated submit handler, not only its form HTML. This
+// catches ReferenceError/TDZ errors before network dispatch, missed by UI tests.
+async function simulateClientLeadSubmit(formClientId,selectedClientId){
+ const sent=[],notices=[];
+ const fields={
+  clientId:formClientId,title:'Осмотр отопления',contactName:'Клиент',
+  phone:'',notes:''
+ };
+ const f={
+  dataset:{act:'lead_create'},
+  hasAttribute:name=>name==='data-client-lead-form',
+  reportValidity:()=>true
+ };
+ class TestFormData {
+  constructor(form){assert.equal(form,f);}
+  get(name){return fields[name]??null;}
+  entries(){return Object.entries(fields)[Symbol.iterator]();}
+ }
+ await vm.runInNewContext('(async()=>{'+submitHandlerFragment+'})()',{
+  f,FormData:TestFormData,
+  crmClientLeadContext:selectedClientId?{clientId:selectedClientId}:null,
+  message:(text,isError)=>notices.push({text,isError}),
+  sendAction:async(type,payload,form)=>sent.push({
+   type,payload:JSON.parse(JSON.stringify(payload)),exactForm:form===f
+  }),
+  tab:'crm'
+ },{timeout:1500});
+ return {sent,notices};
+}
+
+test('Actual Client → Lead submit dispatches exactly once with the selected Client ID',async()=>{
+ const id='11111111-1111-4111-8111-111111111111';
+ const out=await simulateClientLeadSubmit(id,id);
+ assert.equal(out.sent.length,1,'Submit must reach sendAction without ReferenceError');
+ assert.equal(out.sent[0].type,'lead_create');
+ assert.equal(out.sent[0].payload.clientId,id);
+ assert.equal(out.sent[0].payload.title,'Осмотр отопления');
+ assert.equal(out.sent[0].exactForm,true);
+ assert.equal(out.notices.length,0);
+});
+
+test('Contextual submit fails closed if Client ID changed or context disappeared',async()=>{
+ const a='11111111-1111-4111-8111-111111111111';
+ const b='22222222-2222-4222-8222-222222222222';
+ for(const [formId,selectedId] of [[b,a],[a,null]]){
+  const out=await simulateClientLeadSubmit(formId,selectedId);
+  assert.equal(out.sent.length,0,'Stale Client must not reach server');
+  assert.equal(out.notices.length,1);
+  assert.match(out.notices[0].text,/клиент изменился/i);
+  assert.equal(out.notices[0].isError,true);
+ }
 });
