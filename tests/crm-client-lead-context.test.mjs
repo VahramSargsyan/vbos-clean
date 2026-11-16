@@ -18,9 +18,9 @@ const formField=(name,label,kind='text',required=false,extra='')=>{
   '<input name="'+name+'" type="'+kind+'" '+extra+(required?' required':'')+'>';
  return '<label>'+esc(label)+field+'</label>';
 };
-function view(client,id=client?.id,archivedLegacyClientIds=[]){
+function view(client,id=client?.id,archivedLegacyClientIds=[],snapshot=null){
  const ctx=vm.createContext({data:{clients:client?[client]:[],archivedLegacyClientIds},
-  crmClientLeadContext:{clientId:id||'missing'},esc,formField});
+  crmClientLeadContext:{clientId:id||'missing',clientSnapshot:snapshot},esc,formField});
  vm.runInContext(fragment,ctx,{filename:'crm-client-lead-context.js'});
  return vm.runInContext('crmClientLeadContextView()',ctx);
 }
@@ -51,10 +51,23 @@ test('Missing, archived and legacy-archived Clients cannot create from contextua
  }
 });
 
+test('Search-only Client beyond first 500 supports contextual Lead and returns to Search',()=>{
+ const id='11111111-1111-4111-8111-111111111111';
+ const snapshot={id,name:'Найденный клиент',phone:'099223344',status:'active'};
+ const ui=view(null,id,[],snapshot);
+ assert.match(ui,/data-client-lead-form/);
+ assert.ok(ui.includes('name="clientId" value="'+id+'"'));
+ assert.ok(ui.includes('value="Найденный клиент"'));
+ assert.ok(source.includes("tab==='catalog'&&catalog.entity==='clients'?catalog.items.find(client=>client.id===id):null"));
+ assert.ok(source.includes("tab=source==='catalog'?'catalog':'clients'"));
+ assert.ok(source.includes('clientSnapshot:{id:chosen.id,name:chosen.name,phone:chosen.phone,status:chosen.status}'));
+ const denied=view(null,id,[id],snapshot);
+ assert.doesNotMatch(denied,/data-client-lead-form/);
+});
 test('Navigation preserves existing repeat-order shortcut and blocks mismatched Client',()=>{
  for(const marker of ['data-client-new-lead','+ Новое обращение',
   '+ Повторная работа для существующего клиента','data-crm-client-lead-back',
-  'crmClientLeadContext={clientId:id}','payload.clientId!==crmClientLeadContext.clientId',
+  'payload.clientId!==crmClientLeadContext.clientId',
   'if(crmClientLeadContext)return crmClientLeadContextView()'])assert.ok(source.includes(marker),marker);
  assert.match(source,/if\(fromClientLead\)\{crmClientLeadContext=null;crmDetailId=null;\}/);
  assert.match(source,/if\(fromClientLead&&out\.item\?\.id\)/);
