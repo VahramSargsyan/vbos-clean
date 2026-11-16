@@ -1,5 +1,5 @@
-# One-time, owner-authorized PR #5 PostgreSQL E2E verification.
-# Separate CI branch. No deploy, no cloud DB, no caches/artifact storage.
+# Owner-authorized second run: same exact PR #5 source, two separate disposable databases.
+# CI branch only; no deployment, cloud data access, cache or persisted artifacts.
 name: PR5 disposable PostgreSQL E2E
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 jobs:
   isolated-postgres-e2e:
-    name: Exact-source E2E on ephemeral PostgreSQL
+    name: Exact-source full E2E with separated synthetic Finance database
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     services:
@@ -30,27 +30,99 @@ jobs:
           --health-retries 15
     env:
       TEST_DATABASE_URL: postgresql://clean_ci:ci_only_disposable_20261116@127.0.0.1:5432/clean_ci_ephemeral
+      FINANCE_TEST_DATABASE_URL: postgresql://clean_ci:ci_only_disposable_20261116@127.0.0.1:5432/vbos_mvp_ci
     steps:
       - name: Checkout exact approved PR #5 candidate
         uses: actions/checkout@v4
         with:
           ref: fe772dbef62edde1d15ba6f3066ac54bfeb4779a
           persist-credentials: false
-      - name: Assert exact source and loopback-only test target
+      - name: Assert exact source and loopback-only database targets
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "fe772dbef62edde1d15ba6f3066ac54bfeb4779a"
-          node -e "const u=new URL(process.env.TEST_DATABASE_URL);if(u.hostname!=='127.0.0.1'||u.pathname!=='/clean_ci_ephemeral')process.exit(3);"
+          node -e "const a=new URL(process.env.TEST_DATABASE_URL),b=new URL(process.env.FINANCE_TEST_DATABASE_URL);if(a.hostname!=='127.0.0.1'||b.hostname!=='127.0.0.1'||a.pathname!=='/clean_ci_ephemeral'||b.pathname!=='/vbos_mvp_ci'||a.pathname===b.pathname)process.exit(3);"
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
           node-version: '24'
       - name: Install existing production dependencies
         run: npm install --omit=dev --no-audit --no-fund
+      - name: Create distinct empty Finance Pilot database on disposable local Postgres
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import pg from 'pg';
+          const clean = new URL(process.env.TEST_DATABASE_URL);
+          const finance = new URL(process.env.FINANCE_TEST_DATABASE_URL);
+          if (clean.hostname !== '127.0.0.1' || finance.hostname !== '127.0.0.1' ||
+              clean.pathname !== '/clean_ci_ephemeral' || finance.pathname !== '/vbos_mvp_ci')
+            throw new Error('CI_DISPOSABLE_DATABASE_BOUNDARY');
+          const admin = new URL(clean);
+          admin.pathname = '/postgres';
+          const client = new pg.Client({connectionString:admin.toString(),ssl:false});
+          await client.connect();
+          try { await client.query('CREATE DATABASE vbos_mvp_ci'); }
+          finally { await client.end(); }
+          for (const [url, expected] of [[clean, 'clean_ci_ephemeral'], [finance,'vbos_mvp_ci']]) {
+            const c = new pg.Client({connectionString:url.toString(),ssl:false});
+            await c.connect();
+            try {
+              const {rows} = await c.query("SELECT current_database() AS db,(SELECT count(*)::int FROM information_schema.tables WHERE table_schema='public') AS tables");
+              if (rows[0]?.db !== expected || rows[0]?.tables !== 0)
+                throw new Error('CI_DATABASE_NOT_EMPTY_OR_WRONG_NAME_' + expected);
+            } finally { await c.end(); }
+          }
+          console.log('CI_TWO_DISTINCT_EMPTY_LOOPBACK_DATABASES_PASS');
+          NODE
       - name: Source layout preflight
         run: npm run verify:source
       - name: Existing full unit/UI regression
         run: npm test
-      - name: PostgreSQL end-to-end regression (ephemeral only)
-        run: npm run test:e2e
+      - name: Execute all 10 canonical test:e2e commands with isolated DB routing
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {spawnSync} from 'node:child_process';
+          const expected = [
+            'node tests/e2e.mjs',
+            'node tests/business-monthly-gains.db.e2e.mjs',
+            'node --test tests/finance-native-posting-pg.e2e.mjs',
+            'node --test tests/finance-linked-investment-pg.e2e.mjs',
+            'node --test tests/finance-native-cutover-pg.e2e.mjs',
+            'node --test tests/finance-native-writer-pg.e2e.mjs',
+            'node --test tests/finance-owner-gateway-pg.e2e.mjs',
+            'node --test tests/finance-b14-crud-pg.e2e.mjs',
+            'node tests/estimator-cards.pg.e2e.mjs',
+            'node tests/estimator-pricebook.pg.e2e.mjs'
+          ];
+          const actual = JSON.parse(readFileSync('package.json','utf8')).scripts['test:e2e'].split(' && ');
+          if (actual.length !== expected.length || actual.some((c,i) => c !== expected[i]))
+            throw new Error('CI_E2E_SOURCE_COMMAND_LIST_DRIFT');
+          let count = 0;
+          for (const command of actual) {
+            const isolatedFinance = command.startsWith('node --test tests/finance-');
+            const target = isolatedFinance ? process.env.FINANCE_TEST_DATABASE_URL : process.env.TEST_DATABASE_URL;
+            const url = new URL(target);
+            if (url.hostname !== '127.0.0.1' ||
+                url.pathname !== (isolatedFinance ? '/vbos_mvp_ci':'/clean_ci_ephemeral'))
+              throw new Error('CI_DATABASE_ROUTE_GUARD');
+            console.log('CI_E2E_STEP', count+1, 'of', actual.length,
+              isolatedFinance ? 'FINANCE_ISOLATED_DB':'GENERAL_ISOLATED_DB', command);
+            const args = command.trim().split(/\s+/);
+            const done = spawnSync(args[0],args.slice(1),{
+              stdio:'inherit',env:{...process.env,TEST_DATABASE_URL:target},timeout:900000
+            });
+            if (done.error) throw done.error;
+            if (done.status !== 0) {
+              console.error('CI_E2E_STEP_FAILED',count+1,'exit',done.status,'signal',done.signal);
+              process.exit(done.status || 1);
+            }
+            count++;
+          }
+          console.log('CI_FULL_DECLARED_10_E2E_COMMANDS_TWO_LOCAL_DATABASES_PASS');
+          NODE
