@@ -1890,7 +1890,10 @@ function crmLeadDetails(x){
 }
 function crmClientLeadContextView(){
  const id=crmClientLeadContext?.clientId;
- const client=(data?.clients||[]).find(item=>item.id===id);
+ const client=(data?.clients||[]).find(item=>item.id===id)||
+  (crmClientLeadContext?.clientSnapshot?.id===id?crmClientLeadContext.clientSnapshot:null);
+ // Catalog result supplies display context beyond the /api/state 500-row window.
+ // The existing PostgreSQL writer validates Client existence and archive state.
  const back='<button type="button" class="client-back" data-crm-client-lead-back>← К клиенту</button>';
  if(!client||client.status==='archived'||(data?.archivedLegacyClientIds||[]).includes(id))
   return '<div class="client-detail">'+back+
@@ -3819,18 +3822,22 @@ $('#content').addEventListener('click',async e=>{
  if(crmNewOrder){crmWonOrderOpen(crmNewOrder.dataset.crmWonOrderOpen,crmNewOrder);return;}
  const clientLeadBack=e.target.closest('button[data-crm-client-lead-back]');
  if(clientLeadBack&&crmClientLeadContext){
-  const id=crmClientLeadContext.clientId;crmClientLeadContext=null;
-  tab='clients';clientDetailId=id;crmDetailId=null;crmReminderEditorLeadId=null;message('');render();return;
+  const id=crmClientLeadContext.clientId,source=crmClientLeadContext.sourceTab;
+  crmClientLeadContext=null;tab=source==='catalog'?'catalog':'clients';
+  clientDetailId=id;crmDetailId=null;crmReminderEditorLeadId=null;message('');render();return;
  }
  const clientNewLead=e.target.closest('button[data-client-new-lead]');
  if(clientNewLead){
   const id=clientNewLead.dataset.clientNewLead;
-  const chosen=(data?.clients||[]).find(client=>client.id===id);
+  const chosen=(data?.clients||[]).find(client=>client.id===id)||
+   (tab==='catalog'&&catalog.entity==='clients'?catalog.items.find(client=>client.id===id):null);
   if(!chosen||chosen.status==='archived'||(data.archivedLegacyClientIds||[]).includes(id)){
    message('Этот клиент не найден или архивирован. Обнови список.',true);return;
   }
   if(clientDetailId!==id){message('Сначала открой карточку выбранного клиента.',true);return;}
-  crmClientLeadContext={clientId:id};tab='crm';crmDetailId=null;crmReminderEditorLeadId=null;
+  crmClientLeadContext={clientId:id,sourceTab:tab,
+   clientSnapshot:{id:chosen.id,name:chosen.name,phone:chosen.phone,status:chosen.status}};
+  tab='crm';crmDetailId=null;crmReminderEditorLeadId=null;
   clientDetailId=null;objectDetailId=null;orderDetailId=null;message('');render();return;
  }
  const linkedClient=e.target.closest('button[data-crm-open-client]');
