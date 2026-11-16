@@ -4,16 +4,16 @@ Evidence checkpoint: 2026-11-16. Owner: Vahram. Mode: AUDIT_ONLY for capability 
 ## Authorities and evidence hierarchy
 
 - GitHub repository `main` at exact commit `b4fe427247813f7b68c2984d2bd65082e57e2479` (merged [PR #3](https://github.com/VahramSargsyan/vbos-clean/pull/3): tests/fixtures/docs only). This is **not** the deployed TEST runtime SHA.
-- Hosted Clean TEST: https://vbos-clean-mvp-2026.onrender.com/ — Render service `srv-dbkvfh2jnfac73a31nv0`, deploy `dep-dbtbjat6e07s73c0i9k0` **LIVE** at this exact SHA, autoDeploy OFF. Existing Google legacy/PROD remain separate.
+- Hosted Clean TEST: https://vbos-clean-mvp-2026.onrender.com/ — Render service `srv-dbkvfh2jnfac73a31nv0`, deploy `dep-dbtbjat6e07s73c0i9k0` **LIVE** at runtime SHA `1cf42345b35ce15f397c5fb1bd59821d5df8f7dc`, autoDeploy OFF. GitHub `main` is one tests/docs commit ahead; existing Google legacy/PROD remain separate.
 - Canonical Clean TEST database: Neon `proud-hat-90291191`, branch `br-crimson-hat-b9kwg7n6`, database `vbos_mvp_clean`. Read-only SQL evidence obtained 2026-11-16. No DDL or row mutation in this inventory.
-- Source-switch receipt: https://github.com/VahramSargsyan/vbos-clean/issues/2 . Owner's `Все ок` on 2026-11-16 accepted **existing login, display and preservation smoke-check**, not every CRUD scenario or any finance authority cutover.
+- Source-switch receipt: https://github.com/VahramSargsyan/vbos-clean/issues/2 . Owner's `Все ок` on 2026-11-16 accepted **existing login, display and preservation smoke-check**. In a subsequent 2026-11-16 chat clarification, owner additionally reported that the functionality actually migrated and used in the hosted Render app **worked as requested**; only particular nuances await a genuine new request or work assignment. This is an owner report about *experienced scope*, not a claim that every installed endpoint was tested, full legacy history was migrated, or Finance authority was cut over.
 - Historic implementation contracts are the existing individual README Build Packets. They are frequently labeled candidate/NOT_RUN at the time of authoring; **later inclusion in the current code tree does not silently make those original gate claims PASS**.
 - Source checkpoint: local `npm test` **530/530 PASS** and strict `npm run verify:source` **PASS** on the source-pinned candidate later merged in PR #3, as recorded below. A new independent post-merge execution and disposable PostgreSQL E2E were **NOT_RUN** in this documentation audit; do not confuse this with hosted TEST runtime acceptance.
 
 ### State definitions
 
 - **ACCEPTED_SCOPE**: owner accepted the exact defined TEST release/smoke-check. Not PROD or complete original-app parity.
-- **DEPLOYED_NEEDS_FLOW_ACCEPTANCE**: code and routes included in installed commit, DB tables seen, but focused authenticated save/reload/negative UX was not independently accepted. **OBSERVATION_ON_REAL_USE** below is an administrative queue marker, not a new acceptance level or a substitute for mandatory technical gates.
+- **DEPLOYED_NEEDS_FLOW_ACCEPTANCE**: code and routes included in installed commit, DB tables seen, but focused authenticated save/reload/negative UX was not independently accepted for *every scenario*. The owner has separately reported that the migrated portions he already used **worked as requested**. **OBSERVATION_ON_REAL_USE** below is an administrative queue marker for still-unexercised nuances, not a new acceptance level or a substitute for mandatory technical gates.
 - **HISTORICAL_STAGED**: preserved source/archive facts; not automatically canonical writable entities or verified latest Google snapshot.
 - **BUSINESS_BLOCKED**: technical parts available but prohibited money/authority action or owner decision pending.
 - **DEMO_ONLY**: source and UI exist but no verified real-data/live legacy engineering integration.
@@ -52,6 +52,7 @@ The bounded fix stores verified narrow source evidence under `tests/fixtures/leg
 
 ### Reporting tags — not substitute approval gates
 
+- `OWNER_REPORTED_MIGRATED_SCOPE_WORKING`: on 2026-11-16 the owner confirmed that the parts actually migrated and exercised on the hosted Render app operated as requested. This is **owner experience evidence** for the exercised scope, separate from issue #2's source-switch smoke, and does not certify unexercised feature paths, whole legacy parity, full historical import or real-money writer readiness. No artificial records are required to record this testimony.
 - `HISTORICAL_BLOCKER_RESOLVED`: a dated *old obstacle* no longer describes the present installed code or table structure. It does not upgrade original `NOT_RUN` to PASS, grant owner business acceptance or prove an exact migration was replayed.
 - `OBSERVATION_ON_REAL_USE`: an operational follow-up reminder for an already installed module, when a genuine event occurs. Formal `DEPLOYED_NEEDS_FLOW_ACCEPTANCE` remains until its exact required tests and owner checks are satisfied. Do not use this marker to bypass L2/L3 or finance/authority gates.
 - `BLOCKED_REAL_DEPENDENCY`: a current genuine source-of-truth, protected data, business approval, migration or required verification obstacle. Keep it active and separate from unrelated functional development.
