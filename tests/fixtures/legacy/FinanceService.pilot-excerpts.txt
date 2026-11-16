@@ -1,0 +1,204 @@
+# HISTORICAL_SOURCE=FinanceService.js
+# SOURCE_REPOSITORY=VahramSargsyan/vbos-app
+# SOURCE_COMMIT=e17643a0c399d859abe85c4057a7ec732ac25526
+# SOURCE_BLOB_SHA=deded3e82f756f4c511aa764114e5c2ae9bc1749
+# VERBATIM_SOURCE_EXCERPTS / BOUNDARY_MARKER_ONLY / TEST_ONLY
+
+function financeTodayKey_() {
+  return Utilities.formatDate(new Date(),Session.getScriptTimeZone() || 'Asia/Yerevan','yyyy-MM-dd');
+}
+
+function validateFinanceDateKey_(value) {
+  const text=safeString_(value || financeTodayKey_(),10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(text)) throw makeVbosError_(VBOS_ERROR_CODES.FINANCE_VALIDATION,'Укажи корректную дату финансовой операции.','Invalid finance transaction date: ' + text);
+  const parsed=new Date(text+'T00:00:00Z');
+  if(Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0,10)!==text) throw makeVbosError_(VBOS_ERROR_CODES.FINANCE_VALIDATION,'Укажи существующую календарную дату.','Non-calendar finance date: ' + text);
+  return text;
+}
+
+function financeNumber_(value,label,allowZero) {
+  if(value===undefined || value===null || String(value).trim()==='') {
+    if(allowZero) return 0;
+    throw makeVbosError_(VBOS_ERROR_CODES.FINANCE_VALIDATION,'Заполни поле «' + label + '».','Missing finance number: ' + label);
+  }
+  const number=Number(String(value).replace(',','.'));
+  if(!Number.isFinite(number) || number<0 || (!allowZero && number<=0)) throw makeVbosError_(VBOS_ERROR_CODES.FINANCE_VALIDATION,'Поле «' + label + '» должно быть ' + (allowZero ? 'числом не меньше нуля.':'числом больше нуля.'),'Invalid finance number ' + label + ': ' + value);
+  return financeRound_(number);
+}
+
+function financeRound_(value) {
+  const number=Number(value || 0);
+  if(!Number.isFinite(number)) return 0;
+  return Math.round((number+Number.EPSILON)*1000000)/1000000;
+}
+
+function financeFlagTrue_(value) {
+  return value===true || String(value || '').toLowerCase()==='true' || String(value || '')==='1';
+}
+
+function financeIsClientMaterialFunds_(operationType,category) {
+  return String(operationType || '')==='INCOME' && String(category || '')==='client_material_funds';
+}
+
+function financeIsClientMaterialPurchase_(operationType,category) {
+  return String(operationType || '')==='EXPENSE' && String(category || '')==='client_material_purchase';
+}
+
+function pickFinanceRelation_(payload,existing,field,clearFlag) {
+  payload=payload || {};existing=existing || {};
+  if(payload[field]===undefined) return existing[field]===undefined ? '' : existing[field];
+  const value=safeString_(payload[field],100);
+  if(value) return value;
+  if(existing[field] && !financeFlagTrue_(payload[clearFlag])) return existing[field];
+  return '';
+}
+
+function financeLinkContext_(payload,operationType,category) {
+  payload=payload || {};
+  let workOrderId=safeString_(payload.workOrderId,100),objectId=safeString_(payload.objectId,100),clientId=safeString_(payload.clientId,100);
+  let workOrder=null,objectRecord=null;
+  if(workOrderId) {
+    workOrder=findProjectedRecordByPrimaryId_('WorkOrders','workOrderId',workOrderId,['workOrderId','objectId','clientId','title','status']);
+    if(!workOrder) throw makeVbosError_(VBOS_ERROR_CODES.FINANCE_VALIDATION,'Выбранный заказ не найден.','Finance WorkOrder not found: ' + workOrderId);
+    if(objectId && objectId!==String(workOrder.objectId || '')) throw makeVbosError_(VBOS_ERROR_CODES.FINANCE_VALIDATION,'Заказ и объект не совпадают.','Finance WorkOrder/Object mismatch.');
+    objectId=String(workOrder.objectId || '');clientId=String(workOrder.clientId || '');
+  }
+  if(objectId) {
+    objectRecord=findProjectedRecordByPrimaryId_('Objects','objectId',objectId,['objectId','clientId','title','address']);
+    if(!objectRecord) throw makeVbosError_(VBOS_ERROR_CODES.FINANCE_VALIDATION,'Выбранный объект не найден.','Finance Object not found: ' + objectId);
+    if(clientId && clientId!==String(objectRecord.clientId || '')) throw makeVbosError_(VBOS_ERROR_CODES.FINANCE_VALIDATION,'Объект и клиент не совпадают.','Finance Object/Client mismatch.');
+    clientId=String(objectRecord.clientId || '');
+  }
+  if(clientId) {
+    const client=findProjectedRecordByPrimaryId_('Clients','clientId',clientId,['clientId','name','status']);
+    if(!client) throw makeVbosError_(VBOS_ERROR_CODES.FINANCE_VALIDATION,'Связанный клиент не найден.','Finance Client not found: ' + clientId);
+  }
+  if(((operationType==='INCOME' && ['current_work','advance','client_material_funds'].indexOf(category)>=0) || financeIsClientMaterialPurchase_(operationType,category)) && !workOrderId) {
+    throw makeVbosError_(VBOS_ERROR_CODES.FINANCE_VALIDATION,'Для оплаты, аванса или денег на материалы выбери заказ.','WorkOrder required for current income/advance/client material transit.');
+  }
+  if(['WORKER_ACCRUAL','WORKER_ACCRUAL_PAYMENT'].indexOf(operationType)>=0 && !workOrderId) {
+    throw makeVbosError_(VBOS_ERROR_CODES.FINANCE_VALIDATION,'Для начисления рабочему выбери заказ.','WorkOrder required for worker accrual.');
+  }
+  return {workOrderId:workOrderId,objectId:objectId,clientId:clientId,workOrder:workOrder,object:objectRecord};
+}
+
+function normalizeFinanceTransaction_(payload,existing) {
+  payload=payload || {};existing=existing || {};
+  function pick(field,fallback){return payload[field]===undefined ? (existing[field]===undefined ? fallback : existing[field]) : payload[field];}
+  const operationType=validateEnum_(pick('operationType','INCOME'),VBOS_ENUMS.financeOperationType,'Тип операции','INCOME');
+  let category='',incomeRecognition='',ownerDirection='',workerId=safeString_(pickFinanceRelation_(payload,existing,'workerId','clearWorkerRelation'),100);
+  if(operationType==='INCOME') {
+    workerId='';
+    category=validateEnum_(pick('category','current_work'),VBOS_ENUMS.financeIncomeCategory,'Категория дохода','current_work');
+    const defaultRecognition=(category==='advance' || category==='old_debt' || category==='client_material_funds') ? 'RECEIVED_ONLY':'EARNED_AND_RECEIVED';
+    incomeRecognition=financeIsClientMaterialFunds_(operationType,category)
+      ? 'RECEIVED_ONLY'
+      : validateEnum_(pick('incomeRecognition',defaultRecognition),VBOS_ENUMS.financeIncomeRecognition,'Учёт дохода',defaultRecognition);
+  } else if(operationType==='EXPENSE') {
+    workerId='';
+    category=validateEnum_(pick('category','other'),VBOS_ENUMS.financeExpenseCategory,'Категория расхода','other');
+  } else if(['WORKER_ACCRUAL','WORKER_PAYMENT','WORKER_ACCRUAL_PAYMENT'].indexOf(operationType)>=0) {
+    category='worker';
+    workerId=requireString_(workerId,'Работник',100);
+    const worker=findProjectedRecordByPrimaryId_('Workers','workerId',workerId,['workerId','name','status']);
+    if(!worker || String(worker.status || '')==='archived') throw makeVbosError_(VBOS_ERROR_CODES.FINANCE_VALIDATION,'Выбранный работник не найден или находится в архиве.','Invalid Finance worker: ' + workerId);
+  } else {
+    category='owner_transfer';
+    ownerDirection=validateEnum_(pick('ownerDirection',''),VBOS_ENUMS.financeOwnerDirection,'Направление вывода');
+    workerId='';
+  }
+
+  const links=financeLinkContext_({
+    workOrderId:operationType==='OWNER_TRANSFER' ? '' : pickFinanceRelation_(payload,existing,'workOrderId','clearWorkOrderRelation'),
+    objectId:operationType==='OWNER_TRANSFER' ? '' : pickFinanceRelation_(payload,existing,'objectId','clearObjectRelation'),
+    clientId:operationType==='OWNER_TRANSFER' ? '' : pickFinanceRelation_(payload,existing,'clientId','clearClientRelation')
+  },operationType,category);
+  const transactionDate=validateFinanceDateKey_(pick('transactionDate',financeTodayKey_()));
+  const amountOriginal=financeNumber_(pick('amountOriginal',''),'Сумма',false);
+  const currencyOriginal=validateEnum_(String(pick('currencyOriginal',VBOS_CONFIG.BASE_CURRENCY)).toUpperCase(),VBOS_ENUMS.financeCurrency,'Валюта',VBOS_CONFIG.BASE_CURRENCY);
+  const baseCurrency=VBOS_CONFIG.BASE_CURRENCY;
+  let fxRate=1,fxRateSource='same_currency';
+  if(currencyOriginal!==baseCurrency) {
+    fxRate=financeNumber_(pick('fxRate',''),'Курс к AMD',false);
+    fxRateSource=safeString_(pick('fxRateSource','manual'),100) || 'manual';
+  }
+  const fxRateDate=validateFinanceDateKey_(pick('fxRateDate',transactionDate));
+  const amountBase=financeRound_(amountOriginal*fxRate);
+  const commissionOriginal=financeNumber_(pick('commissionOriginal',0),'Комиссия',true);
+  const commissionBase=financeRound_(commissionOriginal*fxRate);
+  if(operationType==='WORKER_ACCRUAL' && commissionBase>0) throw makeVbosError_(VBOS_ERROR_CODES.FINANCE_VALIDATION,'У начисления без выплаты комиссия должна быть нулевой.','Commission is not allowed for accrual-only.');
+  if(operationType==='INCOME' && incomeRecognition==='EARNED_ONLY' && commissionBase>0) throw makeVbosError_(VBOS_ERROR_CODES.FINANCE_VALIDATION,'У дохода без движения денег комиссия должна быть нулевой.','Commission is not allowed for earned-only income.');
+
+  let cashEffectBase=0,profitEffectBase=0,workerPayableEffectBase=0;
+  if(operationType==='INCOME') {
+    if(incomeRecognition!=='EARNED_ONLY') cashEffectBase=amountBase-commissionBase;
+    if(incomeRecognition!=='RECEIVED_ONLY') profitEffectBase=amountBase;
+    if(incomeRecognition!=='EARNED_ONLY') profitEffectBase-=commissionBase;
+  } else if(operationType==='EXPENSE') {
+    cashEffectBase=-(amountBase+commissionBase);
+    profitEffectBase=financeIsClientMaterialPurchase_(operationType,category) ? -commissionBase : -(amountBase+commissionBase);
+  } else if(operationType==='WORKER_ACCRUAL') {
+    profitEffectBase=-amountBase;workerPayableEffectBase=amountBase;
+  } else if(operationType==='WORKER_PAYMENT') {
+    cashEffectBase=-(amountBase+commissionBase);profitEffectBase=-commissionBase;workerPayableEffectBase=-amountBase;
+  } else if(operationType==='WORKER_ACCRUAL_PAYMENT') {
+    cashEffectBase=-(amountBase+commissionBase);profitEffectBase=-(amountBase+commissionBase);workerPayableEffectBase=0;
+  } else if(operationType==='OWNER_TRANSFER') {
+    cashEffectBase=-(amountBase+commissionBase);profitEffectBase=-commissionBase;
+  }
+
+  const status=validateEnum_(pick('status','active'),VBOS_ENUMS.financeStatus,'Статус финансовой операции','active');
+  return {
+    status:status,
+    transactionDate:transactionDate,
+    transactionDateKey:transactionDate,
+    operationType:operationType,
+    category:category,
+    incomeRecognition:incomeRecognition,
+    amountOriginal:amountOriginal,
+    currencyOriginal:currencyOriginal,
+    baseCurrency:baseCurrency,
+    fxRate:fxRate,
+    fxRateDate:fxRateDate,
+    fxRateSource:fxRateSource,
+    amountBase:amountBase,
+    commissionOriginal:commissionOriginal,
+    commissionBase:commissionBase,
+    cashEffectBase:financeRound_(cashEffectBase),
+    profitEffectBase:financeRound_(profitEffectBase),
+    workerPayableEffectBase:financeRound_(workerPayableEffectBase),
+    clientId:links.clientId,
+    objectId:links.objectId,
+    workOrderId:links.workOrderId,
+    workerId:workerId,
+    counterparty:safeString_(pick('counterparty',''),300),
+    ownerDirection:ownerDirection,
+    sourceModule:'Finance',
+    notes:safeString_(pick('notes',''),5000),
+    archivedAt:status==='archived' ? (existing.archivedAt || nowIso_()) : ''
+  };
+}
+
+function financeContribution_(record) {
+  const zero={earnedBase:0,receivedBase:0,economicExpenseBase:0,cashOutBase:0,ownerTransferBase:0,workerAccruedBase:0,workerPaidBase:0,workerPayableBase:0,profitBase:0,cashBalanceBase:0,transactionCount:0};
+  if(!record || String(record.status || '')!=='active') return zero;
+  const type=String(record.operationType || ''),category=String(record.category || ''),recognition=String(record.incomeRecognition || ''),amount=Number(record.amountBase || 0),commission=Number(record.commissionBase || 0);
+  if(type==='INCOME') {
+    if(recognition!=='RECEIVED_ONLY') zero.earnedBase=amount;
+    if(recognition!=='EARNED_ONLY') zero.receivedBase=amount;
+  }
+  if(type==='EXPENSE' && !financeIsClientMaterialPurchase_(type,category)) zero.economicExpenseBase+=amount;
+  if(type==='WORKER_ACCRUAL' || type==='WORKER_ACCRUAL_PAYMENT') {zero.economicExpenseBase+=amount;zero.workerAccruedBase=amount;}
+  if(type==='WORKER_PAYMENT' || type==='WORKER_ACCRUAL_PAYMENT') zero.workerPaidBase=amount;
+  if(type==='OWNER_TRANSFER') zero.ownerTransferBase=amount;
+  zero.economicExpenseBase+=commission;
+  zero.cashOutBase=Math.max(0,-Number(record.cashEffectBase || 0));
+  zero.workerPayableBase=Number(record.workerPayableEffectBase || 0);
+  zero.profitBase=Number(record.profitEffectBase || 0);
+  zero.cashBalanceBase=Number(record.cashEffectBase || 0);
+  zero.transactionCount=1;
+  Object.keys(zero).forEach(function(key){zero[key]=financeRound_(zero[key]);});
+  return zero;
+}
+
+function financeScopesForRecord_(record) {

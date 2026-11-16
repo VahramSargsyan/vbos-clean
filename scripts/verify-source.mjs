@@ -11,16 +11,6 @@ const required = [
   'migrations/0036_estimator_pricebook_TEST_ONLY.sql',
 ];
 const errors = [];
-// Historical synthetic finance E2E pilot (NOT in `npm test`) is explicitly deferred.
-// Do not silently treat it as a self-contained test until original code excerpts
-// are separately reviewed, migrated and exercised with disposable PostgreSQL.
-const knownExternalPilotRefs = new Set([
-  '../../../../FinanceService.js',
-  '../../../../CapitalService.js',
-  '../../../../Config.js',
-]);
-const deferredExternal = [];
-const strictAll = process.argv.includes('--strict-all');
 for (const name of required) if (!existsSync(join(root, name))) errors.push('MISSING_REQUIRED '+name);
 
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
@@ -56,13 +46,7 @@ for (const file of sources) {
     const p = resolve(dirname(file), match[1]);
     const source = file.slice(root.length);
     if (!(p === resolve(root) || p.startsWith(resolve(root) + '/'))) {
-      if (source === 'domains/finance/native-pg-pilot.mjs' &&
-          knownExternalPilotRefs.has(match[1])) {
-        deferredExternal.push(source+' -> '+match[1]);
-        if (strictAll) errors.push('DECLARED_EXTERNAL_PILOT_REF '+source+' -> '+match[1]);
-      } else {
-        errors.push('EXTERNAL_SOURCE_REF '+source+' -> '+match[1]);
-      }
+      errors.push('EXTERNAL_SOURCE_REF '+source+' -> '+match[1]);
     } else if (!existsSync(p)) {
       errors.push('MISSING_SOURCE_FILE_REF '+source+' -> '+match[1]);
     }
@@ -73,7 +57,5 @@ if (errors.length) {
   for (const message of errors) console.error(message);
   process.exitCode = 1;
 } else {
-  for (const ref of deferredExternal) console.warn('DECLARED_EXTERNAL_PILOT_NOT_STANDALONE '+ref);
-  console.log('SOURCE_PREFLIGHT_PASS files='+sources.length+' imports='+references+
-    ' deferred_pilot_refs='+deferredExternal.length+' (unit-test layout only; pilot E2E NOT_RUN)');
+  console.log('SOURCE_PREFLIGHT_PASS files='+sources.length+' imports='+references+' (static layout only)');
 }

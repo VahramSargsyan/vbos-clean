@@ -11,6 +11,8 @@ Each fixture includes the original Git blob SHA-1 and file name.
 - Full Node unit tests must pass from a standalone checkout of this repository; tests must not read ancestor directories or rely on the private vbos-app checkout.
 - These are TEST ONLY. No old Google scripts are run in Clean runtime; no PROD or financial authority is changed.
 
-## Deferred isolated legacy finance E2E pilot
+## Source-pinned isolated legacy finance E2E pilot
 
-`domains/finance/native-pg-pilot.mjs` is a separate optional synthetic PostgreSQL E2E adapter; it imports three original full-code sources (`FinanceService.js`, `CapitalService.js`, `Config.js`) by old ancestor paths. It is **not** imported by the 530-unit-test `npm test` script. No complete private legacy module is copied into public fixtures in this unit-test-only PR. `npm run verify:source` prints three declared warnings instead of silently ignoring these paths. Strict verification (`node scripts/verify-source.mjs --strict-all`) intentionally fails until a separately scoped, code-reviewed, source-exact E2E pilot adaptation is performed and tested using disposable PostgreSQL. Do not delete the pilot or mock its historical finance semantics to make the gate green.
+The synthetic, disabled-by-default `domains/finance/native-pg-pilot.mjs` now loads three **narrow source-exact excerpts** from `FinanceService.js`, `CapitalService.js` and `Config.js` from the original source Git commit/blob. This is test-only and never imported by the live Clean HTTP server. Each `*.pilot-excerpts.txt` file contains the exact needed functions or frozen config structures and explicit section-boundary markers, not the complete historical module or private records. `node --check`, static strict source preflight and the synthetic pilot import passed on Node.js v22.
+
+**Outstanding:** real disposable PostgreSQL E2E for the pilot is NOT_RUN; neither the excerpt import nor 530 standalone unit/UI checks prove actual finance pilot transaction behavior. No active finance writer, PROD or cutover has been enabled.
