@@ -1,0 +1,168 @@
+name: PR7 exact-source disposable PostgreSQL E2E (one-shot)
+on:
+  push:
+    branches:
+      - ci/pr7-e2e-once-20261117
+    paths:
+      - .github/workflows/pr7-postgresql-e2e-once.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr7-postgresql-e2e-once
+  cancel-in-progress: false
+
+jobs:
+  postgres-e2e:
+    if: github.event.head_commit.message == 'ci: one-shot PostgreSQL E2E for PR7 af4d043'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pr7_ci
+          POSTGRES_PASSWORD: pr7_ci_temporary_only
+          POSTGRES_DB: vbos_mvp_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pr7_ci -d vbos_mvp_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 6
+    env:
+      TEST_DATABASE_URL: postgresql://pr7_ci:pr7_ci_temporary_only@127.0.0.1:5432/vbos_mvp_ci
+      MVP_DATABASE_SSL: disable
+      NODE_ENV: test
+    steps:
+      - name: Checkout exact PR7 runtime source, not CI branch or PR merge
+        uses: actions/checkout@v4
+        with:
+          ref: af4d0436248060213d044f139f21478354aa9d74
+          persist-credentials: false
+
+      - name: Verify exact source is clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "af4d0436248060213d044f139f21478354aa9d74"
+          test -z "$(git status --porcelain)"
+          echo "EXACT_PR7_SOURCE_SHA_PASS af4d0436248060213d044f139f21478354aa9d74"
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install exact PR7 dependencies (repository has no package-lock)
+        run: npm install --no-audit --no-fund
+
+      - name: Full disposable PostgreSQL E2E
+        id: full_e2e
+        continue-on-error: true
+        run: npm run test:e2e
+
+      - name: Exact PostgreSQL microsecond keyset regression (independent disposable DB)
+        id: precision
+        continue-on-error: true
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import {readFileSync} from 'node:fs';
+          import {randomUUID} from 'node:crypto';
+          import pg from 'pg';
+          import {objectCardOrdersRead} from './object-card-orders.mjs';
+
+          const primary = new URL(process.env.TEST_DATABASE_URL);
+          assert.ok(['localhost','127.0.0.1'].includes(primary.hostname));
+          assert.equal(primary.pathname, '/vbos_mvp_ci');
+          const admin = new pg.Client({connectionString:primary.href,ssl:false});
+          const precisionUrl = new URL(primary.href);
+          precisionUrl.pathname = '/vbos_pr7_precision';
+          let working;
+          await admin.connect();
+          try {
+            await admin.query('CREATE DATABASE vbos_pr7_precision');
+            working = new pg.Client({connectionString:precisionUrl.href,ssl:false});
+            await working.connect();
+            await working.query(readFileSync('schema.sql','utf8'));
+
+            const objectId=randomUUID(),otherObjectId=randomUUID(),clientId=randomUUID();
+            await working.query(
+              'INSERT INTO public.mvp_clients(id,request_key,name) VALUES ($1,$2,$3)',
+              [clientId,randomUUID(),'PR7 Synthetic Client']);
+            for(const id of [objectId,otherObjectId]){
+              await working.query(
+                'INSERT INTO public.mvp_objects(id,request_key,client_id,name) VALUES($1,$2,$3,$4)',
+                [id,randomUUID(),clientId,'PR7 Synthetic Object']);
+            }
+            const stamp='2026-11-17T09:00:00.123456Z';
+            await working.query(
+              'INSERT INTO public.mvp_orders(id,request_key,object_id,title,created_at) '+
+              "SELECT ('00000000-0000-4000-8000-'||lpad(gs::text,12,'0'))::uuid, "+
+              "gen_random_uuid(),$1::uuid,'Order '||gs,$2::timestamptz "+
+              'FROM generate_series(1,205) gs',[objectId,stamp]);
+            await working.query(
+              'INSERT INTO public.mvp_orders(id,request_key,object_id,title,created_at) '+
+              'VALUES ($1,$2,$3,$4,$5::timestamptz)',
+              ['00000000-0000-4000-8001-000000000001',randomUUID(),
+               otherObjectId,'Foreign order',stamp]);
+
+            const dateRead=await working.query(
+              "SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS stamp "+
+              'FROM public.mvp_orders WHERE object_id=$1 LIMIT 1',[objectId]);
+            assert.equal(dateRead.rows[0].stamp,stamp);
+            class AppError extends Error {
+              constructor(status,message){super(message);this.status=status;}
+            }
+            const uuid=(x)=>{
+              if(typeof x!=='string'||!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(x))
+                throw new AppError(400,'Bad UUID');
+              return x;
+            };
+            let cursor=null,firstCursor=null;
+            const pageSizes=[],all=[];
+            for(let page=0;page<4;page++){
+              const result=await objectCardOrdersRead({
+                pool:working,objectId,cursor,uuid,AppError});
+              assert.equal(result.objectId,objectId);
+              assert.ok(result.items.every(item=>item.object_id===objectId));
+              assert.ok(result.items.every(item=>!Object.hasOwn(item,'cursor_created_at')));
+              pageSizes.push(result.items.length);
+              all.push(...result.items.map(item=>item.id));
+              if(!result.hasMore){
+                assert.equal(result.nextCursor,null);
+                break;
+              }
+              assert.ok(result.nextCursor);
+              if(!firstCursor)firstCursor=result.nextCursor;
+              cursor=result.nextCursor;
+            }
+            assert.deepEqual(pageSizes,[100,100,5]);
+            assert.equal(new Set(all).size,205);
+            assert.equal(JSON.parse(Buffer.from(firstCursor,'base64url').toString('utf8'))[1],stamp);
+            const foreignCursor=Buffer.from(JSON.stringify([
+              otherObjectId,stamp,'00000000-0000-4000-8000-000000000001'])).toString('base64url');
+            await assert.rejects(objectCardOrdersRead({
+              pool:working,objectId,cursor:foreignCursor,uuid,AppError}),
+              error=>error.status===400);
+            console.log('PR7_REAL_POSTGRES_16_MICROSECOND_205_ORDERS_100_100_5_PASS');
+          } finally {
+            if(working)await working.end();
+            await admin.query('DROP DATABASE IF EXISTS vbos_pr7_precision WITH (FORCE)');
+            await admin.end();
+          }
+          JS
+
+      - name: Final one-run E2E gate
+        if: always()
+        shell: bash
+        run: |
+          echo "Full PostgreSQL E2E: ${{ steps.full_e2e.outcome }}"
+          echo "Microsecond PostgreSQL regression: ${{ steps.precision.outcome }}"
+          test "${{ steps.full_e2e.outcome }}" = "success"
+          test "${{ steps.precision.outcome }}" = "success"
+          echo "PR7_DISPOSABLE_POSTGRES_FULL_GATE_PASS"
