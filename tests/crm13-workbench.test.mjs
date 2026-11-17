@@ -8,7 +8,10 @@ const css=readFileSync(new URL('../public/style.css',import.meta.url),'utf8');
 const from=script.indexOf('/* CRM-13A: legacy mobile workbench');
 const end=script.indexOf('async function loadCrmFollowups(){',from);
 assert.ok(from>=0&&end>from,'CRM-13A workbench section must be present');
-const fragment=script.slice(from,end);
+const helpersFrom=script.indexOf('function crmLeadScoreFromFocus(id){');
+const helpersTo=script.indexOf('/* CRM-25A: external Masters directory.',helpersFrom);
+assert.ok(helpersFrom>end&&helpersTo>helpersFrom,'Canonical compact-row helper must exist');
+const fragment=script.slice(from,end)+'\n'+script.slice(helpersFrom,helpersTo);
 const htmlEsc=x=>String(x??'').replace(/[&<>"']/g,c=>({
  '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
 })[c]);
@@ -46,7 +49,7 @@ function harness(){
  return {ctx,id,lead,item,result};
 }
 
-test('CRM13A: four clickable focus counters, exact source counts and escaped selected cards',()=>{
+test('CRM13A: four focus counters, compact clickable rows, escaped lead titles',()=>{
  const {ctx}=harness();
  let ui=vm.runInContext('crmFollowupView()',ctx);
  assert.match(ui,/Фокус CRM/);
@@ -57,15 +60,15 @@ test('CRM13A: four clickable focus counters, exact source counts and escaped sel
  assert.match(ui,/В выбранной группе пока нет обращений/);
  vm.runInContext("crmFocusFilter='today'",ctx);
  ui=vm.runInContext('crmFollowupView()',ctx);
- assert.match(ui,/Win Score 82\/100/);
- assert.match(ui,/Очень сильный/);
- assert.match(ui,/Последняя запись контакта:/);
- assert.match(ui,/Следующий шаг:/);
+ assert.match(ui,/82%/);
+ assert.match(ui,/Win Score/);
+ assert.match(ui,/Контакт/);
+ assert.doesNotMatch(ui,/Последняя запись контакта:|Следующий шаг:|Открыть карточку/);
  assert.match(ui,/data-crm-followup-lead=/);
  assert.ok(!ui.includes('<script>alert(1)</script>'),'Lead titles are escaped before rendering');
  assert.match(ui,/&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
- assert.equal((ui.match(/data-crm-quick-lead=/g)||[]).length,3);
- assert.match(ui,/data-crm-reminder-open=/);
+ assert.equal((ui.match(/data-crm-quick-lead=/g)||[]).length,0);
+ assert.doesNotMatch(ui,/data-crm-reminder-open=/);
 });
 
 test('CRM13A: quick buttons OPEN existing CRM06A form, no mutation before Save',()=>{
@@ -93,13 +96,13 @@ test('CRM13A: quick buttons OPEN existing CRM06A form, no mutation before Save',
  assert.match(script,/await sendAction\(type,payload,f\)/);
 });
 
-test('CRM13A: Priority is a separate block from Focus and consumes same bounded response',()=>{
+test('CRM13A: Priority retains canonical order but displays compact rows without quick forms',()=>{
  const {ctx}=harness();
  const view=vm.runInContext('crmPriorityView()',ctx);
  assert.match(view,/Приоритет сейчас/);
- assert.match(view,/Win Score 82\/100/);
- assert.match(view,/Сегодня назначен контакт/);
- assert.equal((view.match(/data-crm-quick-lead=/g)||[]).length,3);
+ assert.match(view,/82%/);
+ assert.match(view,/data-crm-followup-lead=/);
+ assert.equal((view.match(/data-crm-quick-lead=/g)||[]).length,0);
  assert.ok(!view.includes('<script>alert(1)</script>'));
  assert.match(fragment,/priority\?\.version==='CRM11A_ATTENTION_SCORE_V1'/);
  assert.match(fragment,/CANONICAL_CRM10A_SIGNALS_AND_CRM07_ATTENTION/);
@@ -108,7 +111,7 @@ test('CRM13A: Priority is a separate block from Focus and consumes same bounded 
  const end=script.indexOf('function clientListCard(',start);
  assert.ok(start>0&&end>start);
  const body=script.slice(start,end);
- const order=['form(\'lead_create\'','crmFollowupView()','crmCapacitySignpost()','crmPriorityView()','data.leads.map(crmLeadEntry)'];
+ const order=['form(\'lead_create\'','data.leads.map(crmLeadEntry)','crmFollowupView()','crmCapacitySignpost()','crmPriorityView()'];
  let pos=-1;
  for(const marker of order){const i=body.indexOf(marker);assert.ok(i>pos,marker+' should follow previous screen section');pos=i;}
 });
