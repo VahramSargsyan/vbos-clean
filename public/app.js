@@ -5,6 +5,7 @@ const fmt=x=>Number(x||0).toLocaleString('ru-RU');
 const short=x=>String(x||'').slice(0,10);
 const when=x=>{try{return new Date(x).toLocaleString('ru-RU',{timeZone:'Asia/Yerevan',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}catch{return '';}}
 let data=null,tab='today',busy=false;
+let crmClientLeadContext=null; // UI-only Client context; Object relation is a separate persisted feature
 let egModule=null,egLoading=false,egError='',egInputs={},egResult=null;
 let edModule=null,edLoading=false,edError='',edDraft=null,edAnchor=null,edResult=null,edMessage='';
 let efModule=null,efLoading=false,efError='',efFloor=null;
@@ -12,7 +13,7 @@ let schedule={viewMode:'week',anchorDate:'',selectedDay:'',dayFilter:'all',items
 let scheduleLeadDraft=null; // ephemeral prefill, never a saved plan until owner submits
 let workOrderCapacityOpenSeq=0; // prevent stale async order-context navigation
 let clientDetailId=null,objectDetailId=null,orderDetailId=null,clientReturn=null,objectReturnId=null,objectReturnTab=null;
-let objectOrdersCard={id:null,items:[],loading:false,loaded:false,error:'',hasMore:false};
+let objectOrdersCard={id:null,items:[],loading:false,loaded:false,error:'',hasMore:false,nextCursor:null};
 let clientPortfolio=null;
 function clientPortfolioNew(id){
  const page=()=>({q:'',status:'all',items:[],nextCursor:null,hasMore:false,loaded:false,loading:false,error:''});
@@ -1887,11 +1888,34 @@ function crmLeadDetails(x){
    crm04ResultCard(x)+'</section>'+
   '<div class="crm-detail-bottom"><button type="button" data-crm-back>← К лидам</button></div></div>';
 }
+function crmClientLeadContextView(){
+ const id=crmClientLeadContext?.clientId;
+ const client=(data?.clients||[]).find(item=>item.id===id)||
+  (crmClientLeadContext?.clientSnapshot?.id===id?crmClientLeadContext.clientSnapshot:null);
+ // Catalog result supplies display context beyond the /api/state 500-row window.
+ // The existing PostgreSQL writer validates Client existence and archive state.
+ const back='<button type="button" class="client-back" data-crm-client-lead-back>← К клиенту</button>';
+ if(!client||client.status==='archived'||(data?.archivedLegacyClientIds||[]).includes(id))
+  return '<div class="client-detail">'+back+
+   '<section class="card"><h1>Новое обращение</h1><p role="alert">Клиент не найден или архивирован. Вернись к его карточке и обнови данные.</p></section></div>';
+ const fields='<input type="hidden" name="clientId" value="'+esc(client.id)+'">'+
+  formField('title','Лид / запрос','text',true,'maxlength="160" placeholder="Например, осмотр системы отопления"')+
+  formField('contactName','Контактное лицо','text',false,'maxlength="160" value="'+esc(client.name)+'"')+
+  formField('phone','Телефон','tel',false,'maxlength="60" value="'+esc(client.phone||'')+'"')+
+  formField('notes','Примечание','textarea');
+ return '<div class="client-detail" data-crm-client-lead-context="'+esc(client.id)+'">'+back+
+  '<section class="card"><h1>Новое обращение</h1>'+
+  '<p class="entity-detail-meta">Существующий клиент: <strong>'+esc(client.name)+'</strong></p>'+
+  '<p class="muted small">Клиент будет связан с новым лидом без создания дубля. Контактное лицо и телефон можно уточнить. Объект сейчас не привязывается: для этого нужен отдельный сохраняемый контекст.</p>'+
+  '<form data-act="lead_create" data-client-lead-form class="grid">'+fields+
+  '<button type="submit" class="primary wide">Создать обращение</button></form></section></div>';
+}
 function crmView(){
  if(estimateWorkspaceOpen){
   const lead=data.leads.find(x=>x.id===estimateUI.leadId);
   return lead?plumbingWorkspace(lead):'<section class="card"><button type="button" data-estimate-back>← К лидам</button><p>Лид не найден.</p></section>';
  }
+ if(crmClientLeadContext)return crmClientLeadContextView();
  if(crmDetailId){
   const selected=data.leads.find(x=>x.id===crmDetailId);
   return selected?crmLeadDetails(selected):
@@ -1955,6 +1979,9 @@ function clientDetails(x){
   '<button type="button" class="client-back" data-client-back>← К списку клиентов</button>'+
   '<section class="card client-detail-card"><h1>'+esc(x.name)+'</h1>'+
   '<p class="client-detail-phone">'+esc(x.phone||'Телефон не указан')+'</p>'+
+  (x.status!=='archived'&&!(data.archivedLegacyClientIds||[]).includes(x.id)?
+   '<div class="actions"><button type="button" class="primary" data-client-new-lead="'+esc(x.id)+'">+ Новое обращение</button></div>':
+   '<p class="muted small">Архивный клиент: новое обращение недоступно.</p>')+
   '<p class="muted small">Статус: '+esc((data.archivedLegacyClientIds||[]).includes(x.id)?'Архивный в старом VBOS':(({active:'Активный',inactive:'Неактивный',archived:'Архивный'})[x.status]||'Неизвестен'))+
   ' · Уровень: '+esc(({regular:'Обычный',good:'Хороший',vip:'VIP'})[x.client_tier]||'Не оценён')+
   ' · Рекомендации: '+esc(({none:'Нет',one:'Одна',active:'Активно'})[x.referral_status]||'Не оценено')+'</p>'+
@@ -2012,17 +2039,30 @@ function orderListCard(x){
  const objectName=ids('objects',x.object_id)?.name||x.object_name||'Объект не указан';
  return entityListCard('orders',x,x.title,objectName,(label[x.status]||x.status||'Статус не указан')+(x.planned_on?' · '+short(x.planned_on):''));
 }
-async function loadObjectCardOrders(id){
- if(objectOrdersCard.id===id&&(objectOrdersCard.loading||objectOrdersCard.loaded||objectOrdersCard.error))return;
- const state={id,items:[],loading:true,loaded:false,error:'',hasMore:false};
- objectOrdersCard=state;
+async function loadObjectCardOrders(id,append=false){
+ if(!id)return;
+ if(objectOrdersCard.id!==id){
+  objectOrdersCard={id,items:[],loading:false,loaded:false,error:'',hasMore:false,nextCursor:null};
+ }
+ const state=objectOrdersCard;
+ if(state.loading||(!append&&(state.loaded||state.error))||
+    (append&&(!state.loaded||!state.hasMore||!state.nextCursor)))return;
+ state.loading=true;
+ if(!append)state.error='';
  try{
-  const source=await api('/api/objects/orders?id='+encodeURIComponent(id));
+  const path='/api/objects/orders?id='+encodeURIComponent(id)+
+   (append?'&cursor='+encodeURIComponent(state.nextCursor):'');
+  const source=await api(path);
   if(objectOrdersCard!==state)return;
   if(source.objectId!==id||!Array.isArray(source.items)||
-     source.items.some(item=>item.object_id!==id))
-   throw Error('Не подтверждена связь заказов с объектом.');
-  state.items=source.items;state.hasMore=Boolean(source.hasMore);state.loaded=true;
+     source.items.some(item=>item.object_id!==id)||
+     Boolean(source.hasMore)!==Boolean(source.nextCursor))
+   throw Error('Не подтверждена связь заказов с объектом или страница истории.');
+  const items=append?state.items.concat(source.items):source.items;
+  if(new Set(items.map(item=>item.id)).size!==items.length)
+   throw Error('В истории объекта обнаружены повторяющиеся заказы.');
+  state.items=items;state.hasMore=Boolean(source.hasMore);
+  state.nextCursor=source.nextCursor||null;state.loaded=true;
  }catch(error){if(objectOrdersCard===state)state.error=error.message;}
  finally{
   if(objectOrdersCard===state){
@@ -2101,13 +2141,17 @@ function objectDetails(x){
   formField('title','Название заказа','text',true,'maxlength="180"')+
   formField('plannedOn','Плановая дата начала','date',false,'value="'+esc(data.today)+'"')+
   formField('notes','Заметки','textarea');
- const ordersBlock=!scoped||objectOrdersCard.loading?'<p class="muted">Загружаю заказы объекта…</p>':
-  objectOrdersCard.error?'<p role="alert">'+esc(objectOrdersCard.error)+'</p>':
-  !orders.length?'<p class="muted">На этом объекте пока нет заказов.</p>':
-  '<div class="client-hub-related">'+orders.map(order=>
-   entityListCard('orders',order,order.title,label[order.status]||order.status,
-    order.planned_on?short(order.planned_on):'')).join('')+'</div>'+
-  (objectOrdersCard.hasMore?'<p class="muted small">Показаны последние 100 заказов. Остальные доступны через поиск.</p>':'');
+ const ordersBlock=!scoped||(objectOrdersCard.loading&&!loaded)?
+  '<p class="muted">Загружаю заказы объекта…</p>':
+  (objectOrdersCard.error?'<p role="alert">'+esc(objectOrdersCard.error)+'</p>':'')+
+  (!orders.length?(objectOrdersCard.error?'':'<p class="muted">На этом объекте пока нет заказов.</p>'):
+   '<div class="client-hub-related">'+orders.map(order=>
+    entityListCard('orders',order,order.title,label[order.status]||order.status,
+     order.planned_on?short(order.planned_on):'')).join('')+'</div>')+
+  (loaded&&objectOrdersCard.hasMore?
+   '<button type="button" class="compact" data-object-orders-more="'+esc(x.id)+'"'+
+    (objectOrdersCard.loading?' disabled':'')+'>Показать ещё 100 заказов</button>':'')+
+  (loaded&&objectOrdersCard.loading?'<p class="muted small">Загружаю следующую страницу…</p>':'');
  return '<div class="client-detail"><button type="button" class="client-back" data-record-back>'+(clientReturn?'← К карточке клиента':'← К списку объектов')+'</button>'+
   '<section class="card client-detail-card"><h1>'+esc(x.name)+'</h1>'+
   '<p class="entity-detail-meta">Клиент: '+esc(client)+'</p>'+
@@ -2786,6 +2830,7 @@ async function refresh(){
 }
 async function sendAction(type,payload,form){
  if(busy)return;
+ const fromClientLead=type==='lead_create'&&Boolean(form?.hasAttribute?.('data-client-lead-form'));
  const isFullLog=Boolean(form?.hasAttribute?.('data-full-worklog-form'));
  busy=true;
  if(isFullLog)fullWorkLogSavePending(form,true);
@@ -2794,6 +2839,7 @@ async function sendAction(type,payload,form){
  try{
   const out=await api('/api/action',{type,payload:{...payload,requestKey:id}});
   if(!out.saved)throw Error('Сервер не подтвердил сохранение.');
+  if(fromClientLead){crmClientLeadContext=null;crmDetailId=null;}
   if(type==='crm_won_order_create')crmWonOrderClose(true);
   if(isFullLog){
    fullWorkLogSaveConfirmed(form,out,type);
@@ -2808,7 +2854,7 @@ async function sendAction(type,payload,form){
   if(type==='schedule_save'&&form?.hasAttribute('data-hourly-manual-form'))resetHourlyManual();
   if(['estimate_create','estimate_save','estimate_accept_handoff'].includes(type)){estimateUI.loaded=false;estimateUI.editor=null;}
   if(type==='worker_task_finish')workerBenchmarkCache={};
-  if(['order_create','crm_won_order_create'].includes(type))objectOrdersCard={id:null,items:[],loading:false,loaded:false,error:'',hasMore:false};
+  if(['order_create','crm_won_order_create'].includes(type))objectOrdersCard={id:null,items:[],loading:false,loaded:false,error:'',hasMore:false,nextCursor:null};
  if(['order_create','crm_won_order_create','order_update','order_status','object_create','object_update'].includes(type))clientPortfolio=null;
   if(['log_create','log_update','work_log_full_create','work_log_full_update'].includes(type))orderLogs={id:null,items:[],loaded:false,loading:false,error:'',hasMore:false,nextCursor:null,context:null};
   if(type==='object_interaction_add')objectContactState={id:null,items:[],loading:false,loaded:false,error:'',hasMore:false,nextCursor:null};
@@ -2817,6 +2863,11 @@ async function sendAction(type,payload,form){
   if(['benchmark_approve','benchmark_revoke'].includes(type))benchmarkProposalState={loaded:false,loading:false,error:'',payload:null};
   try{
    await refresh();
+   if(fromClientLead&&out.item?.id){
+    const exact=(data?.leads||[]).some(lead=>lead.id===out.item.id);
+    if(exact){crmDetailId=out.item.id;render();}
+    else message('Обращение сохранено. Для открытия используй поиск по ID: '+out.item.id);
+   }
    if(['log_update','work_log_full_update','work_log_full_create'].includes(type)){
     history.loaded=false;history.items=[];
     if(tab==='history')await loadHistory(false);
@@ -2873,7 +2924,7 @@ document.addEventListener('keydown',e=>{
  if(e.key==='Escape'&&workFlowModalState.kind){workFlowModalClose();return;}
  if(e.key==='Escape'&&!$('#tabs').hidden)setMenuOpen(false);
 });
-$('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b){crmWonOrderClose(true);workFlowModalClose({force:true});tab=b.dataset.tab;crmDetailId=null;crmReminderEditorLeadId=null;clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;objectReturnId=null;objectReturnTab=null;setMenuOpen(false);message('');render();if(tab==='today')void loadTodayDashboard();if(tab==='crm'&&!crmFollowupState.loaded)void loadCrmFollowups();if(tab==='history'&&!history.loaded)loadHistory();if(tab==='catalog'&&!catalog.loaded)loadCatalog();if(tab==='myWork'){loadMyWork();loadPresence(false);loadOwnerActivity(false);}if(tab==='schedule'){capacity.loaded=false;capacity.result=null;capacity.error='';loadSchedule(false);}else resetHourlyManual();if(tab==='engineering'){loadEngineeringCalculation();loadEngineeringDrawing();loadEngineeringFloor();}if(tab==='estimator'){estimatorSubtab='calculator';void ensurePlumbingCalculator();void loadEstimatorCards();void loadEstimatorPricebook();}}});
+$('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b){crmWonOrderClose(true);workFlowModalClose({force:true});tab=b.dataset.tab;crmClientLeadContext=null;crmDetailId=null;crmReminderEditorLeadId=null;clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;objectReturnId=null;objectReturnTab=null;setMenuOpen(false);message('');render();if(tab==='today')void loadTodayDashboard();if(tab==='crm'&&!crmFollowupState.loaded)void loadCrmFollowups();if(tab==='history'&&!history.loaded)loadHistory();if(tab==='catalog'&&!catalog.loaded)loadCatalog();if(tab==='myWork'){loadMyWork();loadPresence(false);loadOwnerActivity(false);}if(tab==='schedule'){capacity.loaded=false;capacity.result=null;capacity.error='';loadSchedule(false);}else resetHourlyManual();if(tab==='engineering'){loadEngineeringCalculation();loadEngineeringDrawing();loadEngineeringFloor();}if(tab==='estimator'){estimatorSubtab='calculator';void ensurePlumbingCalculator();void loadEstimatorCards();void loadEstimatorPricebook();}}});
 $('#content').addEventListener('change',async e=>{
   if(tab==='estimator'&&e.target?.matches?.('[data-est-price-card-select]')){
    estimatorPriceState.selectedCardKey=e.target.value;render();return;
@@ -2963,7 +3014,7 @@ $('#content').addEventListener('submit',async e=>{
   return;
  }
  if(f.id==='passwordForm'){
-  const o=Object.fromEntries(new FormData(f));try{await api('/api/password',o);clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;data=null;crmFollowupState={loaded:false,loading:false,result:null,error:''};dailyA1=null;workerBenchmarkCache={};benchmarkProposalState={loaded:false,loading:false,error:'',payload:null};schedule.loaded=false;schedule.items=[];schedule.dayFilter='all';schedule.error='';capacity={startDate:'',durationWorkingDays:3,result:null,loading:false,loaded:false,error:''};capacityWorkOrderContext=null;workOrderCapacityOpenSeq++;scheduleCapacityDraft=null;resetHourlyManual();ownerActivity.loaded=false;ownerActivity.active=null;ownerActivity.items=[];presence.loaded=false;presence.active=null;presence.items=[];myWork.snapshot=null;myWork.loaded=false;myWork.selectedOrderId='';myWork.error='';clearDrawingSession();setMenuOpen(false,{restoreFocus:false});$('#menuToggle').hidden=true;$('#loginPanel').hidden=false;$('#appPanel').hidden=true;$('#logout').hidden=true;alert('Пароль изменён. Войди с новым.');}catch(err){message(err.message,true);}return;
+  const o=Object.fromEntries(new FormData(f));try{await api('/api/password',o);clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;crmClientLeadContext=null;data=null;crmFollowupState={loaded:false,loading:false,result:null,error:''};dailyA1=null;workerBenchmarkCache={};benchmarkProposalState={loaded:false,loading:false,error:'',payload:null};schedule.loaded=false;schedule.items=[];schedule.dayFilter='all';schedule.error='';capacity={startDate:'',durationWorkingDays:3,result:null,loading:false,loaded:false,error:''};capacityWorkOrderContext=null;workOrderCapacityOpenSeq++;scheduleCapacityDraft=null;resetHourlyManual();ownerActivity.loaded=false;ownerActivity.active=null;ownerActivity.items=[];presence.loaded=false;presence.active=null;presence.items=[];myWork.snapshot=null;myWork.loaded=false;myWork.selectedOrderId='';myWork.error='';clearDrawingSession();setMenuOpen(false,{restoreFocus:false});$('#menuToggle').hidden=true;$('#loginPanel').hidden=false;$('#appPanel').hidden=true;$('#logout').hidden=true;alert('Пароль изменён. Войди с новым.');}catch(err){message(err.message,true);}return;
  }
  if(f.id==='crmMasterFilters'){
   const fields=Object.fromEntries(new FormData(f));
@@ -3009,6 +3060,10 @@ if(f.id==='presenceFilters'){
    await loadCatalog(false);return;
   }
   const type=f.dataset.act;if(!type)return;
+ if(type==='lead_create'&&f.hasAttribute('data-client-lead-form')&&
+  (!crmClientLeadContext||new FormData(f).get('clientId')!==crmClientLeadContext.clientId)){
+  message('Выбранный клиент изменился. Вернись к его карточке и начни обращение заново.',true);return;
+ }
  if(type==='estimate_accept_handoff'&&!confirm('Согласовать сохранённую смету и создать один новый заказ? Это не создаёт оплату или запись в календаре.'))return;
  if(type==='lead_transfer'&&!confirm('Передать лид получателю и завершить обращение? Повторно передать будет нельзя.'))return;
  if(type==='estimate_save'){
@@ -3782,6 +3837,26 @@ $('#content').addEventListener('click',async e=>{
   }
   const crmNewOrder=e.target.closest('button[data-crm-won-order-open]');
  if(crmNewOrder){crmWonOrderOpen(crmNewOrder.dataset.crmWonOrderOpen,crmNewOrder);return;}
+ const clientLeadBack=e.target.closest('button[data-crm-client-lead-back]');
+ if(clientLeadBack&&crmClientLeadContext){
+  const id=crmClientLeadContext.clientId,source=crmClientLeadContext.sourceTab;
+  crmClientLeadContext=null;tab=source==='catalog'?'catalog':'clients';
+  clientDetailId=id;crmDetailId=null;crmReminderEditorLeadId=null;message('');render();return;
+ }
+ const clientNewLead=e.target.closest('button[data-client-new-lead]');
+ if(clientNewLead){
+  const id=clientNewLead.dataset.clientNewLead;
+  const chosen=(data?.clients||[]).find(client=>client.id===id)||
+   (tab==='catalog'&&catalog.entity==='clients'?catalog.items.find(client=>client.id===id):null);
+  if(!chosen||chosen.status==='archived'||(data.archivedLegacyClientIds||[]).includes(id)){
+   message('Этот клиент не найден или архивирован. Обнови список.',true);return;
+  }
+  if(clientDetailId!==id){message('Сначала открой карточку выбранного клиента.',true);return;}
+  crmClientLeadContext={clientId:id,sourceTab:tab,
+   clientSnapshot:{id:chosen.id,name:chosen.name,phone:chosen.phone,status:chosen.status}};
+  tab='crm';crmDetailId=null;crmReminderEditorLeadId=null;
+  clientDetailId=null;objectDetailId=null;orderDetailId=null;message('');render();return;
+ }
  const linkedClient=e.target.closest('button[data-crm-open-client]');
   if(linkedClient){const id=linkedClient.dataset.crmOpenClient;if(ids('clients',id)){tab='clients';crmDetailId=null;crmReminderEditorLeadId=null;clientDetailId=id;message('');render();}return;}
   const duplicateOpen=e.target.closest('button[data-client-duplicate-open]');
@@ -3872,6 +3947,11 @@ $('#content').addEventListener('click',async e=>{
     else message('Клиент не найден. Проверь поиск.',true);
    }
    return;
+  }
+  const moreObjectOrders=e.target.closest('button[data-object-orders-more]');
+  if(moreObjectOrders&&objectDetailId===moreObjectOrders.dataset.objectOrdersMore&&
+     (tab==='objects'||(tab==='catalog'&&catalog.entity==='objects'))){
+   await loadObjectCardOrders(objectDetailId,true);return;
   }
   const moreObjectContacts=e.target.closest('button[data-object-contact-more]');
   if(moreObjectContacts&&objectDetailId===moreObjectContacts.dataset.objectContactMore){
