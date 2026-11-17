@@ -5,6 +5,7 @@ const fmt=x=>Number(x||0).toLocaleString('ru-RU');
 const short=x=>String(x||'').slice(0,10);
 const when=x=>{try{return new Date(x).toLocaleString('ru-RU',{timeZone:'Asia/Yerevan',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}catch{return '';}}
 let data=null,tab='today',busy=false;
+let crmClientLeadContext=null; // UI-only Client context; Object relation is a separate persisted feature
 let egModule=null,egLoading=false,egError='',egInputs={},egResult=null;
 let edModule=null,edLoading=false,edError='',edDraft=null,edAnchor=null,edResult=null,edMessage='';
 let efModule=null,efLoading=false,efError='',efFloor=null;
@@ -1887,11 +1888,34 @@ function crmLeadDetails(x){
    crm04ResultCard(x)+'</section>'+
   '<div class="crm-detail-bottom"><button type="button" data-crm-back>← К лидам</button></div></div>';
 }
+function crmClientLeadContextView(){
+ const id=crmClientLeadContext?.clientId;
+ const client=(data?.clients||[]).find(item=>item.id===id)||
+  (crmClientLeadContext?.clientSnapshot?.id===id?crmClientLeadContext.clientSnapshot:null);
+ // Catalog result supplies display context beyond the /api/state 500-row window.
+ // The existing PostgreSQL writer validates Client existence and archive state.
+ const back='<button type="button" class="client-back" data-crm-client-lead-back>← К клиенту</button>';
+ if(!client||client.status==='archived'||(data?.archivedLegacyClientIds||[]).includes(id))
+  return '<div class="client-detail">'+back+
+   '<section class="card"><h1>Новое обращение</h1><p role="alert">Клиент не найден или архивирован. Вернись к его карточке и обнови данные.</p></section></div>';
+ const fields='<input type="hidden" name="clientId" value="'+esc(client.id)+'">'+
+  formField('title','Лид / запрос','text',true,'maxlength="160" placeholder="Например, осмотр системы отопления"')+
+  formField('contactName','Контактное лицо','text',false,'maxlength="160" value="'+esc(client.name)+'"')+
+  formField('phone','Телефон','tel',false,'maxlength="60" value="'+esc(client.phone||'')+'"')+
+  formField('notes','Примечание','textarea');
+ return '<div class="client-detail" data-crm-client-lead-context="'+esc(client.id)+'">'+back+
+  '<section class="card"><h1>Новое обращение</h1>'+
+  '<p class="entity-detail-meta">Существующий клиент: <strong>'+esc(client.name)+'</strong></p>'+
+  '<p class="muted small">Клиент будет связан с новым лидом без создания дубля. Контактное лицо и телефон можно уточнить. Объект сейчас не привязывается: для этого нужен отдельный сохраняемый контекст.</p>'+
+  '<form data-act="lead_create" data-client-lead-form class="grid">'+fields+
+  '<button type="submit" class="primary wide">Создать обращение</button></form></section></div>';
+}
 function crmView(){
  if(estimateWorkspaceOpen){
   const lead=data.leads.find(x=>x.id===estimateUI.leadId);
   return lead?plumbingWorkspace(lead):'<section class="card"><button type="button" data-estimate-back>← К лидам</button><p>Лид не найден.</p></section>';
  }
+ if(crmClientLeadContext)return crmClientLeadContextView();
  if(crmDetailId){
   const selected=data.leads.find(x=>x.id===crmDetailId);
   return selected?crmLeadDetails(selected):
@@ -1955,6 +1979,9 @@ function clientDetails(x){
   '<button type="button" class="client-back" data-client-back>← К списку клиентов</button>'+
   '<section class="card client-detail-card"><h1>'+esc(x.name)+'</h1>'+
   '<p class="client-detail-phone">'+esc(x.phone||'Телефон не указан')+'</p>'+
+  (x.status!=='archived'&&!(data.archivedLegacyClientIds||[]).includes(x.id)?
+   '<div class="actions"><button type="button" class="primary" data-client-new-lead="'+esc(x.id)+'">+ Новое обращение</button></div>':
+   '<p class="muted small">Архивный клиент: новое обращение недоступно.</p>')+
   '<p class="muted small">Статус: '+esc((data.archivedLegacyClientIds||[]).includes(x.id)?'Архивный в старом VBOS':(({active:'Активный',inactive:'Неактивный',archived:'Архивный'})[x.status]||'Неизвестен'))+
   ' · Уровень: '+esc(({regular:'Обычный',good:'Хороший',vip:'VIP'})[x.client_tier]||'Не оценён')+
   ' · Рекомендации: '+esc(({none:'Нет',one:'Одна',active:'Активно'})[x.referral_status]||'Не оценено')+'</p>'+
@@ -2786,6 +2813,7 @@ async function refresh(){
 }
 async function sendAction(type,payload,form){
  if(busy)return;
+ const fromClientLead=type==='lead_create'&&Boolean(form?.hasAttribute?.('data-client-lead-form'));
  const isFullLog=Boolean(form?.hasAttribute?.('data-full-worklog-form'));
  busy=true;
  if(isFullLog)fullWorkLogSavePending(form,true);
@@ -2794,6 +2822,7 @@ async function sendAction(type,payload,form){
  try{
   const out=await api('/api/action',{type,payload:{...payload,requestKey:id}});
   if(!out.saved)throw Error('Сервер не подтвердил сохранение.');
+  if(fromClientLead){crmClientLeadContext=null;crmDetailId=null;}
   if(type==='crm_won_order_create')crmWonOrderClose(true);
   if(isFullLog){
    fullWorkLogSaveConfirmed(form,out,type);
@@ -2817,6 +2846,11 @@ async function sendAction(type,payload,form){
   if(['benchmark_approve','benchmark_revoke'].includes(type))benchmarkProposalState={loaded:false,loading:false,error:'',payload:null};
   try{
    await refresh();
+   if(fromClientLead&&out.item?.id){
+    const exact=(data?.leads||[]).some(lead=>lead.id===out.item.id);
+    if(exact){crmDetailId=out.item.id;render();}
+    else message('Обращение сохранено. Для открытия используй поиск по ID: '+out.item.id);
+   }
    if(['log_update','work_log_full_update','work_log_full_create'].includes(type)){
     history.loaded=false;history.items=[];
     if(tab==='history')await loadHistory(false);
@@ -2873,7 +2907,7 @@ document.addEventListener('keydown',e=>{
  if(e.key==='Escape'&&workFlowModalState.kind){workFlowModalClose();return;}
  if(e.key==='Escape'&&!$('#tabs').hidden)setMenuOpen(false);
 });
-$('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b){crmWonOrderClose(true);workFlowModalClose({force:true});tab=b.dataset.tab;crmDetailId=null;crmReminderEditorLeadId=null;clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;objectReturnId=null;objectReturnTab=null;setMenuOpen(false);message('');render();if(tab==='today')void loadTodayDashboard();if(tab==='crm'&&!crmFollowupState.loaded)void loadCrmFollowups();if(tab==='history'&&!history.loaded)loadHistory();if(tab==='catalog'&&!catalog.loaded)loadCatalog();if(tab==='myWork'){loadMyWork();loadPresence(false);loadOwnerActivity(false);}if(tab==='schedule'){capacity.loaded=false;capacity.result=null;capacity.error='';loadSchedule(false);}else resetHourlyManual();if(tab==='engineering'){loadEngineeringCalculation();loadEngineeringDrawing();loadEngineeringFloor();}if(tab==='estimator'){estimatorSubtab='calculator';void ensurePlumbingCalculator();void loadEstimatorCards();void loadEstimatorPricebook();}}});
+$('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b){crmWonOrderClose(true);workFlowModalClose({force:true});tab=b.dataset.tab;crmClientLeadContext=null;crmDetailId=null;crmReminderEditorLeadId=null;clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;objectReturnId=null;objectReturnTab=null;setMenuOpen(false);message('');render();if(tab==='today')void loadTodayDashboard();if(tab==='crm'&&!crmFollowupState.loaded)void loadCrmFollowups();if(tab==='history'&&!history.loaded)loadHistory();if(tab==='catalog'&&!catalog.loaded)loadCatalog();if(tab==='myWork'){loadMyWork();loadPresence(false);loadOwnerActivity(false);}if(tab==='schedule'){capacity.loaded=false;capacity.result=null;capacity.error='';loadSchedule(false);}else resetHourlyManual();if(tab==='engineering'){loadEngineeringCalculation();loadEngineeringDrawing();loadEngineeringFloor();}if(tab==='estimator'){estimatorSubtab='calculator';void ensurePlumbingCalculator();void loadEstimatorCards();void loadEstimatorPricebook();}}});
 $('#content').addEventListener('change',async e=>{
   if(tab==='estimator'&&e.target?.matches?.('[data-est-price-card-select]')){
    estimatorPriceState.selectedCardKey=e.target.value;render();return;
@@ -2963,7 +2997,7 @@ $('#content').addEventListener('submit',async e=>{
   return;
  }
  if(f.id==='passwordForm'){
-  const o=Object.fromEntries(new FormData(f));try{await api('/api/password',o);clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;data=null;crmFollowupState={loaded:false,loading:false,result:null,error:''};dailyA1=null;workerBenchmarkCache={};benchmarkProposalState={loaded:false,loading:false,error:'',payload:null};schedule.loaded=false;schedule.items=[];schedule.dayFilter='all';schedule.error='';capacity={startDate:'',durationWorkingDays:3,result:null,loading:false,loaded:false,error:''};capacityWorkOrderContext=null;workOrderCapacityOpenSeq++;scheduleCapacityDraft=null;resetHourlyManual();ownerActivity.loaded=false;ownerActivity.active=null;ownerActivity.items=[];presence.loaded=false;presence.active=null;presence.items=[];myWork.snapshot=null;myWork.loaded=false;myWork.selectedOrderId='';myWork.error='';clearDrawingSession();setMenuOpen(false,{restoreFocus:false});$('#menuToggle').hidden=true;$('#loginPanel').hidden=false;$('#appPanel').hidden=true;$('#logout').hidden=true;alert('Пароль изменён. Войди с новым.');}catch(err){message(err.message,true);}return;
+  const o=Object.fromEntries(new FormData(f));try{await api('/api/password',o);clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;crmClientLeadContext=null;data=null;crmFollowupState={loaded:false,loading:false,result:null,error:''};dailyA1=null;workerBenchmarkCache={};benchmarkProposalState={loaded:false,loading:false,error:'',payload:null};schedule.loaded=false;schedule.items=[];schedule.dayFilter='all';schedule.error='';capacity={startDate:'',durationWorkingDays:3,result:null,loading:false,loaded:false,error:''};capacityWorkOrderContext=null;workOrderCapacityOpenSeq++;scheduleCapacityDraft=null;resetHourlyManual();ownerActivity.loaded=false;ownerActivity.active=null;ownerActivity.items=[];presence.loaded=false;presence.active=null;presence.items=[];myWork.snapshot=null;myWork.loaded=false;myWork.selectedOrderId='';myWork.error='';clearDrawingSession();setMenuOpen(false,{restoreFocus:false});$('#menuToggle').hidden=true;$('#loginPanel').hidden=false;$('#appPanel').hidden=true;$('#logout').hidden=true;alert('Пароль изменён. Войди с новым.');}catch(err){message(err.message,true);}return;
  }
  if(f.id==='crmMasterFilters'){
   const fields=Object.fromEntries(new FormData(f));
@@ -3009,6 +3043,10 @@ if(f.id==='presenceFilters'){
    await loadCatalog(false);return;
   }
   const type=f.dataset.act;if(!type)return;
+ if(type==='lead_create'&&f.hasAttribute('data-client-lead-form')&&
+  (!crmClientLeadContext||new FormData(f).get('clientId')!==crmClientLeadContext.clientId)){
+  message('Выбранный клиент изменился. Вернись к его карточке и начни обращение заново.',true);return;
+ }
  if(type==='estimate_accept_handoff'&&!confirm('Согласовать сохранённую смету и создать один новый заказ? Это не создаёт оплату или запись в календаре.'))return;
  if(type==='lead_transfer'&&!confirm('Передать лид получателю и завершить обращение? Повторно передать будет нельзя.'))return;
  if(type==='estimate_save'){
@@ -3782,6 +3820,26 @@ $('#content').addEventListener('click',async e=>{
   }
   const crmNewOrder=e.target.closest('button[data-crm-won-order-open]');
  if(crmNewOrder){crmWonOrderOpen(crmNewOrder.dataset.crmWonOrderOpen,crmNewOrder);return;}
+ const clientLeadBack=e.target.closest('button[data-crm-client-lead-back]');
+ if(clientLeadBack&&crmClientLeadContext){
+  const id=crmClientLeadContext.clientId,source=crmClientLeadContext.sourceTab;
+  crmClientLeadContext=null;tab=source==='catalog'?'catalog':'clients';
+  clientDetailId=id;crmDetailId=null;crmReminderEditorLeadId=null;message('');render();return;
+ }
+ const clientNewLead=e.target.closest('button[data-client-new-lead]');
+ if(clientNewLead){
+  const id=clientNewLead.dataset.clientNewLead;
+  const chosen=(data?.clients||[]).find(client=>client.id===id)||
+   (tab==='catalog'&&catalog.entity==='clients'?catalog.items.find(client=>client.id===id):null);
+  if(!chosen||chosen.status==='archived'||(data.archivedLegacyClientIds||[]).includes(id)){
+   message('Этот клиент не найден или архивирован. Обнови список.',true);return;
+  }
+  if(clientDetailId!==id){message('Сначала открой карточку выбранного клиента.',true);return;}
+  crmClientLeadContext={clientId:id,sourceTab:tab,
+   clientSnapshot:{id:chosen.id,name:chosen.name,phone:chosen.phone,status:chosen.status}};
+  tab='crm';crmDetailId=null;crmReminderEditorLeadId=null;
+  clientDetailId=null;objectDetailId=null;orderDetailId=null;message('');render();return;
+ }
  const linkedClient=e.target.closest('button[data-crm-open-client]');
   if(linkedClient){const id=linkedClient.dataset.crmOpenClient;if(ids('clients',id)){tab='clients';crmDetailId=null;crmReminderEditorLeadId=null;clientDetailId=id;message('');render();}return;}
   const duplicateOpen=e.target.closest('button[data-client-duplicate-open]');
