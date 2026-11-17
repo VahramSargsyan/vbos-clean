@@ -11,7 +11,8 @@ const clientId='396c6cfa-ae2c-4d91-b63b-d31bad39b7fe';
 const otherObject='358ff6ba-902c-4ca6-8e7f-02fdb31e9ca5';
 const order=i=>({id:`00000000-0000-4000-8000-${String(i+1).padStart(12,'0')}`,
  object_id:objectId,title:`Заказ ${i}`,status:'active',
- created_at:new Date(Date.UTC(2026,10,17)-i*60000).toISOString()});
+ created_at:new Date(Date.UTC(2026,10,17)-i*60000).toISOString(),
+ cursor_created_at:new Date(Date.UTC(2026,10,17)-i*60000).toISOString().replace('Z','000Z')});
 const harness=({parents=[{id:objectId,client_id:clientId}],orders=[order(1)]}={})=>{
  const calls=[];
  const pool={async query(sql,args){
@@ -59,7 +60,7 @@ test('more than 100 marks incomplete without fabricating completeness',async()=>
  assert.equal(result.limit,100);
  assert.equal(typeof result.nextCursor,'string');
  const cursor=JSON.parse(Buffer.from(result.nextCursor,'base64url').toString('utf8'));
- assert.deepEqual(cursor,[objectId,order(99).created_at,order(99).id]);
+ assert.deepEqual(cursor,[objectId,order(99).cursor_created_at,order(99).id]);
 });
 
 
@@ -86,8 +87,40 @@ test('object card page 2 uses exact Object-bound keyset cursor and no duplicate 
  assert.equal(second.hasMore,false);
  assert.equal(second.nextCursor,null);
  assert.match(calls[3].sql,/object_id=\$1 AND \(created_at,id\)<\(\$2::timestamptz,\$3::uuid\)/);
- assert.deepEqual(calls[3].args,[objectId,order(99).created_at,order(99).id]);
+ assert.deepEqual(calls[3].args,[objectId,order(99).cursor_created_at,order(99).id]);
  assert.equal(new Set(first.items.concat(second.items).map(x=>x.id)).size,102);
+});
+
+test('microsecond-precise PostgreSQL pagination visits all 205 same-timestamp Orders',async()=>{
+ const stamp='2026-11-17T09:00:00.123456Z';
+ const rows=Array.from({length:205},(_,i)=>({...order(204-i),
+  created_at:'2026-11-17T09:00:00.123Z',cursor_created_at:stamp}));
+ let pageReads=0;
+ const pool={async query(sql,args){
+  if(sql.includes('FROM public.mvp_objects o'))return {rows:[{id:objectId,client_id:clientId,name:'Object',client_name:'Client'}]};
+  pageReads++;
+  const selected=args.length===3?rows.filter(r=>
+   r.cursor_created_at<args[1]||(r.cursor_created_at===args[1]&&r.id<args[2])):rows;
+  return {rows:structuredClone(selected.slice(0,101))};
+ }};
+ const validId=x=>{
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x))
+   throw new ApiError(400,'Invalid UUID');
+  return x;
+ };
+ const pages=[],all=[];
+ let cursor=null;
+ for(let i=0;i<4;i++){
+  const result=await objectCardOrdersRead({pool,objectId,cursor,uuid:validId,AppError:ApiError});
+  pages.push(result.items.length);all.push(...result.items);
+  assert.ok(result.items.every(item=>!('cursor_created_at' in item)),
+   'Internal exact timestamp does not become a public field');
+  if(!result.hasMore)break;
+  cursor=result.nextCursor;
+ }
+ assert.deepEqual(pages,[100,100,5]);
+ assert.equal(new Set(all.map(x=>x.id)).size,205);
+ assert.equal(pageReads,3);
 });
 
 test('malformed or foreign Object cursor fails before ANY database query',async()=>{
@@ -96,9 +129,9 @@ test('malformed or foreign Object cursor fails before ANY database query',async(
    throw new ApiError(400,'Invalid UUID');
   return x;
  };
- const foreign=Buffer.from(JSON.stringify([otherObject,order(99).created_at,order(99).id])).toString('base64url');
+ const foreign=Buffer.from(JSON.stringify([otherObject,order(99).cursor_created_at,order(99).id])).toString('base64url');
  const wrongTime=Buffer.from(JSON.stringify([objectId,'not-a-date',order(99).id])).toString('base64url');
- const wrongId=Buffer.from(JSON.stringify([objectId,order(99).created_at,'not-a-uuid'])).toString('base64url');
+ const wrongId=Buffer.from(JSON.stringify([objectId,order(99).cursor_created_at,'not-a-uuid'])).toString('base64url');
  for(const cursor of [foreign,wrongTime,wrongId,'%%%','a'.repeat(361)]){
   let queries=0;
   await assert.rejects(objectCardOrdersRead({pool:{query:async()=>{queries++;return {rows:[]};}},
