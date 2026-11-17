@@ -1445,6 +1445,8 @@ async function loadCrmInteractions(append=false){
 /* CRM-13A: legacy mobile workbench interaction model, canonical Clean authority.
    Select a focus category; quick actions OPEN a form, never auto-save CRM facts. */
 let crmFocusFilter='noNext';
+let crmAdvancedOpen=false;
+let crmArchiveOpen=false;
 let crmQuickAction={leadId:null,context:null,kind:null};
 let crmDetailId=null;
 let crmListScrollY=0;
@@ -1483,29 +1485,14 @@ function crmQuickButtons(leadId,context){
   crmQuickForm(leadId,context);
 }
 function crmWorkbenchLead(item,context){
- const lead=data?.leads?.find(x=>x.id===item.leadId);
- const title=lead?.title||item.title,contact=lead?.contact_name||item.contactName||'';
- const phone=lead?.phone||item.phone||'';
- const next=item.nextAction||lead?.next_action||'';
- const due=item.nextActionLocal?item.nextActionLocal.replace('T',' '):item.nextActionOn||'';
- const detail=next?next+(due?' · '+due:''):'Действие не назначено';
- const score=item.winScore;
- const scoreLabel=score?.ready?'Win Score '+esc(score.score)+'/100 · '+esc(score.bandLabel||''):'Win Score не рассчитан · этап не указан';
- const kind=crmFollowupGroups.find(x=>x[0]===(item.priorityKey||item.bucket))?.[1]||'Внимание';
- const stage=crmStageOptions.find(([key])=>key===lead?.agreement_stage)?.[1]||'Этап не указан';
- return '<article class="crm-work-lead" data-crm-work-lead="'+esc(item.leadId)+'">'+
-  '<div class="crm-work-lead-head"><div><button type="button" class="crm-work-lead-title" data-crm-followup-lead="'+esc(item.leadId)+'"><strong>'+esc(item.title)+'</strong></button>'+
-  (contact&&contact!==title?'<p class="muted small">'+esc(contact)+'</p>':'')+
-  (phone?'<p class="muted small">'+esc(phone)+'</p>':'')+'</div>'+
-  '<span class="tag" data-status="'+esc(lead?.status||item.status||'new')+'">'+esc(label[lead?.status||item.status]||'Открыт')+'</span></div>'+
-  '<p class="crm-score-line">'+scoreLabel+'</p>'+
-  '<p class="muted small">Стадия сделки: '+esc(stage)+' · эвристика, не вероятность продажи</p>'+
-  (item.reason?'<p class="muted small">'+esc(item.reason)+'</p>':'<p class="muted small">'+esc(kind)+'</p>')+
-  '<p class="crm-work-next">Следующий шаг: '+esc(detail)+'</p>'+
-  '<p class="muted small">Последняя запись контакта: '+esc(item.lastContactAt?when(item.lastContactAt):'не зафиксирована')+'</p>'+
-  crmQuickButtons(item.leadId,context)+
-  '<button type="button" class="compact crm-open-lead" data-crm-followup-lead="'+esc(item.leadId)+'">Открыть карточку</button>'+
-  '</article>';
+ // Focus and Priority use the SAME compact, read-only overview row.
+ // The complete action set stays on the existing isolated Lead detail page.
+ const lead=(data?.leads||[]).find(x=>x.id===item.leadId)||
+  {id:item.leadId,title:item.title,contact_name:item.contactName||'',status:item.status||'new'};
+ return crmCompactLeadRow(lead,{
+  context,title:lead.title||item.title,contactName:item.contactName||'',
+  score:item.winScore,status:lead.status||item.status||'new'
+ });
 }
 function crmFollowupView(){
  const state=crmFollowupState;
@@ -1722,31 +1709,48 @@ function backToCrmLeads(){
 function crmLeadScoreFromFocus(id){
  const result=crmFollowupState.result;
  if(!result)return null;
- const groups=Object.values(result.buckets||{});
- for(const group of groups){
+ // The canonical read-only response may include a lead in either section.
+ const priority=result.priority?.items?.find(x=>x.leadId===id);
+ if(priority?.winScore)return priority.winScore;
+ for(const group of Object.values(result.buckets||{})){
   const row=group.items?.find(x=>x.leadId===id);
-  if(row)return row.winScore||null;
+  if(row?.winScore)return row.winScore;
  }
- return null;
+ return null; // Never manufacture a score for an unscored/out-of-window lead.
+}
+function crmCompactClientIdentity(lead,fallback=''){
+ // Resolve ONLY explicit persisted intake/conversion links, never name/phone guesses.
+ const id=lead.id;
+ const intake=(data?.leadIntakes||[]).find(x=>x.lead_id===id);
+ const link=(data?.leadClientLinks||[]).find(x=>x.lead_id===id);
+ const clientId=intake?.client_id||link?.client_id||'';
+ const client=clientId?(data?.clients||[]).find(x=>x.id===clientId):null;
+ if(client?.name)return {name:client.name,kind:'Клиент'};
+ const contact=lead.contact_name||fallback;
+ if(contact)return {name:contact,kind:'Контакт'};
+ return {name:clientId?'Клиент вне загруженного списка':'Контакт не указан',kind:'Контакт'};
+}
+function crmCompactLeadRow(lead,{context='list',title=lead.title,contactName='',score=null,status=lead.status}={}){
+ const identity=crmCompactClientIdentity(lead,contactName);
+ const scoreValue=score?.ready===true&&Number.isFinite(Number(score.score))&&
+  Number(score.score)>=0&&Number(score.score)<=100?score.score:null;
+ const action=context==='list'?'data-crm-lead-open':'data-crm-followup-lead';
+ const marker=context==='list'?'data-crm-lead-card':'data-crm-work-lead';
+ const statusText=label[status]||status||'Новый';
+ const description=(title||'Без названия')+' · '+statusText;
+ const scoreText=scoreValue===null?'Не рассчитан':String(scoreValue)+' из 100';
+ return '<button type="button" class="crm-compact-lead" '+marker+'="'+esc(lead.id)+
+  '" '+action+'="'+esc(lead.id)+'" aria-label="Открыть обращение. '+esc(identity.kind)+': '+
+  esc(identity.name)+'. '+esc(title||'Обращение')+'. Win Score: '+esc(scoreText)+'">'+
+  '<span class="crm-compact-info">'+
+   '<strong class="crm-compact-name">'+esc(identity.name)+'</strong>'+
+   '<span class="crm-compact-description">'+esc(description)+'</span></span>'+
+  '<span class="crm-compact-score"'+(scoreValue===null?' data-unscored':'')+'>'+
+   '<strong>'+ (scoreValue===null?'—':esc(scoreValue)+'%')+'</strong>'+
+   '<span>Win Score</span></span></button>';
 }
 function crmLeadEntry(x){
- const score=crmLeadScoreFromFocus(x.id);
- const scoreText=score?.ready?'Win Score '+esc(score.score)+'/100 · '+esc(score.bandLabel||''):
-  score?'Win Score не рассчитан':'Win Score · открыть обращение';
- const contact=x.contact_name||'',phone=x.phone||'';
- const metadata=[contact,phone].filter(Boolean).join(' · ');
- const next=x.next_action?x.next_action+(x.next_action_at?' · '+when(x.next_action_at):''):'Следующий шаг не назначен';
- return '<article class="record crm-lead-entry" data-crm-lead-card="'+esc(x.id)+'">'+
-  '<button type="button" class="crm-lead-list-open" data-crm-lead-open="'+esc(x.id)+'" aria-label="Открыть лид '+esc(x.title)+'">'+
-   '<span class="crm-lead-list-content"><strong>'+esc(x.title)+'</strong>'+
-   (metadata?'<span class="muted small">'+esc(metadata)+'</span>':'')+
-   (x.notes?'<span class="muted small">'+esc(x.notes)+'</span>':'')+
-   '<span class="muted small">'+esc(next)+'</span>'+
-   '<span class="crm-score-line">'+scoreText+'</span>'+
-   '<span class="muted small">Стадия сделки: '+
-    esc(crmStageOptions.find(([key])=>key===x.agreement_stage)?.[1]||'Не указана')+'</span></span>'+
-   '<span class="crm-lead-list-meta"><span class="tag" data-status="'+esc(x.status)+'">'+esc(label[x.status]||x.status)+'</span>'+
-   '<span class="crm-list-open-hint">Открыть</span></span></button></article>';
+ return crmCompactLeadRow(x,{score:crmLeadScoreFromFocus(x.id)});
 }
 
 /* CRM-25A: external Masters directory. Workers remain a separate entity. */
@@ -1930,19 +1934,25 @@ function crmView(){
   formField('title','Лид / запрос','text',true,'maxlength="160" placeholder="Например, осмотр объекта"')+
   formField('contactName','Контактное лицо')+formField('phone','Телефон','tel')+
   formField('notes','Примечание','textarea');
- let s='<h1>Лиды</h1><p class="muted">Новые обращения и следующие действия.</p>';
+ let s='<h1>CRM · Обращения</h1><p class="muted small">Компактный список: нажми на строку, чтобы открыть действия и детали.</p>';
  s+='<div class="crm-new-lead">'+form('lead_create','+ Новый лид',leadFields)+'</div>';
- s+=crmFollowupView();
- s+=crmCapacitySignpost();
- s+=crmPriorityView();
- s+='<section class="card" aria-label="История старых передач"><h2>История передач из старого VBOS</h2>'+
-  '<div id="crmLegacyTransfersMount" role="region" aria-label="Архив передач Google VBOS">'+
-  '<p class="muted small">История доступна для просмотра после утверждённого переноса.</p></div></section>';
- s+=crmMastersDirectory();
- s+='<section class="card crm-all-leads" aria-label="Все лиды"><h2>Все лиды · '+fmt(data.leads.length)+'</h2>'+  '<div class="actions"><button type="button" data-crm24-search="leads">Поиск и фильтры по всем лидам</button></div>'+
-  '<p class="muted small">Статус, запрос и следующий шаг — сразу. Нажми на любое обращение, чтобы открыть отдельную страницу редактирования, истории и действий.</p>'+
+ s+='<section class="card crm-all-leads" aria-label="Все лиды"><h2>Все лиды · '+fmt(data.leads.length)+'</h2>'+
+  '<div class="actions"><button type="button" data-crm24-search="leads">Поиск и фильтры по всем лидам</button></div>'+
+  '<p class="muted small">Win Score — эвристический балл 0–100, не вероятность продажи. «—» означает, что подтверждённый балл недоступен.</p>'+
+  '<div class="crm-compact-list">'+
   (!data.leads.length?'<p class="muted">Обращений пока нет. Создай первый лид.</p>':data.leads.map(crmLeadEntry).join(''))+
-  (data.listsTruncated?'<p class="muted small">Показана только загруженная часть базы; для остальных обращений используй поиск.</p>':'')+'</section>';
+  '</div>'+
+  (data.listsTruncated?'<p class="muted small">Показана только загруженная часть базы; остальные обращения доступны через поиск.</p>':'')+
+  '</section>';
+ s+='<details class="card crm-secondary-panel" data-crm-advanced'+(crmAdvancedOpen?' open':'')+'>'+
+  '<summary>Фокус, приоритет и планирование</summary>'+
+  crmFollowupView()+crmCapacitySignpost()+crmPriorityView()+'</details>';
+ s+='<details class="card crm-secondary-panel" data-crm-legacy-archive'+(crmArchiveOpen?' open':'')+'>'+
+  '<summary>История передач из старого VBOS</summary>'+
+  '<p class="muted small">Архив Google VBOS. Старые ID сохранены; старые лиды не связываются с новыми автоматически.</p>'+
+  '<div id="crmLegacyTransfersMount" role="region" aria-label="Архив передач Google VBOS">'+
+  '<p class="muted small">Архив доступен для просмотра.</p></div></details>';
+ s+=crmMastersDirectory();
  return s;
 }
 function clientListCard(x){
@@ -2962,6 +2972,11 @@ $('#content').addEventListener('change',async e=>{
  catch(err){edMessage='Импорт отклонён: '+err.message;}
  render();
 });
+$('#content').addEventListener('toggle',e=>{
+ const detail=e.target;
+ if(detail.matches?.('details[data-crm-advanced]'))crmAdvancedOpen=detail.open;
+ if(detail.matches?.('details[data-crm-legacy-archive]'))crmArchiveOpen=detail.open;
+},true);
 $('#content').addEventListener('submit',async e=>{
  e.preventDefault();
  const f=e.target;
