@@ -1,0 +1,113 @@
+name: PR8 guarded exact Render TEST release (one-shot)
+on:
+  push:
+    branches:
+      - ci/pr8-render-test-exact-once-20261117
+    paths:
+      - .github/workflows/pr8-render-exact-test-once.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr8-render-test-exact-once
+  cancel-in-progress: false
+
+jobs:
+  guarded-release:
+    if: "${{ github.event.head_commit.message == 'ci: one-shot guarded Render TEST release PR8' }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    steps:
+      - name: Exact-SHA guarded TEST deployment and rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          const key=process.env.RENDER_API_KEY;
+          if(!key){console.error('BLOCKED_NO_EXISTING_RENDER_API_KEY_GITHUB_SECRET; NO_RENDER_MUTATION');process.exit(78)}
+          const source='9ce8a116be77f400047688c1f7096fcec48ecdd8';
+          const main='98df99185452f4abbb2b0e4f3452784bd92a5bb0';
+          const previous='af4d0436248060213d044f139f21478354aa9d74';
+          const serviceId='srv-dbkvfh2jnfac73a31nv0';
+          const base='/services/'+serviceId;
+          const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+          async function gh(route){
+            const r=await fetch('https://api.github.com/repos/VahramSargsyan/vbos-clean/'+route,{headers:{Accept:'application/vnd.github+json','User-Agent':'vbos-pr8-guard'}});
+            if(!r.ok)throw Error('GITHUB_PREFLIGHT_'+r.status);
+            return r.json();
+          }
+          async function api(path,method='GET',body=null){
+            const r=await fetch('https://api.render.com/v1'+path,{
+              method,headers:{Authorization:'Bearer '+key,Accept:'application/json',...(body?{'Content-Type':'application/json'}:{})},
+              ...(body?{body:JSON.stringify(body)}:{})
+            });
+            if(!r.ok)throw Error('RENDER_API_'+method+'_'+r.status);
+            const s=await r.text();
+            try{return s?JSON.parse(s):null}catch{throw Error('RENDER_INVALID_JSON')}
+          }
+          const unwrap=x=>x?.deploy||x;
+          async function latestLive(){
+            const list=await api(base+'/deploys?limit=10');
+            const lives=(Array.isArray(list)?list.map(unwrap):[]).filter(d=>d.status==='live');
+            if(lives.length!==1)throw Error('RENDER_LIVE_DEPLOY_COUNT_UNEXPECTED');
+            return lives[0];
+          }
+          async function start(sha){
+            const d=unwrap(await api(base+'/deploys','POST',{commitId:sha}));
+            if(typeof d?.id!=='string'||!d.id.startsWith('dep-'))throw Error('RENDER_NEW_DEPLOY_ID_MISSING');
+            console.log('RENDER_DEPLOY_CREATED id='+d.id+' sha='+sha);
+            return d.id;
+          }
+          async function wait(id,sha){
+            for(let i=0;i<90;i++){
+              const d=unwrap(await api(base+'/deploys/'+id));
+              if(d?.commit?.id&&d.commit.id!==sha)throw Error('RENDER_SHA_MISMATCH');
+              if(d.status==='live'){
+                if(d.commit?.id!==sha)throw Error('RENDER_LIVE_SHA_UNKNOWN');
+                return;
+              }
+              if(['build_failed','update_failed','deactivated','canceled','cancelled'].includes(d.status))throw Error('RENDER_RELEASE_'+d.status);
+              await sleep(10000);
+            }
+            throw Error('RENDER_TIMEOUT_NOT_LIVE');
+          }
+          async function smoke(){
+            const h=await fetch('https://vbos-clean-mvp-2026.onrender.com/index.html?ci=9ce8a116',{headers:{'Cache-Control':'no-cache'}});
+            if(!h.ok)throw Error('RENDER_STATIC_HTML_HTTP_'+h.status);
+            const html=await h.text();
+            if(!html.includes('id="themeToggle"')||!html.includes('data-tab="orders"')||!html.includes('data-tab="estimator"'))
+              throw Error('RENDER_UI_HTML_SOURCE_MISMATCH');
+            const css=await fetch('https://vbos-clean-mvp-2026.onrender.com/menu-groups.css?ci=9ce8a116',{headers:{'Cache-Control':'no-cache'}});
+            if(!css.ok||(await css.text()).includes('min-height:48px')===false)throw Error('RENDER_COMPACT_CSS_NOT_VISIBLE');
+          }
+          let attempted=false;
+          try{
+            const pr=await gh('pulls/8'),branch=await gh('branches/main');
+            if(pr.state!=='open'||pr.head.sha!==source||branch.commit.sha!==main)throw Error('GITHUB_SOURCE_HEAD_MOVED');
+            const svc=await api(base);
+            if(svc.id!==serviceId||svc.repo!=='https://github.com/VahramSargsyan/vbos-clean'||svc.branch!=='main'||svc.type!=='web_service'||svc.autoDeploy!=='no'||svc.serviceDetails?.url!=='https://vbos-clean-mvp-2026.onrender.com')throw Error('RENDER_SERVICE_GUARD_MISMATCH');
+            const live=await latestLive();
+            if(live.commit?.id!==previous)throw Error('RENDER_TEST_OCCUPIED_BY_NEW_COMMIT');
+            console.log('PR8_EXACT_RENDER_PREFLIGHT_PASS service='+serviceId+' baseline='+previous);
+            attempted=true;
+            const newId=await start(source);
+            await wait(newId,source);
+            await smoke();
+            const current=await latestLive();
+            if(current.commit?.id!==source)throw Error('RENDER_POSTFLIGHT_LIVE_CHANGED');
+            console.log('PR8_RENDER_TEST_EXACT_SHA_STATIC_SMOKE_PASS id='+newId+' sha='+source);
+          }catch(err){
+            console.error('PR8_TEST_RELEASE_BLOCKED '+String(err?.message||err));
+            if(attempted){
+              try{
+                const rollbackId=await start(previous);
+                await wait(rollbackId,previous);
+                console.log('PR8_RENDER_TEST_ROLLBACK_EXACT_SHA_PASS id='+rollbackId+' sha='+previous);
+              }catch(e){console.error('P0_RENDER_TEST_ROLLBACK_UNCONFIRMED '+String(e?.message||e))}
+            }else console.error('NO_RENDER_MUTATION');
+            process.exitCode=1;
+          }
+          JS
