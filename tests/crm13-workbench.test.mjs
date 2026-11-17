@@ -117,7 +117,7 @@ test('CRM13A: Priority retains canonical order but displays compact rows without
 });
 
 test('CRM13A/14A: compact list delegates to isolated Lead editor without losing canonical actions',()=>{
- const listStart=script.indexOf('function crmLeadEntry(');
+ const listStart=script.indexOf('function crmCompactLeadRow(');
  const detailStart=script.indexOf('function crmLeadDetails(',listStart);
  const viewStart=script.indexOf('function crmView(){',detailStart);
  const list=script.slice(listStart,detailStart);
