@@ -1,0 +1,78 @@
+name: PR8 exact UI source + disposable PostgreSQL verification (one-shot)
+on:
+  push:
+    branches:
+      - ci/pr8-exact-ui-postgres-once-20261117
+    paths:
+      - .github/workflows/pr8-verification-once.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr8-exact-ui-postgres-once
+  cancel-in-progress: false
+
+jobs:
+  verify-exact-pr8:
+    if: "${{ github.event.head_commit.message == 'ci: one-shot verify PR8 9ce8a116' }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pr8_ci
+          POSTGRES_PASSWORD: pr8_ci_disposable_only
+          POSTGRES_DB: vbos_mvp_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pr8_ci -d vbos_mvp_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 6
+    env:
+      TEST_DATABASE_URL: postgresql://pr8_ci:pr8_ci_disposable_only@127.0.0.1:5432/vbos_mvp_ci
+      MVP_DATABASE_SSL: disable
+      NODE_ENV: test
+    steps:
+      - name: Checkout exact PR8 source (not CI branch)
+        uses: actions/checkout@v4
+        with:
+          ref: 9ce8a116be77f400047688c1f7096fcec48ecdd8
+          persist-credentials: false
+
+      - name: Verify immutable source SHA and clean checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "9ce8a116be77f400047688c1f7096fcec48ecdd8"
+          test -z "$(git status --porcelain)"
+          echo "PR8_EXACT_SOURCE_SHA_PASS 9ce8a116be77f400047688c1f7096fcec48ecdd8"
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install existing repository dependencies (no lockfile)
+        run: npm install --no-audit --no-fund
+
+      - name: Verify source layout
+        run: npm run verify:source
+
+      - name: Run complete native Node.js test suite
+        run: npm test
+
+      - name: Run complete E2E suite against isolated PostgreSQL service
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module -e "const u=new URL(process.env.TEST_DATABASE_URL);if(u.hostname!=='127.0.0.1'||u.pathname!=='/vbos_mvp_ci'){throw Error('Non-disposable DB URL blocked')}"
+          npm run test:e2e
+
+      - name: Declare exact-source verification PASS
+        if: success()
+        run: |
+          echo "PR8_GITHUB_ACTIONS_EXACT_SOURCE_LAYOUT_NODE_TEST_POSTGRES_E2E_PASS"
