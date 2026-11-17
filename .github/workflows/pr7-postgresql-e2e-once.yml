@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   postgres-e2e:
-    if: github.event.head_commit.message == 'ci: one-shot PostgreSQL E2E for PR7 af4d043'
+    if: "${{ github.event.head_commit.message == 'ci: one-shot PostgreSQL E2E for PR7 af4d043' }}"
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
