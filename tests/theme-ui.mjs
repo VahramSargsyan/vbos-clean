@@ -15,7 +15,10 @@ assert.ok(!header.includes('id="installApp"'),'Install should not crowd mobile h
 const nav=html.match(/<nav id="tabs"[\s\S]*?<\/nav>/)?.[0];
 assert.ok(nav && nav.includes('class="drawer-links"') && nav.includes('class="drawer-footer"'));
 const footer=nav.match(/<div class="drawer-footer">([\s\S]*?)<\/div>/)?.[1];
-assert.ok(footer && footer.indexOf('id="themeToggle"')<footer.indexOf('id="logout"'));
+assert.ok(header.includes('id="themeToggle"'),'Theme control belongs in the header');
+assert.ok(header.indexOf('id="menuToggle"')<header.indexOf('id="themeToggle"') && header.indexOf('id="themeToggle"')<header.indexOf('class="brand"'));
+assert.ok(footer && !footer.includes('id="themeToggle"') && footer.includes('id="logout"'));
+assert.equal((html.match(/id="themeToggle"/g)||[]).length,1);
 assert.equal(footer.match(/id="logout"/g)?.length,1);
 assert.equal((html.match(/id="logout"/g)||[]).length,1);
 assert.equal((nav.match(/data-tab="/g)||[]).length,17);
@@ -35,39 +38,43 @@ assert.ok(css.includes('min-height:0;overflow-y:auto'),'Drawer links must scroll
 assert.ok(css.includes('margin-top:auto;flex:0 0 auto'),'Drawer footer must stay at bottom');
 assert.ok(css.includes('html[data-theme] .card'),'Both themes must cover cards through shared tokens');
 assert.ok(css.includes('html[data-theme] input'),'Both themes must cover inputs through shared tokens');
-// Capacity remains inside Plan; preserve five old quick links, plus first-class Estimator (17 routes).
+// Capacity remains inside Plan; Orders is a quick link while Search and Estimator stay reachable by group (17 routes).
 const linksArea=nav.match(/<div class="drawer-links">([\s\S]*?)<div class="drawer-footer">/)?.[1];
 assert.ok(linksArea && html.includes('href="/menu-groups.css"'));
 const quickArea=linksArea.split('<details')[0];
-assert.deepEqual([...quickArea.matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]),['today','myWork','schedule','crm','estimator','catalog']);
+assert.deepEqual([...quickArea.matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]),['today','myWork','schedule','crm','orders']);
 const groups=[...linksArea.matchAll(/<details class="nav-group" name="vbos-nav-group">\s*<summary><span class="nav-group-label">([^<]+)<\/span><span class="nav-chevron" aria-hidden="true">▼<\/span><\/summary>\s*<div class="nav-submenu">([\s\S]*?)<\/div>\s*<\/details>/g)];
 assert.deepEqual(groups.map(x=>x[1]),['Клиенты и продажи','Исполнение и история','Финансы и отчёты','Инструменты']);
-const groupIds=[['clients','objects','orders'],['workers','history','historyOrders'],['finance','capital','report'],['engineering','serviceReference']];
+const groupIds=[['clients','objects','catalog'],['workers','history','historyOrders'],['finance','capital','report'],['estimator','engineering','serviceReference']];
 for(let i=0;i<groups.length;i++){
   assert.deepEqual([...groups[i][2].matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]),groupIds[i]);
 }
 const routeIds=[...linksArea.matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]);
 assert.equal(new Set(routeIds).size,17,'Exactly one navigation target per route, including Estimator');
-assert.equal(routeIds.filter(x=>x==='estimator').length,1,'Calculator must appear once in top-level menu');
+assert.equal(routeIds.filter(x=>x==='estimator').length,1,'Calculator must remain reachable in Tools');
+assert.equal(routeIds.filter(x=>x==='catalog').length,1,'Search must remain reachable in Clients and Sales');
+assert.equal(quickArea.match(/data-tab="orders"/g)?.length,1,'Orders must be a quick destination');
 assert.ok(css.includes('min-height:0;overflow-y:auto'),'Existing scrollable drawer preserved');
 const navCss=read('public/menu-groups.css');
 const serverSource=read('server.mjs');
 assert.match(serverSource,
  /'\/menu-groups\.css': \['text\/css; charset=utf-8',readFileSync\(new URL\('\.\/public\/menu-groups\.css',import\.meta\.url\)\)\]/,
  'Menu CSS must be served by the explicit Node static manifest (regression for missing styles)');
+assert.match(navCss,/\.app-header #themeToggle/, 'Theme button must be styled outside the drawer');
+assert.match(navCss,/max-width:650px/, 'Theme icon must fit narrow mobile header');
 assert.match(navCss,/display:flex;flex-direction:column;flex-wrap:nowrap;align-items:stretch/,
  'All submenu items must stack vertically with full-width tap targets');
 assert.ok(navCss.includes('.nav-submenu>button[data-tab].active'),'Nested active state must remain visible');
 assert.ok(navCss.includes(':focus-visible'),'Keyboard focus must be visible');
 assert.ok(navCss.includes('var(--accent-soft)'),'Highlight must follow theme tokens');
 assert.equal(quickArea.match(/data-tab="crm"/g)?.length,1,'CRM must appear in quick menu');
-assert.equal(quickArea.match(/data-tab="estimator"/g)?.length,1,'Estimator must appear alongside CRM in quick menu');
+assert.equal(quickArea.match(/data-tab="estimator"/g)?.length||0,0,'Estimator moves into Tools');
 assert.ok(!groups.some(g=>g[2].includes('data-tab="crm"')),'CRM must not be duplicated');
 assert.equal((linksArea.match(/class="nav-chevron" aria-hidden="true">▼/g)||[]).length,4,
  'Each group needs an explicit chevron in Android HTML');
 assert.match(navCss,/color:var\(--ink\);font-size:19px;font-weight:650;line-height:1\.35;/,
  'Group headings calibrated to 19px from Android visual feedback');
-assert.match(navCss,/font-size:19px;line-height:1\.35;min-height:60px;/,
+assert.match(navCss,/font-size:19px;line-height:1\.35;min-height:48px;/,
  'Quick links calibrated to 19px with touch size preserved');
 assert.match(navCss,/background:transparent;color:var\(--body\);font-size:18px;line-height:1\.4;/,
  'Nested links calibrated to 18px and remain in one column');
@@ -75,7 +82,7 @@ assert.match(navCss,/color:var\(--mute\);font-size:14px;font-weight:700;/,
  'Section title calibrated to 14px');
 assert.ok(navCss.includes('font-size:20px') && navCss.includes('[open]>summary .nav-chevron'),
  'Chevrons must be clearly visible and change direction');
-console.log('NAVIGATION_UX_V1D_READABLE_TYPE_AND_VERTICAL_MENU_PASS');
+console.log('NAVIGATION_UX_COMPACT_ORDERS_AND_THEME_HEADER_PASS');
 
 console.log('MOBILE_MENU_LEFT_BRAND_RIGHT_AND_FIXED_LOGOUT_PASS');
 
