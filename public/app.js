@@ -13,7 +13,7 @@ let schedule={viewMode:'week',anchorDate:'',selectedDay:'',dayFilter:'all',items
 let scheduleLeadDraft=null; // ephemeral prefill, never a saved plan until owner submits
 let workOrderCapacityOpenSeq=0; // prevent stale async order-context navigation
 let clientDetailId=null,objectDetailId=null,orderDetailId=null,clientReturn=null,objectReturnId=null,objectReturnTab=null;
-let objectOrdersCard={id:null,items:[],loading:false,loaded:false,error:'',hasMore:false};
+let objectOrdersCard={id:null,items:[],loading:false,loaded:false,error:'',hasMore:false,nextCursor:null};
 let clientPortfolio=null;
 function clientPortfolioNew(id){
  const page=()=>({q:'',status:'all',items:[],nextCursor:null,hasMore:false,loaded:false,loading:false,error:''});
@@ -2039,17 +2039,30 @@ function orderListCard(x){
  const objectName=ids('objects',x.object_id)?.name||x.object_name||'Объект не указан';
  return entityListCard('orders',x,x.title,objectName,(label[x.status]||x.status||'Статус не указан')+(x.planned_on?' · '+short(x.planned_on):''));
 }
-async function loadObjectCardOrders(id){
- if(objectOrdersCard.id===id&&(objectOrdersCard.loading||objectOrdersCard.loaded||objectOrdersCard.error))return;
- const state={id,items:[],loading:true,loaded:false,error:'',hasMore:false};
- objectOrdersCard=state;
+async function loadObjectCardOrders(id,append=false){
+ if(!id)return;
+ if(objectOrdersCard.id!==id){
+  objectOrdersCard={id,items:[],loading:false,loaded:false,error:'',hasMore:false,nextCursor:null};
+ }
+ const state=objectOrdersCard;
+ if(state.loading||(!append&&(state.loaded||state.error))||
+    (append&&(!state.loaded||!state.hasMore||!state.nextCursor)))return;
+ state.loading=true;
+ if(!append)state.error='';
  try{
-  const source=await api('/api/objects/orders?id='+encodeURIComponent(id));
+  const path='/api/objects/orders?id='+encodeURIComponent(id)+
+   (append?'&cursor='+encodeURIComponent(state.nextCursor):'');
+  const source=await api(path);
   if(objectOrdersCard!==state)return;
   if(source.objectId!==id||!Array.isArray(source.items)||
-     source.items.some(item=>item.object_id!==id))
-   throw Error('Не подтверждена связь заказов с объектом.');
-  state.items=source.items;state.hasMore=Boolean(source.hasMore);state.loaded=true;
+     source.items.some(item=>item.object_id!==id)||
+     Boolean(source.hasMore)!==Boolean(source.nextCursor))
+   throw Error('Не подтверждена связь заказов с объектом или страница истории.');
+  const items=append?state.items.concat(source.items):source.items;
+  if(new Set(items.map(item=>item.id)).size!==items.length)
+   throw Error('В истории объекта обнаружены повторяющиеся заказы.');
+  state.items=items;state.hasMore=Boolean(source.hasMore);
+  state.nextCursor=source.nextCursor||null;state.loaded=true;
  }catch(error){if(objectOrdersCard===state)state.error=error.message;}
  finally{
   if(objectOrdersCard===state){
@@ -2128,13 +2141,17 @@ function objectDetails(x){
   formField('title','Название заказа','text',true,'maxlength="180"')+
   formField('plannedOn','Плановая дата начала','date',false,'value="'+esc(data.today)+'"')+
   formField('notes','Заметки','textarea');
- const ordersBlock=!scoped||objectOrdersCard.loading?'<p class="muted">Загружаю заказы объекта…</p>':
-  objectOrdersCard.error?'<p role="alert">'+esc(objectOrdersCard.error)+'</p>':
-  !orders.length?'<p class="muted">На этом объекте пока нет заказов.</p>':
-  '<div class="client-hub-related">'+orders.map(order=>
-   entityListCard('orders',order,order.title,label[order.status]||order.status,
-    order.planned_on?short(order.planned_on):'')).join('')+'</div>'+
-  (objectOrdersCard.hasMore?'<p class="muted small">Показаны последние 100 заказов. Остальные доступны через поиск.</p>':'');
+ const ordersBlock=!scoped||(objectOrdersCard.loading&&!loaded)?
+  '<p class="muted">Загружаю заказы объекта…</p>':
+  (objectOrdersCard.error?'<p role="alert">'+esc(objectOrdersCard.error)+'</p>':'')+
+  (!orders.length?(objectOrdersCard.error?'':'<p class="muted">На этом объекте пока нет заказов.</p>'):
+   '<div class="client-hub-related">'+orders.map(order=>
+    entityListCard('orders',order,order.title,label[order.status]||order.status,
+     order.planned_on?short(order.planned_on):'')).join('')+'</div>')+
+  (loaded&&objectOrdersCard.hasMore?
+   '<button type="button" class="compact" data-object-orders-more="'+esc(x.id)+'"'+
+    (objectOrdersCard.loading?' disabled':'')+'>Показать ещё 100 заказов</button>':'')+
+  (loaded&&objectOrdersCard.loading?'<p class="muted small">Загружаю следующую страницу…</p>':'');
  return '<div class="client-detail"><button type="button" class="client-back" data-record-back>'+(clientReturn?'← К карточке клиента':'← К списку объектов')+'</button>'+
   '<section class="card client-detail-card"><h1>'+esc(x.name)+'</h1>'+
   '<p class="entity-detail-meta">Клиент: '+esc(client)+'</p>'+
@@ -2837,7 +2854,7 @@ async function sendAction(type,payload,form){
   if(type==='schedule_save'&&form?.hasAttribute('data-hourly-manual-form'))resetHourlyManual();
   if(['estimate_create','estimate_save','estimate_accept_handoff'].includes(type)){estimateUI.loaded=false;estimateUI.editor=null;}
   if(type==='worker_task_finish')workerBenchmarkCache={};
-  if(['order_create','crm_won_order_create'].includes(type))objectOrdersCard={id:null,items:[],loading:false,loaded:false,error:'',hasMore:false};
+  if(['order_create','crm_won_order_create'].includes(type))objectOrdersCard={id:null,items:[],loading:false,loaded:false,error:'',hasMore:false,nextCursor:null};
  if(['order_create','crm_won_order_create','order_update','order_status','object_create','object_update'].includes(type))clientPortfolio=null;
   if(['log_create','log_update','work_log_full_create','work_log_full_update'].includes(type))orderLogs={id:null,items:[],loaded:false,loading:false,error:'',hasMore:false,nextCursor:null,context:null};
   if(type==='object_interaction_add')objectContactState={id:null,items:[],loading:false,loaded:false,error:'',hasMore:false,nextCursor:null};
@@ -3930,6 +3947,11 @@ $('#content').addEventListener('click',async e=>{
     else message('Клиент не найден. Проверь поиск.',true);
    }
    return;
+  }
+  const moreObjectOrders=e.target.closest('button[data-object-orders-more]');
+  if(moreObjectOrders&&objectDetailId===moreObjectOrders.dataset.objectOrdersMore&&
+     (tab==='objects'||(tab==='catalog'&&catalog.entity==='objects'))){
+   await loadObjectCardOrders(objectDetailId,true);return;
   }
   const moreObjectContacts=e.target.closest('button[data-object-contact-more]');
   if(moreObjectContacts&&objectDetailId===moreObjectContacts.dataset.objectContactMore){
