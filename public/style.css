@@ -398,6 +398,39 @@ html[data-theme] .crm-detail-page .edit-panel[open]>summary{margin-bottom:12px}
  html[data-theme] .crm-detail-top button{width:100%}
 }
 
+/* CRM Compact List: mobile-first one-row navigation. No nested action forms in overview. */
+html[data-theme] .crm-compact-list{display:grid;gap:8px;margin:12px 0 4px}
+html[data-theme] button.crm-compact-lead{
+ display:flex;align-items:center;justify-content:space-between;gap:12px;
+ box-sizing:border-box;width:100%;min-width:0;min-height:68px;padding:11px 13px;
+ margin:0;border:1px solid var(--hairline);border-radius:var(--r-lg);
+ background:var(--s1);color:var(--ink);font:inherit;text-align:left;cursor:pointer;
+}
+html[data-theme] button.crm-compact-lead:hover:not(:disabled){background:var(--s2);border-color:var(--accent)}
+html[data-theme] button.crm-compact-lead:active:not(:disabled){background:var(--s3)}
+html[data-theme] button.crm-compact-lead:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+html[data-theme] .crm-compact-info{display:flex;flex:1 1 auto;min-width:0;flex-direction:column;gap:4px}
+html[data-theme] .crm-compact-name{display:block;font-size:16px;font-weight:700;line-height:1.25;overflow-wrap:anywhere}
+html[data-theme] .crm-compact-description{display:block;font-size:13px;line-height:1.35;color:var(--mute);overflow-wrap:anywhere}
+html[data-theme] .crm-compact-score{
+ display:flex;flex:0 0 80px;min-width:0;align-items:center;justify-content:center;
+ flex-direction:column;gap:3px;text-align:center;
+}
+html[data-theme] .crm-compact-score strong{font-size:21px;line-height:1.15;font-weight:750;white-space:nowrap}
+html[data-theme] .crm-compact-score span{font-size:11px;line-height:1.2;font-weight:650;color:var(--mute);white-space:nowrap}
+html[data-theme] .crm-compact-score[data-unscored] strong{color:var(--mute)}
+html[data-theme] .crm-focus-results button.crm-compact-lead,
+html[data-theme] .crm-priority-section button.crm-compact-lead{margin:8px 0}
+html[data-theme] .crm-secondary-panel>summary{min-height:48px;cursor:pointer;font-weight:700}
+html[data-theme] .crm-secondary-panel>.card{margin:10px 0}
+@media(max-width:520px){
+ html[data-theme] button.crm-compact-lead{min-height:64px;padding:10px 11px;gap:7px}
+ html[data-theme] .crm-compact-score{flex-basis:70px}
+ html[data-theme] .crm-compact-score strong{font-size:19px}
+ html[data-theme] .crm-compact-name{font-size:15px}
+ html[data-theme] .crm-compact-description{font-size:12px}
+}
+
 /* CRM-17A Estimator selection controls, same theme & mobile hit targets */
 .plumbing-choice{display:flex;align-items:center;gap:10px;line-height:1.4;cursor:pointer}
 .plumbing-choice input[type=checkbox]{width:20px;height:20px;min-width:20px;min-height:20px;display:inline-block;margin:0;accent-color:var(--accent,#2055a3)}
