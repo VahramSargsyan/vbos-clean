@@ -1728,12 +1728,13 @@ function crmCompactClientIdentity(lead,fallback=''){
  if(client?.name)return {name:client.name,kind:'Клиент'};
  const contact=lead.contact_name||fallback;
  if(contact)return {name:contact,kind:'Контакт'};
- return {name:clientId?'Клиент вне загруженного списка':'Контакт не указан',kind:'Контакт'};
+ return {name:clientId?'Клиент вне загруженного списка':'Контакт не указан',
+  kind:clientId?'Клиент':'Контакт'};
 }
 function crmCompactLeadRow(lead,{context='list',title=lead.title,contactName='',score=null,status=lead.status}={}){
  const identity=crmCompactClientIdentity(lead,contactName);
- const scoreValue=score?.ready===true&&Number.isFinite(Number(score.score))&&
-  Number(score.score)>=0&&Number(score.score)<=100?score.score:null;
+ const scoreValue=score?.ready===true&&typeof score.score==='number'&&
+  Number.isFinite(score.score)&&score.score>=0&&score.score<=100?score.score:null;
  const action=context==='list'?'data-crm-lead-open':'data-crm-followup-lead';
  const marker=context==='list'?'data-crm-lead-card':'data-crm-work-lead';
  const statusText=label[status]||status||'Новый';
