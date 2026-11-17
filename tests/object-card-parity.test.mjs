@@ -136,7 +136,7 @@ test('object card keeps original create/order navigation and no invented object 
  const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
  assert.match(app,/function objectDetails\(x\)/);
  assert.match(app,/data-object-client-open/);
- assert.match(app,/function loadObjectCardOrders\(id\)/);
+ assert.match(app,/async function loadObjectCardOrders\(id,append=false\)/);
  assert.match(app,/api\/objects\/orders\?id=/);
  assert.match(app,/Заказы объекта/);
  assert.match(app,/form\('order_create','\+ Новый заказ',orderFields\)/);
