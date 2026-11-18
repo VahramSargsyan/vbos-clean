@@ -1133,3 +1133,11 @@ The existing V1G `Свободный →` navigator originally counted all zero-
 - **Acceptance on Android:** fill category/action/service, start at 09:15, reload/close and explicitly restore; confirm original clock, taxonomy and >15-minute gap; lost ACK replay uses original payload/key; only saved:true removes matching draft; do not create synthetic records in occupied Neon TEST.
 - **Stop:** no new PR, main merge, Actions, Render release or occupied TEST writes without gates/owner authority.
 
+
+### Integration focused repair evidence — same bounded candidate
+
+- **Extra correction:** Because the PR #11 Category and Action selectors deliberately lack `name` and do not enter the PostgreSQL writer, preserve them as UI-only `taxCategory`/`taxAction` fields in the local draft. On restore, rebuild the dependent selectors before applying `serviceId`. Incomplete Category→Action selections (before Service) now survive reload.
+- **Focused source checks:** V8 parser PASS on changed browser JS, static JS markup/owner-scope checks PASS; controlled executable browser-function probes PASS (21 original+integration mock assertions, plus 11 targeted taxonomy/input/gap assertions; these are not Node test runner or browser/PG E2E). Two additional source regressions cover unfinished taxonomy and both input/change paths, atop three PR13-integration regressions for chosen service/gap/date.
+- **Required verification still NOT_RUN:** `npm run verify:source`, `npm test`, `npm run test:e2e` against disposable PostgreSQL, hosted source release, Android restore and real idempotent save/readback. These gates need an authorized isolated runner; the prior successful PR #13 CI covers only its original SHA.
+- **No release:** Leave current PR #13 Render TEST deployment and its tomorrow user acceptance undisturbed. Do not install this candidate before full gates and owner-safe TEST availability.
+
