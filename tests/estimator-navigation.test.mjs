@@ -41,14 +41,15 @@ function resultPreview(bound){
  return runInNewContext(wizard+';plumbingWizardMarkup()',context);
 }
 
-test('legacy navigation has three tabs; Clean navigation exposes one top-level visible Estimator destination',()=>{
+test('legacy estimator tabs remain accessible under grouped Tools navigation',()=>{
  for(const item of ['data-tab="calculator"','data-tab="prices"','data-tab="cards"'])
   assert.ok(legacy.includes(item),item);
  const menu=html.indexOf('<button data-tab="estimator">Калькуляция</button>');
  assert.ok(menu>0);
  assert.ok(menu>html.indexOf('data-tab="crm"'));
- assert.ok(menu<html.indexOf('data-tab="catalog"'));
- assert.ok(menu<html.indexOf('<div class="nav-section-label">'));
+ assert.ok(menu>html.indexOf('<div class="nav-section-label">'));
+ assert.ok(menu>html.indexOf('Инструменты'));
+ assert.equal((html.match(/data-tab="estimator"/g)||[]).length,1);
  assert.match(app,/tab==='estimator'\?estimatorView\(\)/);
  assert.match(app,/if\(tab==='estimator'\)\{estimatorSubtab='calculator';void ensurePlumbingCalculator\(\);/);
  assert.match(app,/tab==='estimator'\)render\(\)/);
