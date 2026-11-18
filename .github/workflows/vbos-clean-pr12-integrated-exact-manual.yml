@@ -29,13 +29,13 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      INTEGRATION_SHA: ddb14998becbdbdb7ef93af56a4902d56420610c
+      INTEGRATION_SHA: b4727f77fd4e452842c0fa16731a656787e40e8c
       TEST_DATABASE_URL: postgresql://ci:pr12_synthetic_only@127.0.0.1:5432/vbos_mvp_ci
     steps:
       - name: Checkout exact bounded integration candidate
         uses: actions/checkout@v4
         with:
-          ref: ddb14998becbdbdb7ef93af56a4902d56420610c
+          ref: b4727f77fd4e452842c0fa16731a656787e40e8c
           persist-credentials: false
       - name: Verify candidate identity and disposable PostgreSQL target
         shell: bash
