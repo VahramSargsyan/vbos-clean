@@ -176,3 +176,71 @@ test('integration preserves existing server WorkLog writer and owner-only state'
  assert.match(writerSource,/payload_sha256!==hash/);
  assert.match(writerSource,/deduplicated:true/);
 });
+
+
+test('taxonomically restores PR11 service before assigning fields and rechecks PR13 gap',()=>{
+ const h=harness(),events=[];
+ h.run('worklogDraftSetOwner(OWNER_A)',{OWNER_A});
+ const sourceForm=h.form();
+ h.run('worklogDraftOffer(testForm)',{testForm:sourceForm.f});
+ sourceForm.values.serviceId.value='SERVICE-1';
+ sourceForm.values.startClock.value='09:15';
+ sourceForm.values.gapReason.value='materials';
+ assert.equal(h.run('worklogDraftAutosave(testForm)'),true);
+ const restored=h.form();
+ h.ctx.fullWorkLogTaxPreselect=(f,id)=>{events.push('preselect:'+id);return true;};
+ h.ctx.fullWorkLogTaxSync=(f,mode)=>{events.push('sync:'+mode);};
+ h.ctx.fullWorkLogGapSchedule=(f,now)=>{
+  events.push('gap:'+now+':'+f.elements.startClock.value+':'+f.elements.gapReason.value);
+ };
+ h.run('worklogDraftOffer(testForm)',{testForm:restored.f});
+ assert.equal(h.run('worklogDraftRestore(testForm)'),true);
+ assert.equal(restored.values.serviceId.value,'SERVICE-1');
+ assert.equal(restored.values.startClock.value,'09:15');
+ assert.equal(restored.values.gapReason.value,'materials');
+ assert.deepEqual(events,[
+  'preselect:SERVICE-1','sync:service','gap:true:09:15:materials'
+ ]);
+});
+
+test('changing date preserves the previous draft, never overwrites a second existing day',()=>{
+ const h=harness();
+ let number=0;
+ h.ctx.crypto.randomUUID=()=> '33333333-3333-4333-8333-'+String(333333333333+number++).padStart(12,'0');
+ h.run('worklogDraftSetOwner(OWNER_A)',{OWNER_A});
+ const x=h.form();h.run('worklogDraftOffer(testForm)',{testForm:x.f});
+ x.values.location.value='Кухня';
+ assert.equal(h.run('worklogDraftAutosave(testForm)'),true);
+ const firstKey=x.f.dataset.draftKey,first=JSON.parse(h.storage.get(firstKey));
+ x.values.dayDate.value='2026-11-19';
+ x.values.location.value='Ванная';
+ assert.equal(h.run('worklogDraftAutosave(testForm)'),true);
+ assert.equal(h.storage.size,2,'other date must not be deleted automatically');
+ const secondKey=x.f.dataset.draftKey,second=JSON.parse(h.storage.get(secondKey));
+ assert.notEqual(firstKey,secondKey);
+ assert.notEqual(first.requestKey,second.requestKey,'distinct day needs distinct idempotency key');
+ assert.equal(JSON.parse(h.storage.get(firstKey)).fields.location,'Кухня');
+ x.values.dayDate.value='2026-11-18';
+ x.values.location.value='НЕ ПЕРЕЗАПИСЫВАТЬ';
+ assert.equal(h.run('worklogDraftAutosave(testForm)'),false,'collision requires explicit restore or delete');
+ assert.equal(x.f.dataset.draftDecision,'choose');
+ assert.equal(x.restore.hidden,false);
+ assert.equal(JSON.parse(h.storage.get(firstKey)).fields.location,'Кухня');
+ assert.equal(JSON.parse(h.storage.get(secondKey)).fields.location,'Ванная');
+});
+
+test('PR13 canonical gap correction is persisted, not resurrected on page reload',()=>{
+ const h=harness();h.run('worklogDraftSetOwner(OWNER_A)',{OWNER_A});
+ const x=h.form();h.run('worklogDraftOffer(testForm)',{testForm:x.f});
+ x.values.gapReason.value='materials';
+ assert.equal(h.run('worklogDraftAutosave(testForm)'),true);
+ vm.runInContext(uiSource,h.ctx,{filename:'worklog-full-ui.js'});
+ h.ctx.testForm=x.f;
+ h.run('fullWorkLogGapApply(testForm,context)',{
+  context:{ready:true,overlap:false,gapMinutes:15,successorGapMinutes:0,
+   thresholdMinutes:15,hasEndClock:true,successorReasonPresent:false}
+ });
+ assert.equal(x.values.gapReason.value,'');
+ const saved=JSON.parse([...h.storage.values()][0]);
+ assert.equal(saved.fields.gapReason,'','canonical clearance must update durable draft');
+});
