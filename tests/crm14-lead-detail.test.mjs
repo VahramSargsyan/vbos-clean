@@ -22,7 +22,7 @@ function harness(){
  const win={scrollY:413,scrollTo:(x,y)=>scroll.push([x,y])};
  const ctx=vm.createContext({
   tab:'crm',data:{today:'2026-11-08',leads:[lead],clients:[],archivedLegacyClientIds:[]},
-  crmDetailId:null,crmReminderEditorLeadId:null,crmClientLeadContext:null,estimateWorkspaceOpen:false,crmListScrollY:0,crmFocusFilter:'today',crmQuickAction:{leadId:null,kind:null,context:null},
+  crmDetailId:null,crmReminderEditorLeadId:null,crmClientLeadContext:null,estimateWorkspaceOpen:false,crmListScrollY:0,crmFocusFilter:'today',crmAdvancedOpen:false,crmArchiveOpen:false,crmQuickAction:{leadId:null,kind:null,context:null},
   crmSignalView:{leadId:null,signal:null},crmFollowupState:{result:null},
   crmMasters:{items:[],loaded:false,loading:false,error:'',q:'',status:'',nextCursor:null,hasMore:false,opened:false},crmTransferOpenLeadId:null,
   window:win,document:{querySelector:()=>({setAttribute:(...x)=>editors.push(x),
