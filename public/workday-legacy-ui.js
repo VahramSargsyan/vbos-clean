@@ -12,7 +12,7 @@ function workFlowModalClose({force=false}={}){
  if(!workFlowModalState.kind)return true;
  const root=document.getElementById('workFlowBackdrop');
  if(!force&&root?.querySelector('form[data-workflow-dirty="1"]')){
-  if(!confirm('Несохранённые изменения будут потеряны. Закрыть окно?'))return false;
+  if(!confirm('Черновик защищён только после подтверждения сохранения на телефоне. Закрыть окно?'))return false;
  }
  const trigger=workFlowModalState.trigger;
  workFlowModalState.kind=null;workFlowModalState.item=null;workFlowModalState.trigger=null;
@@ -37,7 +37,14 @@ function workFlowModalOpen(kind,opts={}){
  host?.insertAdjacentHTML('beforeend',workFlowModalHtml());
  document.body.classList.add('work-flow-modal-open');
  const dialog=document.getElementById('workFlowBackdrop');
- if(kind==='log')fullWorkLogGapSchedule(dialog?.querySelector('form[data-full-worklog-form]'),true);
+ if(kind==='log'){
+  const form=dialog?.querySelector('form[data-full-worklog-form]');
+  if(form){
+   worklogDraftOffer(form);
+   if(form.dataset.draftDecision==='active'||form.dataset.act==='work_log_full_update')
+    fullWorkLogGapSchedule(form,true);
+  }
+ }
  const first=dialog?.querySelector('input:not([type="hidden"]),textarea,button[data-workflow-close]');
  first?.focus?.({preventScroll:true});
 }
