@@ -1141,3 +1141,12 @@ The existing V1G `Свободный →` navigator originally counted all zero-
 - **Required verification still NOT_RUN:** `npm run verify:source`, `npm test`, `npm run test:e2e` against disposable PostgreSQL, hosted source release, Android restore and real idempotent save/readback. These gates need an authorized isolated runner; the prior successful PR #13 CI covers only its original SHA.
 - **No release:** Leave current PR #13 Render TEST deployment and its tomorrow user acceptance undisturbed. Do not install this candidate before full gates and owner-safe TEST availability.
 
+
+### PR12 owner-authorized first real CI run — failure and focused repair (2026-11-18)
+
+- **GitHub Actions run:** https://github.com/VahramSargsyan/vbos-clean/actions/runs/44369462011, workflow pinned to exact previous candidate `cd60dda48e859dd40cf7c855304f42466bdffc3b`; one owner-authorized attempt only, **COMPLETED / FAILURE**. No automatic retries authorized.
+- **PASS:** checkout exact candidate, local disposable PostgreSQL 16 service startup, `npm run verify:source`. **FAIL:** `npm test` at `tests/worklog-drafts.test.mjs:140` (9 of 10 targeted draft tests passed).
+- **Root cause:** the three VM-based regression calls used lexical `ORDER_A` inside `vm.runInContext` without injecting it into the sandbox. Exact error: `ReferenceError: ORDER_A is not defined`. This is a test fixture scope defect, not evidence of a production WorkLog mutation failure.
+- **Focused repair 1:** pass `{ORDER_A}` to the existing harness `run(expression,extra)` for all three affected submit expressions; **no application source modified**. V8 syntax PASS; executable isolated helper reproduction of the rejected HTTP 409 retry, idempotency freeze and localStorage write failure PASS (mock level only).
+- **Post-repair gates:** `npm run verify:source` for new commit **NOT_RUN**, full `npm test` for new commit **NOT_RUN**, `npm run test:e2e` **NOT_RUN** (first CI skipped it after test failure). The first run's PASS does not apply to a different subsequent commit.
+- **Next:** repin manual-only workflow to this exact final candidate and obtain separate owner consent before one more GitHub Actions run. Keep PR #13 existing Render TEST LIVE, no Neon or PROD writes, no deployment while runtime acceptance pending.
