@@ -145,6 +145,16 @@ test('definite validation rejection unlocks correction; storage failure blocks u
  assert.equal(JSON.parse([...h.storage.values()][0]).pending,null);
  a.values.location.value='Исправлено';h.run('worklogDraftAutosave(testForm)');
  assert.equal(h.storage.size,1);
+ // A 409 stating the key was already committed must NOT allow a second payload.
+ const conflict=h.form();
+ h.run('worklogDraftOffer(testForm)',{testForm:conflict.f});
+ h.run('worklogDraftRestore(testForm)');
+ const samePayload=h.run('worklogDraftPrepareSubmit(testForm,{orderId:ORDER_A,dayDate:"2026-11-18"})');
+ assert.ok(samePayload);
+ h.run('worklogDraftSaveFailed(testForm,409,"Ключ записи уже использован с другими данными.")');
+ assert.equal(h.run('worklogDraftPending(testForm)'),true);
+ const replay=h.run('worklogDraftPrepareSubmit(testForm,{unexpected:"edit"})');
+ assert.equal(JSON.stringify(replay),JSON.stringify(samePayload));
  const noStorage=harness();noStorage.run('worklogDraftSetOwner(OWNER_A)',{OWNER_A});
  const f=noStorage.form();noStorage.run('worklogDraftOffer(testForm)',{testForm:f.f});
  noStorage.setWriteFailure(true);
