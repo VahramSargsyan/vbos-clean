@@ -253,7 +253,7 @@ test('WorkLog gap reason appears automatically only over 15 minutes and clears s
  await check();
  assert.equal(after.hidden,false,'successor gap prompts if >15');
  assert.equal(elements.gapReason.value,'materials','valid user selection preserved');
- assert.equal(elements.successorGapReason.required,false,'next row might already explain the gap');
+ assert.equal(elements.successorGapReason.required,true,'next WorkLog without explanation needs a reason');
  elements.startClock.value='08:59';elements.endClock.value='09:59';
  elements.successorGapReason.value='lunch';
  await check();
