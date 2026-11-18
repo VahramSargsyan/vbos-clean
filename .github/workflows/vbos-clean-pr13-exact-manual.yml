@@ -18,19 +18,19 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_DB: vbos_clean_pr13_disposable
+          POSTGRES_DB: vbos_mvp_ci
           POSTGRES_USER: ci
           POSTGRES_PASSWORD: pr13_synthetic_only
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U ci -d vbos_clean_pr13_disposable"
+          --health-cmd "pg_isready -U ci -d vbos_mvp_ci"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
     env:
       PR13_SHA: bdd3fba6d2e10c77075effea54c157aa9917d3fd
-      TEST_DATABASE_URL: postgresql://ci:pr13_synthetic_only@127.0.0.1:5432/vbos_clean_pr13_disposable
+      TEST_DATABASE_URL: postgresql://ci:pr13_synthetic_only@127.0.0.1:5432/vbos_mvp_ci
     steps:
       - name: Checkout the exact reviewed PR13 candidate
         uses: actions/checkout@v4
@@ -42,7 +42,7 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$PR13_SHA"
           case "$TEST_DATABASE_URL" in
-            postgresql://ci:pr13_synthetic_only@127.0.0.1:5432/vbos_clean_pr13_disposable) ;;
+            postgresql://ci:pr13_synthetic_only@127.0.0.1:5432/vbos_mvp_ci) ;;
             *) echo "Refusing non-disposable database target" >&2; exit 1 ;;
           esac
       - name: Prepare Node.js 22
