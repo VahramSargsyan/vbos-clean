@@ -251,7 +251,7 @@ async function state(){
  const workerSources=['mvp_workers','mvp_worker_order_assignments','mvp_manual_plan_workers','mvp_worker_days','mvp_worker_day_orders','mvp_worker_tasks'];
  const workerOrders=['created_at','assigned_at','assigned_at','day_date','linked_at','created_at'];
  const linked=await Promise.all(workerSources.map((name,i)=>pool.query('SELECT '+(name==='mvp_worker_days'?'w.*,w.day_date::text AS day_date':'w.*')+' FROM public.'+name+' AS w ORDER BY w.'+workerOrders[i]+' DESC,w.id LIMIT 501')));
- const workLogReferences=await pool.query('SELECT service_id,service_name,category,status FROM public.mvp_services_reference ORDER BY category,service_name,service_id LIMIT 201');
+ const workLogReferences=await pool.query('SELECT service_id,service_name,category,action_code,status FROM public.mvp_services_reference ORDER BY category,service_name,service_id LIMIT 201');
  const crmLinks=await pool.query('SELECT lead_id,client_id,object_id,source_kind,created_at FROM public.mvp_crm_lead_client_links ORDER BY created_at DESC,lead_id LIMIT 501');
  const crmIntakes=await pool.query('SELECT lead_id,client_id,source_kind,created_at FROM public.mvp_crm_lead_intakes ORDER BY created_at DESC,lead_id LIMIT 501');
  const leadTransfers=await pool.query('SELECT id,lead_id,recipient_name,master_id,reason,comment,transferred_at,source_system FROM public.mvp_crm_lead_transfers ORDER BY transferred_at DESC,id DESC LIMIT 501');
