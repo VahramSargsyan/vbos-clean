@@ -269,15 +269,15 @@ export async function workLogFullContextRead({pool,url,uuid,safeDate,AppError}){
  if(rows.rowCount>500)throw new AppError(409,'История рабочего дня требует постраничной проверки.');
  const same=rows.rows.filter(x=>affectsSamePerson(f,x));
  const start=clockMin(f.startClock),end=f.endClock?clockMin(f.endClock):start+1;
- let previous=0,following=null;
+ let previous=0,following=null,followingReason='';
  for(const x of same){
   const s=clockMin(clockText(x.start_clock)),e=clockMin(clockText(x.end_clock));
   if(s<end&&e>start)return {ready:false,overlap:true,source:'CANONICAL_WORKLOG_DETAIL_ONLY'};
   if(e<=start&&e>previous)previous=e;
-  if(s>=end&&(following===null||s<following))following=s;
+  if(s>=end&&(following===null||s<following)){following=s;followingReason=x.gap_reason||'';}
  }
  return {ready:true,overlap:false,gapMinutes:previous?start-previous:0,
   successorGapMinutes:f.endClock&&following!==null?following-end:0,
-  hasEndClock:Boolean(f.endClock),thresholdMinutes:TIME_GAP_MINUTES,
+  hasEndClock:Boolean(f.endClock),successorReasonPresent:Boolean(followingReason),thresholdMinutes:TIME_GAP_MINUTES,
   source:'CANONICAL_WORKLOG_DETAIL_ONLY',unrecordedLegacyClocks:'NOT_INFERRED'};
 }
