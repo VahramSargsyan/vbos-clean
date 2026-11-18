@@ -37,6 +37,7 @@ function workFlowModalOpen(kind,opts={}){
  host?.insertAdjacentHTML('beforeend',workFlowModalHtml());
  document.body.classList.add('work-flow-modal-open');
  const dialog=document.getElementById('workFlowBackdrop');
+ if(kind==='log')fullWorkLogGapSchedule(dialog?.querySelector('form[data-full-worklog-form]'),true);
  const first=dialog?.querySelector('input:not([type="hidden"]),textarea,button[data-workflow-close]');
  first?.focus?.({preventScroll:true});
 }
