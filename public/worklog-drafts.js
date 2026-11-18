@@ -145,10 +145,13 @@ function worklogDraftPrepareSubmit(form,payload){
  }
  worklogDraftLock(form,true);return frozen;
 }
-function worklogDraftSaveFailed(form,httpStatus){
+function worklogDraftSaveFailed(form,httpStatus,serverMessage=''){
  if(form?.dataset.act!=='work_log_full_create')return;
- // 400/409: definite server rejection and rollback. Network/5xx remains ambiguous.
- if(httpStatus===400||httpStatus===409){
+ // A key-already-used 409 signals a previously committed WorkLog: keep frozen
+ // bytes/key, do not let another edited payload reuse a potentially committed ID.
+ const isKeyConflict=httpStatus===409&&/Ключ (записи|запроса) уже использован/i.test(String(serverMessage));
+ // Other 400/409 errors are confirmed transaction rejections with no new WorkLog.
+ if(httpStatus===400||(httpStatus===409&&!isKeyConflict)){
   const key=worklogDraftKey(form),d=worklogDraftRead(key);
   if(worklogDraftValid(d,form)&&d.pending){
    d.pending=null;d.savedAt=new Date().toISOString();
