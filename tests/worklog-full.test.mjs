@@ -265,6 +265,63 @@ test('WorkLog gap reason appears automatically only over 15 minutes and clears s
  assert.equal(hint.hidden,true);
  assert.equal(calls.length,4);
 });
+
+test('Invalid ready gap context does not silently clear mandatory user reason',()=>{
+ const ctx=vm.createContext({console});
+ vm.runInContext(ui,ctx,{filename:'worklog-full-ui.js'});
+ const before={hidden:false},after={hidden:true};
+ const gap={value:'materials',required:true},successor={value:'waiting',required:false};
+ ctx.form={elements:{gapReason:gap,successorGapReason:successor},
+  querySelector:k=>({'[data-full-gap-before]':before,'[data-full-gap-after]':after}[k]||null)};
+ for(const candidate of [
+  {gapMinutes:null,successorGapMinutes:0,hasEndClock:false,thresholdMinutes:15},
+  {gapMinutes:16,successorGapMinutes:null,hasEndClock:true,thresholdMinutes:15},
+  {gapMinutes:16,successorGapMinutes:0,hasEndClock:null,thresholdMinutes:15},
+  {gapMinutes:'0',successorGapMinutes:0,hasEndClock:false,thresholdMinutes:15}
+ ]){
+  ctx.result=candidate;
+  assert.throws(()=>vm.runInContext('fullWorkLogGapApply(form,result)',ctx),/некорректный расчёт пауз/);
+  assert.equal(gap.value,'materials');
+  assert.equal(gap.required,true);
+  assert.equal(before.hidden,false);
+  assert.equal(successor.value,'waiting');
+ }
+});
+test('Gap check disregards an old response after a faster clock change',async()=>{
+ const timers=[],requests=[];
+ const wrap={hidden:true},hint={hidden:true,textContent:''};
+ const controls={orderId:{value:'11111111-1111-4111-8111-111111111111'},
+  dayDate:{value:'2026-11-18'},startClock:{value:'09:15'},endClock:{value:''},
+  performerMode:{value:'OWNER'},workerId:{value:''},
+  gapReason:{value:'',required:false},successorGapReason:{value:'',required:false}};
+ const form={dataset:{},elements:controls,isConnected:true,
+  hasAttribute:k=>k==='data-full-worklog-form',
+  querySelector:k=>({'[data-full-gap-before]':wrap,'[data-full-gap-feedback]':hint}[k]||null)};
+ const ctx=vm.createContext({console,URLSearchParams,
+  setTimeout:fn=>{timers.push(fn);return timers.length;},
+  clearTimeout(){},
+  api:url=>new Promise(resolve=>requests.push({url,resolve}))
+ });
+ vm.runInContext(ui,ctx,{filename:'worklog-full-ui.js'});ctx.form=form;
+ vm.runInContext('fullWorkLogGapSchedule(form,true)',ctx);
+ const oldRequest=timers.shift()();
+ controls.startClock.value='09:16';
+ vm.runInContext('fullWorkLogGapSchedule(form,true)',ctx);
+ const latestRequest=timers.shift()();
+ assert.equal(requests.length,2);
+ requests[1].resolve({ready:true,overlap:false,gapMinutes:16,successorGapMinutes:0,
+  thresholdMinutes:15,hasEndClock:false});
+ await latestRequest;
+ requests[0].resolve({ready:true,overlap:false,gapMinutes:15,successorGapMinutes:0,
+  thresholdMinutes:15,hasEndClock:false});
+ await oldRequest;
+ assert.equal(form.dataset.fullGapState,'ready');
+ assert.equal(wrap.hidden,false,'old 15-minute result must not mask new 16-minute gap');
+ assert.equal(controls.gapReason.required,true);
+ assert.match(requests[0].url,/startClock=09%3A15/);
+ assert.match(requests[1].url,/startClock=09%3A16/);
+});
+
 test('WorkLog preflight errors remain visible and retryable without hiding the real writer error',async()=>{
  const callbacks=[],feedback={hidden:true,textContent:''},retry={hidden:true},before={hidden:true};
  const elements={orderId:{value:'11111111-1111-4111-8111-111111111111'},dayDate:{value:'2026-11-18'},
