@@ -1,0 +1,64 @@
+name: PR10 current source full Node and disposable PostgreSQL E2E (one authorized run)
+on:
+  push:
+    branches:
+      - ci/pr10-my-work-e2e-final-once-20261118
+    paths:
+      - .github/workflows/pr10-my-work-e2e-final-once.yml
+permissions:
+  contents: read
+concurrency:
+  group: pr10-postgresql-e2e-final-once
+  cancel-in-progress: false
+jobs:
+  exact-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pr10_ci
+          POSTGRES_PASSWORD: pr10_ci_disposable_only
+          POSTGRES_DB: vbos_mvp_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pr10_ci -d vbos_mvp_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 6
+    env:
+      TEST_DATABASE_URL: postgresql://pr10_ci:pr10_ci_disposable_only@127.0.0.1:5432/vbos_mvp_ci
+      MVP_DATABASE_SSL: disable
+      NODE_ENV: test
+    steps:
+      - name: Checkout exact PR10 source (not CI branch)
+        uses: actions/checkout@v4
+        with:
+          ref: 04e8bfb221887c3f8c5d9fc594712dc9588f334c
+          persist-credentials: false
+      - name: Check source identity and clean checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "04e8bfb221887c3f8c5d9fc594712dc9588f334c"
+          test -z "$(git status --porcelain)"
+          echo "PR10_CURRENT_SHA_CHECKOUT_PASS 04e8bfb221887c3f8c5d9fc594712dc9588f334c"
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies (no lockfile in this repository)
+        run: npm install --no-audit --no-fund
+      - name: Verify source layout
+        run: npm run verify:source
+      - name: Full Node unit and UI test suite
+        run: npm test
+      - name: Full disposable PostgreSQL E2E suite
+        run: npm run test:e2e
+      - name: Final run receipt
+        shell: bash
+        run: |
+          echo "PR10_CURRENT_SHA_NODE_AND_POSTGRES_E2E_PASS"
+          git rev-parse HEAD
