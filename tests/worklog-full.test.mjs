@@ -184,6 +184,111 @@ test('WorkLog legacy taxonomy Category → Action → Service preserves canonica
  assert.doesNotMatch(ui,/name="taxCategory"|name="taxAction"/);
 });
 
+
+test('WorkLog idle gap UI uses the canonical read-only gap endpoint and does not move the writer',()=>{
+ assert.match(server,/\/api\/worklogs\/full-context/);
+ assert.match(writer,/endClock:url\.searchParams\.get\('endClock'\)\?/);
+ assert.match(writer,/const exceptId=url\.searchParams\.get\('recordId'\)/);
+ assert.match(writer,/work_log_id<>\$2/);
+ assert.match(ui,/fullWorkLogGapSchedule/);
+ assert.match(ui,/data-full-gap-before/);
+ assert.match(ui,/data-full-gap-after/);
+ assert.match(ui,/Повторить проверку пауз/);
+ assert.match(ui,/fullWorkLogGapReset\(form\)/);
+ assert.match(app,/fullWorkLogGapSchedule\(full\)/);
+ assert.match(get('public/workday-legacy-ui.js'),/fullWorkLogGapSchedule\(dialog/);
+ const beforeIndex=ui.indexOf('data-full-gap-before'),advancedIndex=ui.indexOf('Дополнительно: детали');
+ assert.ok(beforeIndex>0&&beforeIndex<advancedIndex,'Gap reason must be immediately below clocks, not hidden in advanced');
+ assert.equal((ui.match(/select\('gapReason',/g)||[]).length,1,'One gapReason field only');
+ assert.equal((ui.match(/select\('successorGapReason',/g)||[]).length,1,'One successor reason field only');
+});
+test('WorkLog gap reason appears automatically only over 15 minutes and clears stale reason',async()=>{
+ const queue=[],calls=[],contexts=[
+  {ready:true,overlap:false,gapMinutes:15,thresholdMinutes:15,hasEndClock:false},
+  {ready:true,overlap:false,gapMinutes:16,thresholdMinutes:15,hasEndClock:false},
+  {ready:true,overlap:false,gapMinutes:16,successorGapMinutes:22,thresholdMinutes:15,hasEndClock:true},
+  {ready:true,overlap:false,gapMinutes:0,successorGapMinutes:0,thresholdMinutes:15,hasEndClock:true}
+ ];
+ const mk=()=>({hidden:true,textContent:''});
+ const before=mk(),after=mk(),hint=mk(),retry=mk(),minutes=mk(),successor=mk();
+ const elements={
+  orderId:{value:'11111111-1111-4111-8111-111111111111'},
+  dayDate:{value:'2026-11-18'},startClock:{value:'09:00'},endClock:{value:''},
+  performerMode:{value:'OWNER'},workerId:{value:''},
+  gapReason:{value:'waiting',required:false},successorGapReason:{value:'',required:false}
+ };
+ const lookups={
+  '[data-full-gap-before]':before,'[data-full-gap-after]':after,
+  '[data-full-gap-feedback]':hint,'[data-full-gap-retry]':retry,
+  '[data-full-gap-minutes]':minutes,'[data-full-successor-gap-minutes]':successor
+ };
+ const form={elements,dataset:{},isConnected:true,
+  hasAttribute:k=>k==='data-full-worklog-form',
+  querySelector:k=>lookups[k]||null};
+ const sandbox=vm.createContext({console,URLSearchParams,
+  setTimeout(fn){queue.push(fn);return queue.length;},clearTimeout(){},
+  api:async(url)=>{calls.push(url);return contexts.shift();}
+ });
+ vm.runInContext(ui,sandbox,{filename:'worklog-full-ui.js'});
+ sandbox.form=form;
+ async function check(){
+  vm.runInContext('fullWorkLogGapSchedule(form,true)',sandbox);
+  assert.equal(form.dataset.fullGapState,'pending');
+  await queue.shift()();
+  assert.equal(form.dataset.fullGapState,'ready');
+ }
+ await check();
+ assert.equal(before.hidden,true,'15 minutes must remain hidden');
+ assert.equal(elements.gapReason.required,false);
+ assert.equal(elements.gapReason.value,'','no stale gap reason');
+ assert.ok(!calls[0].includes('endClock='),'advisory query must work before entering end time');
+ elements.startClock.value='09:16';
+ await check();
+ assert.equal(before.hidden,false,'16-minute pause appears immediately');
+ assert.equal(elements.gapReason.required,true);
+ assert.match(minutes.textContent,/16 мин/);
+ assert.equal(after.hidden,true,'no successor check until end clock');
+ elements.gapReason.value='materials';
+ elements.endClock.value='10:00';
+ await check();
+ assert.equal(after.hidden,false,'successor gap prompts if >15');
+ assert.equal(elements.gapReason.value,'materials','valid user selection preserved');
+ assert.equal(elements.successorGapReason.required,false,'next row might already explain the gap');
+ elements.startClock.value='08:59';elements.endClock.value='09:59';
+ elements.successorGapReason.value='lunch';
+ await check();
+ assert.equal(before.hidden,true);
+ assert.equal(after.hidden,true);
+ assert.equal(elements.gapReason.value,'');
+ assert.equal(elements.successorGapReason.value,'');
+ assert.equal(hint.hidden,true);
+ assert.equal(calls.length,4);
+});
+test('WorkLog preflight errors remain visible and retryable without hiding the real writer error',async()=>{
+ const callbacks=[],feedback={hidden:true,textContent:''},retry={hidden:true},before={hidden:true};
+ const elements={orderId:{value:'11111111-1111-4111-8111-111111111111'},dayDate:{value:'2026-11-18'},
+  startClock:{value:'09:00'},endClock:{value:''},performerMode:{value:'OWNER'},workerId:{value:''},
+  gapReason:{value:'materials',required:false},successorGapReason:{value:'',required:false}};
+ const form={elements,dataset:{},isConnected:true,
+  hasAttribute:k=>k==='data-full-worklog-form',
+  querySelector:k=>({'[data-full-gap-feedback]':feedback,'[data-full-gap-retry]':retry,
+   '[data-full-gap-before]':before}[k]||null)};
+ const sandbox=vm.createContext({console,URLSearchParams,
+  setTimeout:fn=>{callbacks.push(fn);return 1;},clearTimeout(){},
+  api:async()=>{throw Error('offline');}
+ });
+ vm.runInContext(ui,sandbox,{filename:'worklog-full-ui.js'});
+ sandbox.form=form;
+ vm.runInContext('fullWorkLogGapSchedule(form,true)',sandbox);
+ await callbacks.shift()();
+ assert.equal(form.dataset.fullGapState,'error');
+ assert.equal(feedback.hidden,false);
+ assert.equal(retry.hidden,false);
+ assert.match(feedback.textContent,/offline/);
+ assert.equal(elements.gapReason.value,'materials','failure must not erase selected reason');
+ assert.ok(vm.runInContext('fullWorkLogGapSignature(form)',sandbox).includes('startClock=09%3A00'));
+});
+
 const presenceUi=get('public/presence.js');
 test('My Work shows arrival and departure above secondary details with canonical object and order IDs',()=>{
  const day='2026-11-18',id='11111111-1111-4111-8111-111111111111',objectId='22222222-2222-4222-8222-222222222222';
