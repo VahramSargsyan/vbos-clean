@@ -1,0 +1,59 @@
+# WorkLog draft recovery integration: owner-approved workflow REGISTRATION ONLY.
+# Runs REQUIRE a separate explicit permission for each invocation.
+# Manual only, exact candidate; no Render/Neon/PROD access or secret usage.
+name: VBOS Clean PR12-on-PR13 exact manual verification
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: vbos-clean-pr12-on-pr13-exact
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: vbos_mvp_ci
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: pr12_synthetic_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d vbos_mvp_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      INTEGRATION_SHA: cd60dda48e859dd40cf7c855304f42466bdffc3b
+      TEST_DATABASE_URL: postgresql://ci:pr12_synthetic_only@127.0.0.1:5432/vbos_mvp_ci
+    steps:
+      - name: Checkout exact bounded integration candidate
+        uses: actions/checkout@v4
+        with:
+          ref: cd60dda48e859dd40cf7c855304f42466bdffc3b
+          persist-credentials: false
+      - name: Verify candidate identity and disposable PostgreSQL target
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$INTEGRATION_SHA"
+          case "$TEST_DATABASE_URL" in
+            postgresql://ci:pr12_synthetic_only@127.0.0.1:5432/vbos_mvp_ci) ;;
+            *) echo "Refusing a non-disposable database" >&2; exit 1 ;;
+          esac
+      - name: Prepare Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install existing runtime dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Verify source
+        run: npm run verify:source
+      - name: Run full Node test suite including draft regressions
+        run: npm test
+      - name: Run real isolated PostgreSQL E2E
+        run: npm run test:e2e
