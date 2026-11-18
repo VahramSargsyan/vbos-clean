@@ -1,0 +1,147 @@
+name: PR11 guarded exact Render TEST release (one owner-authorized run)
+on:
+  push:
+    branches:
+      - ci/pr11-render-exact-once-20261118
+    paths:
+      - .github/workflows/pr11-render-exact-once.yml
+permissions:
+  contents: read
+concurrency:
+  group: pr11-render-test-exact-once-20261118
+  cancel-in-progress: false
+jobs:
+  guarded-release:
+    if: "${{ github.event.head_commit.message == 'ci(pr11): guarded exact Render TEST release one-shot' }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+    steps:
+      - name: Exact SHA preflight, guarded Render TEST deploy and rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          const source='491808e1556fbd05759c5016c326e23c5843506e', mainSHA='e1c3c15435905ef91c00b99bf4687cb1ee7935cc', oldSHA='04e8bfb221887c3f8c5d9fc594712dc9588f334c';
+          const srv='srv-dbkvfh2jnfac73a31nv0',site='https://vbos-clean-mvp-2026.onrender.com';
+          const key=(process.env.RENDER_API_KEY||'').trim(),hookSecret=(process.env.RENDER_DEPLOY_HOOK_URL||'').trim();
+          if(!key&&!hookSecret){console.error('BLOCKED_NO_RENDER_API_KEY_OR_DEPLOY_HOOK_GITHUB_SECRET; NO_RENDER_MUTATION');process.exit(78);}
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function req(url,options={}){return fetch(url,{...options,signal:AbortSignal.timeout(50000)});}
+          async function gh(path){
+           const r=await req('https://api.github.com/repos/VahramSargsyan/vbos-clean/'+path,{headers:{Accept:'application/vnd.github+json','User-Agent':'vbos-pr11-release'}});
+           if(!r.ok)throw Error('GITHUB_HTTP_'+r.status);return r.json();
+          }
+          async function raw(sha){
+           const r=await req('https://raw.githubusercontent.com/VahramSargsyan/vbos-clean/'+sha+'/public/worklog-full-ui.js');
+           if(!r.ok)throw Error('GITHUB_RAW_HTTP_'+r.status);return r.text();
+          }
+          async function api(path,method='GET',body){
+           if(!key)throw Error('RENDER_API_KEY_UNAVAILABLE');
+           const r=await req('https://api.render.com/v1'+path,{method,headers:{Authorization:'Bearer '+key,Accept:'application/json',...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+           if(!r.ok)throw Error('RENDER_API_'+method+'_HTTP_'+r.status);
+           try{return await r.json();}catch{throw Error('RENDER_API_INVALID_JSON');}
+          }
+          const unwrap=x=>x?.deploy||x;
+          async function renderState(){
+           const rows=(await api('/services/'+srv+'/deploys?limit=10'));
+           if(!Array.isArray(rows))throw Error('RENDER_DEPLOY_LIST_INVALID');
+           const ds=rows.map(unwrap),live=ds.filter(d=>d.status==='live');
+           if(live.length!==1)throw Error('RENDER_LIVE_COUNT_'+live.length);
+           return {live:live[0],pending:ds.filter(d=>['created','queued','build_in_progress','update_in_progress','pre_deploy_in_progress'].includes(d.status))};
+          }
+          function hookUrl(sha){
+           let url;try{url=new URL(hookSecret);}catch{throw Error('INVALID_RENDER_HOOK_URL');}
+           if(url.protocol!=='https:'||url.hostname!=='api.render.com'||!url.pathname.endsWith('/'+srv)||!url.searchParams.get('key'))
+            throw Error('RENDER_HOOK_TARGET_INVALID');
+           url.searchParams.set('ref',sha);return url.href;
+          }
+          async function asset(){
+           const r=await req(site+'/worklog-full-ui.js?ci='+Date.now(),{headers:{'Cache-Control':'no-cache'}});
+           if(!r.ok)throw Error('RENDER_WORKLOG_STATIC_HTTP_'+r.status);
+           return r.text();
+          }
+          async function waitAsset(expected){
+           for(let i=0;i<100;i++){
+            try{if(await asset()===expected)return;}catch(e){if(i===99)throw e;}
+            await sleep(7000);
+           }
+           throw Error('RENDER_EXACT_STATIC_ASSET_TIMEOUT');
+          }
+          async function createDeploy(sha){
+           let d;
+           if(key)d=unwrap(await api('/services/'+srv+'/deploys','POST',{commitId:sha,clearCache:'do_not_clear'}));
+           else{
+            const r=await req(hookUrl(sha),{method:'POST'});
+            if(r.status!==200)throw Error('RENDER_HOOK_HTTP_'+r.status);
+            try{d=unwrap(await r.json());}catch{throw Error('RENDER_HOOK_RESPONSE_INVALID');}
+           }
+           if(!d?.id?.startsWith('dep-'))throw Error('RENDER_DEPLOY_ID_INVALID');
+           console.log('RENDER_DEPLOY_CREATED id='+d.id+' sha='+sha+' method='+(key?'api':'hook'));
+           return d.id;
+          }
+          async function waitDeploy(id,sha){
+           if(!key)return;
+           for(let i=0;i<110;i++){
+            const d=unwrap(await api('/services/'+srv+'/deploys/'+id));
+            if(d?.commit?.id&&d.commit.id!==sha)throw Error('RENDER_WRONG_COMMIT');
+            if(d.status==='live'){if(d.commit?.id!==sha)throw Error('RENDER_LIVE_COMMIT_UNKNOWN');return;}
+            if(['build_failed','update_failed','pre_deploy_failed','deactivated','canceled','cancelled'].includes(d.status))
+             throw Error('RENDER_DEPLOY_FAILED_'+d.status);
+            await sleep(8000);
+           }
+           throw Error('RENDER_DEPLOY_TIMEOUT');
+          }
+          let mayHaveWritten=false,newId='',newSource='',oldSource='';
+          try{
+           if(!key)hookUrl(source);
+           const [pr,main]=await Promise.all([gh('pulls/11'),gh('branches/main')]);
+           if(pr.state!=='open'||pr.head.sha!==source||pr.base.sha!==mainSHA||main.commit.sha!==mainSHA)
+            throw Error('GITHUB_PR_OR_MAIN_CHANGED');
+           [newSource,oldSource]=await Promise.all([raw(source),raw(oldSHA)]);
+           if(!newSource.includes('fullWorkLogTaxPreselect')||!newSource.includes('data-full-worklog-tax-category')||
+              oldSource.includes('fullWorkLogTaxPreselect'))throw Error('EXACT_WORKLOG_SOURCE_MISMATCH');
+           if(key){
+            const service=await api('/services/'+srv);
+            if(service.id!==srv||service.type!=='web_service'||service.repo!=='https://github.com/VahramSargsyan/vbos-clean'||
+               service.branch!=='main'||service.autoDeploy!=='no'||service.serviceDetails?.url!==site)
+             throw Error('RENDER_SERVICE_CONFIG_DRIFT');
+            const s=await renderState();
+            if(s.live.commit?.id!==oldSHA||s.pending.length)throw Error('RENDER_TEST_ALREADY_CHANGED_OR_DEPLOYING');
+           }
+           if(await asset()!==oldSource)throw Error('RENDER_HOSTED_BASELINE_CHANGED');
+           const [pr2,main2]=await Promise.all([gh('pulls/11'),gh('branches/main')]);
+           if(pr2.head.sha!==source||main2.commit.sha!==mainSHA)throw Error('GITHUB_SOURCE_DRIFT_BEFORE_DEPLOY');
+           console.log('PR11_RENDER_EXACT_PREFLIGHT_PASS source='+source+' baseline='+oldSHA);
+           mayHaveWritten=true;
+           newId=await createDeploy(source);
+           await waitDeploy(newId,source);
+           await waitAsset(newSource);
+           if(key){
+            const state=await renderState();
+            if(state.live.id!==newId||state.live.commit?.id!==source)throw Error('RENDER_POSTFLIGHT_SHA_CHANGED');
+           }
+           console.log('PR11_RENDER_TEST_EXACT_SHA_STATIC_PASS deploy='+newId+' commit='+source);
+           console.log('AUTHENTICATED_ANDROID_SMOKE_NOT_RUN');
+          }catch(e){
+           console.error('PR11_RENDER_TEST_BLOCKED '+String(e?.message||e));
+           if(mayHaveWritten){
+            let safe=true;
+            try{
+             if(key){const x=await renderState();if(![source,oldSHA].includes(x.live.commit?.id))safe=false;}
+             else{const x=await asset();if(x!==newSource&&x!==oldSource)safe=false;}
+            }catch(err){safe=false;console.error('ROLLBACK_PREFLIGHT_UNCONFIRMED '+String(err?.message||err));}
+            if(safe){
+             try{
+              const back=await createDeploy(oldSHA);
+              await waitDeploy(back,oldSHA);
+              await waitAsset(oldSource);
+              console.log('PR11_RENDER_ROLLBACK_EXACT_SHA_PASS deploy='+back+' sha='+oldSHA);
+             }catch(err){console.error('P0_RENDER_ROLLBACK_UNCONFIRMED '+String(err?.message||err));}
+            }else console.error('P0_RENDER_UNKNOWN_NO_BLIND_ROLLBACK');
+           }else console.error('NO_RENDER_MUTATION');
+           process.exitCode=1;
+          }
+          JS
