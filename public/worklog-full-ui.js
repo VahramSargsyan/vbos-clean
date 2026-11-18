@@ -142,6 +142,8 @@ function fullWorkLogGapApply(form,context){
     threshold!==FULL_WORKLOG_GAP_LIMIT||typeof context?.hasEndClock!=='boolean')
   throw Error('Сервер вернул некорректный расчёт пауз.');
  const needsBefore=before>threshold,needsAfter=Boolean(context?.hasEndClock)&&after>threshold;
+ const originalBefore=form.elements?.gapReason?.value;
+ const originalAfter=form.elements?.successorGapReason?.value;
  const beforeWrap=form.querySelector('[data-full-gap-before]'),
   afterWrap=form.querySelector('[data-full-gap-after]');
  if(beforeWrap)beforeWrap.hidden=!needsBefore;
@@ -162,6 +164,12 @@ function fullWorkLogGapApply(form,context){
  const feedback=form.querySelector('[data-full-gap-feedback]');
  if(feedback){feedback.hidden=true;feedback.textContent='';}
  const retry=form.querySelector('[data-full-gap-retry]');if(retry)retry.hidden=true;
+ // Canonical gap rechecks can clear obsolete reasons programmatically.
+ // Persist that correction so a reload cannot resurrect invalid selections.
+ if(typeof worklogDraftAutosave==='function'&&form.dataset?.draftDecision==='active'&&
+   (originalBefore!==form.elements?.gapReason?.value||
+    originalAfter!==form.elements?.successorGapReason?.value))
+  worklogDraftAutosave(form);
 }
 function fullWorkLogGapSchedule(form,immediate=false,force=false){
  if(!form?.dataset||!form.hasAttribute?.('data-full-worklog-form'))return;
@@ -354,6 +362,9 @@ function fullWorkLogForm(orderId,date,record){
   '<form class="grid" novalidate data-full-worklog-form data-act="'+(edit?'work_log_full_update':'work_log_full_create')+'">'+
    (edit?'':'<button type="button" data-full-worklog-copy class="compact">Повторить предыдущую работу</button>')+base+
    '<button type="submit" class="primary wide">'+(edit?'Сохранить исправления':'Сохранить работу')+'</button>'+receipt+
+   (edit?'':'<div class="full-worklog-draft-tools"><p class="muted small" role="status" aria-live="polite" data-full-worklog-draft-status></p>'+
+    '<button type="button" class="compact" data-full-worklog-draft-restore hidden>Восстановить черновик</button>'+
+    '<button type="button" class="compact" data-full-worklog-draft-delete hidden>Удалить черновик</button></div>')+
    '<p class="full-worklog-feedback" data-full-worklog-feedback role="status" aria-live="polite"></p>'+
   '</form></details>';
 }
