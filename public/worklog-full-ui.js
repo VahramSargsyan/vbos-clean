@@ -13,6 +13,72 @@ const FULL_WORKLOG_GAPS=[
  ['tool','Инструмент'],['chasing','Штроба / подготовка'],['waiting','Ожидание'],['call','Звонок'],
  ['helper','Помощник'],['project','Проект / чертёж'],['reschedule','Перенос'],
  ['coordination','Согласование'],['travel','Дорога'],['coffee','Кофе'],['other','Другое']];
+
+/* WorkLog v1.7.32 legacy taxonomy UI: only serviceId enters the existing writer. */
+const FULL_WORKLOG_ACTIONS=Object.freeze({
+ MOUNT:'Монтаж',INSTALL:'Установка',DISMANTLE:'Демонтаж',CONNECT:'Подключение',
+ REPAIR:'Ремонт',DIAGNOSE:'Диагностика',PREPARE:'Подготовка',CLEANUP:'Уборка',
+ LOGISTICS:'Перенос / подъём',OTHER:'Другое'
+});
+function fullWorkLogTaxCode(row){return String(row?.action_code||'').trim().toUpperCase()||'__UNRESOLVED__';}
+function fullWorkLogTaxRows(selectedId=''){
+ const id=String(selectedId||'');
+ return (data?.workLogServiceReferences||[]).filter(row=>row.status==='active'||String(row.service_id)===id);
+}
+function fullWorkLogTaxCategories(rows){
+ return [...new Set(rows.map(row=>String(row.category||'').trim()).filter(Boolean))]
+  .sort((a,b)=>a.localeCompare(b,'ru')).map(value=>[value,value]);
+}
+function fullWorkLogTaxActions(rows,category){
+ if(!category)return [];
+ const found=new Set(rows.filter(row=>String(row.category||'').trim()===category).map(fullWorkLogTaxCode));
+ const order=[...Object.keys(FULL_WORKLOG_ACTIONS),...found];
+ return [...new Set(order)].filter(code=>found.has(code)).map(code=>[
+  code,FULL_WORKLOG_ACTIONS[code]||(code==='__UNRESOLVED__'?'Не классифицировано (legacy)':code)]);
+}
+function fullWorkLogTaxServices(rows,category,action,selectedId){
+ const id=String(selectedId||'');
+ const options=rows.filter(row=>(
+  category&&action&&String(row.category||'').trim()===category&&fullWorkLogTaxCode(row)===action
+ )||(id&&String(row.service_id)===id));
+ options.sort((a,b)=>String(a.service_name||'').localeCompare(String(b.service_name||''),'ru'));
+ return fullWorkLogOptions(options.map(row=>[
+  String(row.service_id),String(row.service_name||row.service_id)+(row.status==='active'?'':' · Архив')
+ ]),id,'Не связывать с каталогом');
+}
+function fullWorkLogTaxSync(form,changed='service'){
+ if(!form)return;
+ const catEl=form.querySelector('[data-full-worklog-tax-category]');
+ const actEl=form.querySelector('[data-full-worklog-tax-action]');
+ const svcEl=form.elements?.serviceId;
+ if(!catEl||!actEl||!svcEl)return;
+ let cat=catEl.value,act=actEl.value,id=String(svcEl.value||'');
+ const rows=fullWorkLogTaxRows(id);
+ if(changed==='category'){act='';id='';}
+ else if(changed==='action')id='';
+ else if(changed==='service'&&id){
+  const item=rows.find(row=>String(row.service_id)===id);
+  if(item){cat=String(item.category||'').trim();act=fullWorkLogTaxCode(item);}
+ }
+ const cats=fullWorkLogTaxCategories(rows);
+ if(!cats.some(row=>row[0]===cat)){cat='';act='';id='';}
+ catEl.innerHTML=fullWorkLogOptions(cats,cat,'Не связывать с каталогом');
+ catEl.value=cat;
+ const acts=fullWorkLogTaxActions(rows,cat);
+ if(!acts.some(row=>row[0]===act)){act='';id='';}
+ actEl.innerHTML=fullWorkLogOptions(acts,act,cat?'Выбери вид работ':'Сначала выбери категорию');
+ actEl.value=act;actEl.disabled=!cat;
+ svcEl.innerHTML=fullWorkLogTaxServices(rows,cat,act,id);
+ svcEl.value=id;
+}
+if(typeof document!=='undefined')document.addEventListener('change',event=>{
+ const target=event.target;
+ if(!target?.matches?.('[data-full-worklog-tax-category], [data-full-worklog-tax-action], form[data-full-worklog-form] [name="serviceId"]'))return;
+ const form=target.closest('form[data-full-worklog-form]');if(!form)return;
+ fullWorkLogTaxSync(form,target.matches('[data-full-worklog-tax-category]')?'category':
+  target.matches('[data-full-worklog-tax-action]')?'action':'service');
+},true);
+
 // Acknowledged save receipt persists across refresh(), which replaces the form DOM.
 // Never clear entered values before the server explicitly returns saved:true.
 let fullWorkLogLastSaved=null;
@@ -77,6 +143,7 @@ function fullWorkLogSaveConfirmed(form,result,type){
    const el=form.elements?.namedItem?.(name);
    if(el)el.value='';
   }
+  fullWorkLogTaxSync(form,'service');
   fullWorkLogFormUpdated(form);
  }
  fullWorkLogStatus(form,text,'success');
@@ -88,8 +155,10 @@ function fullWorkLogForm(orderId,date,record){
  const time=v=>String(v||'').slice(0,5);
  const workers=(data?.workers||[]).filter(w=>w.status==='active'||w.id===d?.worker_id)
   .map(w=>[w.id,w.name||w.id]);
- const references=(data?.workLogServiceReferences||[]).filter(s=>s.status==='active'||s.service_id===d?.service_id)
-  .map(s=>[s.service_id,(s.category?s.category+' · ':'')+s.service_name]);
+ const references=fullWorkLogTaxRows(value('service_id'));
+ const selectedReference=references.find(s=>String(s.service_id)===String(value('service_id')))||null;
+ const selectedCategory=String(selectedReference?.category||'').trim();
+ const selectedAction=selectedReference?fullWorkLogTaxCode(selectedReference):'';
  const mode=value('performer_mode','OWNER');
  const start=time(value('start_clock',currentYerevanTime()));
  const day=String(edit?record.day_date||date:date).slice(0,10);
@@ -103,9 +172,16 @@ function fullWorkLogForm(orderId,date,record){
    select('workerId','Помощник',fullWorkLogOptions(workers,value('worker_id'),'Выбери назначенного помощника'),false)+'</div>'+
   editText('startClock','Начало',start,'time','required')+
   editText('endClock','Конец',time(value('end_clock')),'time','required')+
+  '<label>Категория<select data-full-worklog-tax-category>'+
+   fullWorkLogOptions(fullWorkLogTaxCategories(references),selectedCategory,'Не связывать с каталогом')+
+  '</select></label>'+
+  '<label>Вид работ<select data-full-worklog-tax-action'+(selectedCategory?'':' disabled')+'>'+
+   fullWorkLogOptions(fullWorkLogTaxActions(references,selectedCategory),selectedAction,
+    selectedCategory?'Выбери вид работ':'Сначала выбери категорию')+
+  '</select></label>'+
+  select('serviceId','Услуга',fullWorkLogTaxServices(references,selectedCategory,selectedAction,value('service_id')),false)+
   editText('location','Зона / помещение',value('location'),'text','required maxlength="300" placeholder="Кухня, подвал, ванная…"')+
-  select('serviceId','Услуга из каталога',fullWorkLogOptions(references,value('service_id'),'Не связывать с каталогом'),false)+
-  editText('workType','Вид работы',value('work_type',record?.title||''),'text','required maxlength="180" placeholder="Монтаж труб, замена стояка…"')+
+  editText('workType','Фактическая работа',value('work_type',record?.title||''),'text','required maxlength="180" placeholder="Что сделал: монтаж труб, замена стояка…"')+
   editText('quantity','Результат: количество',record?.quantity??'','number','min="0" step="0.001" inputmode="decimal"')+
   select('unit','Единица',fullWorkLogOptions([
    ['','Не выбрано'],['шт','шт'],['точки','точки'],['м','м'],['м²','м²'],
@@ -180,6 +256,7 @@ function fullWorkLogCopyPrevious(form,orderLogs){
  if(form.elements.lossMinutes)form.elements.lossMinutes.value='0';
  if(form.elements.reworkMinutes)form.elements.reworkMinutes.value='0';
  if(form.elements.reworkStatus)form.elements.reworkStatus.value='no';
+ fullWorkLogTaxSync(form,'service');
  fullWorkLogFormUpdated(form);
  message('Контекст предыдущей работы перенесён. Укажи новые время окончания и результат.');
 }
