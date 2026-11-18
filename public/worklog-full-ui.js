@@ -214,7 +214,7 @@ function fullWorkLogForm(orderId,date,record){
  return '<details class="card" data-full-worklog-panel'+(edit&&workFlowModalState.kind!=='log'?'':' open')+'>'+
   '<summary>'+esc(header)+'</summary>'+
   '<form class="grid" novalidate data-full-worklog-form data-act="'+(edit?'work_log_full_update':'work_log_full_create')+'">'+
-   base+(edit?'':'<button type="button" data-full-worklog-copy class="compact">Повторить предыдущую работу</button>')+
+   (edit?'':'<button type="button" data-full-worklog-copy class="compact">Повторить предыдущую работу</button>')+base+
    '<button type="submit" class="primary wide">'+(edit?'Сохранить исправления':'Сохранить работу')+'</button>'+receipt+
    '<p class="full-worklog-feedback" data-full-worklog-feedback role="status" aria-live="polite"></p>'+
   '</form></details>';
