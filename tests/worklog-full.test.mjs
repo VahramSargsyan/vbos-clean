@@ -64,7 +64,9 @@ test('Mobile WorkLog save has explicit validation, pending state, durable succes
  assert.match(ui,/role="status"/);
  assert.match(ui,/fullWorkLogLastSaved/);
  assert.match(app,/fullWorkLogSaveConfirmed\(form,out,type\)/);
- assert.match(app,/if\(isFullLog\)fullWorkLogStatus\(form,'Не сохранено:/);
+ assert.match(app,/if\(isFullLog\)\{\s*worklogDraftSaveFailed\(form,e\.status,e\.message\);\s*fullWorkLogStatus\(form,'Не сохранено:/);
+ assert.match(app,/worklogDraftAcknowledge\(form\);\s*fullWorkLogSaveConfirmed\(form,out,type\)/);
+ assert.match(app,/const frozen=worklogDraftPrepareSubmit\(f,payload\)/);
  const acknowledge=app.indexOf("if(!out.saved)throw Error('Сервер не подтвердил сохранение.');");
  const clear=app.indexOf('fullWorkLogSaveConfirmed(form,out,type)');
  assert.ok(acknowledge>=0&&clear>acknowledge,'Never clear form before server acknowledged');
@@ -197,7 +199,13 @@ test('WorkLog idle gap UI uses the canonical read-only gap endpoint and does not
  assert.match(ui,/Повторить проверку пауз/);
  assert.match(ui,/fullWorkLogGapReset\(form\)/);
  assert.match(app,/fullWorkLogGapSchedule\(full\)/);
- assert.match(get('public/workday-legacy-ui.js'),/fullWorkLogGapSchedule\(dialog/);
+ const modalSource=get('public/workday-legacy-ui.js');
+ assert.match(modalSource,/worklogDraftOffer\(form\)/);
+ assert.match(modalSource,/fullWorkLogGapSchedule\(form,true\)/);
+ assert.match(modalSource,/form\.dataset\.draftDecision==='active'\|\|form\.dataset\.act==='work_log_full_update'/);
+ assert.ok(modalSource.indexOf('worklogDraftOffer(form)')<
+  modalSource.indexOf('fullWorkLogGapSchedule(form,true)'),
+  'Draft must be offered before canonical gap advisory check');
  const beforeIndex=ui.indexOf('data-full-gap-before'),advancedIndex=ui.indexOf('Дополнительно: детали');
  assert.ok(beforeIndex>0&&beforeIndex<advancedIndex,'Gap reason must be immediately below clocks, not hidden in advanced');
  assert.equal((ui.match(/select\('gapReason',/g)||[]).length,1,'One gapReason field only');
