@@ -135,10 +135,12 @@ function fullWorkLogGapReset(form){
  if(form.elements?.successorGapReason)form.elements.successorGapReason.required=false;
 }
 function fullWorkLogGapApply(form,context){
- const before=Number(context?.gapMinutes),after=Number(context?.successorGapMinutes||0);
- const threshold=Number(context?.thresholdMinutes||FULL_WORKLOG_GAP_LIMIT);
+ // Reject malformed success responses before mutating form fields: Number(null) is zero.
+ const before=context?.gapMinutes,after=context?.successorGapMinutes;
+ const threshold=context?.thresholdMinutes;
  if(!Number.isFinite(before)||before<0||!Number.isFinite(after)||after<0||
-    threshold!==FULL_WORKLOG_GAP_LIMIT)throw Error('Сервер вернул некорректный расчёт пауз.');
+    threshold!==FULL_WORKLOG_GAP_LIMIT||typeof context?.hasEndClock!=='boolean')
+  throw Error('Сервер вернул некорректный расчёт пауз.');
  const needsBefore=before>threshold,needsAfter=Boolean(context?.hasEndClock)&&after>threshold;
  const beforeWrap=form.querySelector('[data-full-gap-before]'),
   afterWrap=form.querySelector('[data-full-gap-after]');
