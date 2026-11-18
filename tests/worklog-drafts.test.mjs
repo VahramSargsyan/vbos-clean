@@ -276,3 +276,39 @@ test('input and change both autosave while PR13 gap recheck stays connected',()=
  assert.match(uiSource,/fullWorkLogGapSchedule/);
  assert.match(source,/worklogDraftSetOwner\(''\)/);
 });
+
+
+test('draft recovery is reinitialized after My Work DOM replacement, before gap advisory',()=>{
+ const begin=appSource.indexOf(" if(tab==='myWork'&&workFlowModalState.kind){");
+ const end=appSource.indexOf(" if(tab==='crm'&&!crmDetailId",begin);
+ assert.ok(begin>0&&end>begin,'render must contain a bounded My Work modal rebuild');
+ const block=appSource.slice(begin,end);
+ function check({act='work_log_full_create',decision='active',hasForm=true}={}){
+  const operations=[],form={dataset:{act,draftDecision:''}};
+  const backdrop={querySelector(selector){
+   assert.equal(selector,'form[data-full-worklog-form]');
+   operations.push('find');return hasForm?form:null;
+  }};
+  const container={insertAdjacentHTML(where,html){
+   assert.equal(where,'beforeend');assert.equal(html,'<modal/>');
+   operations.push('insert');
+  }};
+  const context={
+   tab:'myWork',workFlowModalState:{kind:'log'},$:(selector)=>{
+    assert.equal(selector,'#content');return container;
+   },workFlowModalHtml:()=>'<modal/>',
+   document:{getElementById:(id)=>{assert.equal(id,'workFlowBackdrop');return backdrop;}},
+   worklogDraftOffer(value){assert.equal(value,form);operations.push('offer');form.dataset.draftDecision=decision;},
+   fullWorkLogGapSchedule(value,now){assert.equal(value,form);assert.equal(now,true);operations.push('gap');}
+  };
+  vm.runInNewContext(block,context,{filename:'app-render-draft-init.js'});
+  return operations;
+ }
+ assert.deepEqual(check(),['insert','find','offer','gap'],
+  'empty create form is active and must check gaps');
+ assert.deepEqual(check({decision:'choose'}),['insert','find','offer'],
+  'existing draft must await explicit recovery; do not apply a fresh-time gap check');
+ assert.deepEqual(check({act:'work_log_full_update',decision:''}),
+  ['insert','find','offer','gap'],'edit form still uses PR13 gap verification');
+ assert.deepEqual(check({hasForm:false}),['insert','find']);
+});
