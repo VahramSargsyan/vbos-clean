@@ -60,9 +60,11 @@ function worklogDraftOffer(form){
  const d=worklogDraftRead(key);form.dataset.draftKey=key;
  if(d===undefined||d&&!worklogDraftValid(d,form)){
   form.dataset.draftDecision='blocked';worklogDraftButtons(form,false,true);
+  worklogDraftLock(form,true);
   worklogDraftStatus(form,'Не удалось прочитать черновик. Можно удалить его с подтверждением.','error');
  }else if(d){
   form.dataset.draftDecision='choose';worklogDraftButtons(form,true,true);
+  worklogDraftLock(form,true);
   worklogDraftStatus(form,'Найден незавершённый черновик от '+String(d.savedAt||'')+
    '. Восстанови или удали его перед новым вводом.');
  }else{
@@ -78,6 +80,7 @@ function worklogDraftRestore(form){
   const el=form.elements?.namedItem?.(name);
   if(el&&Object.prototype.hasOwnProperty.call(d.fields,name))el.value=String(d.fields[name]??'');
  }
+ worklogDraftLock(form,false);
  form.dataset.requestKey=d.requestKey;form.dataset.draftKey=key;
  form.dataset.draftDecision='active';fullWorkLogFormUpdated(form);
  worklogDraftButtons(form,false,true);
