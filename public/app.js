@@ -3128,7 +3128,7 @@ $('#content').addEventListener('input',e=>{
  const dialogForm=e.target.closest('#workFlowBackdrop form');
  if(dialogForm)dialogForm.dataset.workflowDirty='1';
  const full=e.target.closest('form[data-full-worklog-form]');
- if(full)fullWorkLogFormUpdated(full);
+ if(full){fullWorkLogFormUpdated(full);fullWorkLogGapSchedule(full);}
  const scheduleForm=e.target.closest('form[data-act="schedule_save"]');
  if(scheduleForm)legacyConflictInvalidate(scheduleForm);
  const phone=e.target.closest('form[data-act="client_create"] input[name="phone"],form[data-act="client_update"] input[name="phone"]');
@@ -3142,7 +3142,7 @@ $('#content').addEventListener('input',e=>{
 });
 $('#content').addEventListener('change',e=>{
  const full=e.target.closest('form[data-full-worklog-form]');
- if(full)fullWorkLogFormUpdated(full);
+ if(full){fullWorkLogFormUpdated(full);fullWorkLogGapSchedule(full);}
  const scheduleForm=e.target.closest('form[data-act="schedule_save"]');
  if(scheduleForm)legacyConflictInvalidate(scheduleForm);
  const pw=e.target.closest('input[data-pw-all],input[data-pw-action]');
