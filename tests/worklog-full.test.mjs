@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import {workLogFullContextRead} from '../worklog-full.mjs';
 const get=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
 const app=get('public/app.js');
 const html=get('public/index.html');
@@ -287,6 +288,62 @@ test('WorkLog preflight errors remain visible and retryable without hiding the r
  assert.match(feedback.textContent,/offline/);
  assert.equal(elements.gapReason.value,'materials','failure must not erase selected reason');
  assert.ok(vm.runInContext('fullWorkLogGapSignature(form)',sandbox).includes('startClock=09%3A00'));
+});
+
+
+test('Canonical read-only gap context detects idle time without end clock and excludes an edited WorkLog',async()=>{
+ const previous={work_log_id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  performer_mode:'OWNER',worker_id:null,start_clock:'08:00:00',end_clock:'09:00:00',gap_reason:''};
+ const edited={work_log_id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  performer_mode:'OWNER',worker_id:null,start_clock:'09:30:00',end_clock:'10:00:00',gap_reason:'waiting'};
+ const queries=[],all=[previous,edited];
+ const pool={async query(sql,params){
+  queries.push({sql,params});
+  if(sql.includes('SELECT id FROM public.mvp_work_days'))
+   return {rowCount:1,rows:[{id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc'}]};
+  assert.match(sql,/work_log_id<>\$2/,'edit exclusion must be an advisory parameter');
+  const rows=all.filter(item=>item.work_log_id!==params[1]);
+  return {rowCount:rows.length,rows};
+ }};
+ class AppError extends Error{constructor(status,message){super(message);this.status=status;}}
+ const common={pool,uuid:v=>String(v),safeDate:v=>String(v),AppError};
+ const request=({start='09:16',end='',recordId=''}={})=>{
+  const query=new URLSearchParams({orderId:'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+   dayDate:'2026-11-18',startClock:start,performerMode:'OWNER'});
+  if(end)query.set('endClock',end);
+  if(recordId)query.set('recordId',recordId);
+  return new URL('http://localhost/api/worklogs/full-context?'+query);
+ };
+ const atStart=await workLogFullContextRead({...common,url:request()});
+ assert.equal(atStart.ready,true);
+ assert.equal(atStart.gapMinutes,16);
+ assert.equal(atStart.hasEndClock,false,'start-time-only query must not need end clock');
+ assert.equal(atStart.successorGapMinutes,0);
+ const editing=await workLogFullContextRead({...common,url:request({
+  start:'09:16',end:'10:00',recordId:edited.work_log_id})});
+ assert.equal(editing.ready,true,'historical record must not collide with itself');
+ assert.equal(editing.gapMinutes,16);
+ assert.equal(queries.at(-1).params[1],edited.work_log_id);
+ assert.equal(queries.at(-1).params[0],'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+});
+test('Canonical gap context identifies whether the following WorkLog already contains a reason',async()=>{
+ const next={work_log_id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  performer_mode:'OWNER',worker_id:null,start_clock:'10:00:00',end_clock:'11:00:00',gap_reason:''};
+ const pool={async query(sql){
+  if(sql.includes('SELECT id FROM public.mvp_work_days'))return {rowCount:1,rows:[{id:'day'}]};
+  return {rowCount:1,rows:[next]};
+ }};
+ class AppError extends Error{constructor(status,message){super(message);this.status=status;}}
+ const url=new URL('http://localhost/api/worklogs/full-context?orderId=11111111-1111-4111-8111-111111111111&dayDate=2026-11-18&startClock=09%3A00&endClock=09%3A44&performerMode=OWNER');
+ const read=()=>workLogFullContextRead({pool,url,uuid:x=>x,safeDate:x=>x,AppError});
+ const unrecorded=await read();
+ assert.equal(unrecorded.ready,true);
+ assert.equal(unrecorded.successorGapMinutes,16);
+ assert.equal(unrecorded.successorReasonPresent,false);
+ next.gap_reason='waiting';
+ const annotated=await read();
+ assert.equal(annotated.successorGapMinutes,16);
+ assert.equal(annotated.successorReasonPresent,true);
 });
 
 const presenceUi=get('public/presence.js');
