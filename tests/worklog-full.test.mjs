@@ -169,6 +169,18 @@ test('WorkLog legacy taxonomy Category → Action → Service preserves canonica
  assert.doesNotMatch(choices,/Радиатор|Проводка|Архивная/);
  const actions=vm.runInContext("fullWorkLogTaxActions(fullWorkLogTaxRows(''),'Сантехника')",context);
  assert.deepEqual(Array.from(actions,row=>Array.from(row)[0]),['MOUNT','INSTALL']);
+ const categorySelect={value:'',innerHTML:''},actionSelect={value:'',innerHTML:''},serviceSelect={value:'',innerHTML:''};
+ const sampleForm={elements:{serviceId:serviceSelect},querySelector:s=>{
+  if(s==='[data-full-worklog-tax-category]')return categorySelect;
+  if(s==='[data-full-worklog-tax-action]')return actionSelect;
+  return null;
+ }};
+ context.sampleForm=sampleForm;
+ assert.equal(vm.runInContext("fullWorkLogTaxPreselect(sampleForm,'s2')",context),true);
+ assert.equal(categorySelect.value,'Сантехника');
+ assert.equal(actionSelect.value,'INSTALL');
+ assert.equal(serviceSelect.value,'s2','copy previous must preserve canonical serviceId');
+ assert.match(serviceSelect.innerHTML,/Радиатор/);
  assert.doesNotMatch(ui,/name="taxCategory"|name="taxAction"/);
 });
 
