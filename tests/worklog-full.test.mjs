@@ -205,8 +205,8 @@ test('WorkLog idle gap UI uses the canonical read-only gap endpoint and does not
 });
 test('WorkLog gap reason appears automatically only over 15 minutes and clears stale reason',async()=>{
  const queue=[],calls=[],contexts=[
-  {ready:true,overlap:false,gapMinutes:15,thresholdMinutes:15,hasEndClock:false},
-  {ready:true,overlap:false,gapMinutes:16,thresholdMinutes:15,hasEndClock:false},
+  {ready:true,overlap:false,gapMinutes:15,successorGapMinutes:0,thresholdMinutes:15,hasEndClock:false},
+  {ready:true,overlap:false,gapMinutes:16,successorGapMinutes:0,thresholdMinutes:15,hasEndClock:false},
   {ready:true,overlap:false,gapMinutes:16,successorGapMinutes:22,thresholdMinutes:15,hasEndClock:true},
   {ready:true,overlap:false,gapMinutes:0,successorGapMinutes:0,thresholdMinutes:15,hasEndClock:true}
  ];
