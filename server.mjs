@@ -95,6 +95,7 @@ const files = {
  '/my-work.js': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/my-work.js',import.meta.url))],
  '/workday-legacy-ui.js': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/workday-legacy-ui.js',import.meta.url))],
  '/worklog-full-ui.js': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/worklog-full-ui.js',import.meta.url))],
+ '/worklog-drafts.js': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/worklog-drafts.js',import.meta.url))],
  '/presence.js': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/presence.js',import.meta.url))],
  '/owner-activity.js': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/owner-activity.js',import.meta.url))],
  '/schedule.js': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/schedule.js',import.meta.url))],
@@ -258,7 +259,9 @@ async function state(){
  const archivedClients=await pool.query("SELECT target_id FROM public.mvp_legacy_import_map WHERE source_entity='Clients' AND source_payload->>'status'='archived' ORDER BY source_id LIMIT 501");
  const legacyOrders=await pool.query(
   "SELECT target_id,source_payload->>'status' AS source_status FROM public.mvp_legacy_import_map WHERE source_system='Working IP APP / M8C cutover baseline' AND source_entity='WorkOrders' ORDER BY source_id LIMIT 501");
- const result={today:dayYerevan(),legacyReport:q.rows[0]||null,
+ const result={today:dayYerevan(),
+  draftOwnerScope:createHash('sha256').update('vbos-clean:worklog-draft:v1:'+(await ownerLogin())).digest('hex'),
+  legacyReport:q.rows[0]||null,
   workLogServiceReferences:workLogReferences.rows.slice(0,200),
   workLogServiceReferencesTruncated:workLogReferences.rows.length>200,
   legacyGoogleOrderIds:legacyOrders.rows.slice(0,500).map(x=>x.target_id),
