@@ -615,7 +615,8 @@ async function handler(req,res){
    if(pathname==='/api/clients/portfolio'&&req.method==='GET')return json(res,200,await clientPortfolioRead({pool,url:new URL(req.url,'http://localhost'),uuid,AppError}));
    if(pathname==='/api/objects/orders'&&req.method==='GET'){
     const url=new URL(req.url,'http://localhost');
-    return json(res,200,await objectCardOrdersRead({pool,objectId:url.searchParams.get('id'),uuid,AppError}));
+    return json(res,200,await objectCardOrdersRead({pool,objectId:url.searchParams.get('id'),
+     cursor:url.searchParams.get('cursor'),uuid,AppError}));
    }
    if(pathname==='/api/objects/interactions'&&req.method==='GET')return json(res,200,await objectInteractionsPage({pool,url:new URL(req.url,'http://localhost'),uuid,AppError}));
    if(pathname==='/api/orders/interactions'&&req.method==='GET')return json(res,200,await orderInteractionsPage({pool,url:new URL(req.url,'http://localhost'),uuid,AppError}));

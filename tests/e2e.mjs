@@ -729,9 +729,19 @@ try{
  assert.equal(objectOrders.body.objectId,object.id);
  assert.equal(objectOrders.body.clientId,client.id);
  assert.equal(objectOrders.body.hasMore,false);
+ assert.equal(objectOrders.body.nextCursor,null);
  assert.equal(objectOrders.body.items.some(x=>x.id===order.id&&x.object_id===object.id),true);
  assert.equal(objectOrders.body.items.find(x=>x.id===order.id).object_name,'Corrected object');
  assert.equal((await request('/api/objects/orders?id=invalid',undefined,cookie)).status,400);
+ const foreignOrdersCursor=Buffer.from(JSON.stringify([
+  client.id,'2026-11-17T00:00:00.000Z',order.id
+ ])).toString('base64url');
+ assert.equal((await request('/api/objects/orders?id='+object.id+
+  '&cursor='+foreignOrdersCursor,undefined,cookie)).status,400,
+  'Another Object must not supply a usable order history cursor');
+ assert.equal((await request('/api/objects/orders?id='+object.id+
+  '&cursor='+encodeURIComponent('%%%'),undefined,cookie)).status,400,
+  'Malformed cursor must be rejected before reading historical Orders');
  console.log('OBJECT_CARD_EXACT_OBJECT_OWNER_AUTH_PERSISTED_ORDER_POSTGRES_PASS');
  // BATCH2: legacy Object contact, exact local datetime, strict owner-only scope.
  assert.equal((await request('/api/objects/interactions?id='+object.id)).status,401);
