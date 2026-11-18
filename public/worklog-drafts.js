@@ -84,7 +84,20 @@ function worklogDraftRestore(form){
   if(el&&Object.prototype.hasOwnProperty.call(d.fields,name))el.value=String(d.fields[name]??'');
  }
  worklogDraftLock(form,false);
- if(typeof fullWorkLogTaxSync==='function')fullWorkLogTaxSync(form,'service');
+ // Category and action are UI-only (not PostgreSQL write columns). Restore them even
+ // when the owner has not chosen a service yet.
+ if(typeof fullWorkLogTaxSync==='function'){
+  const category=form.querySelector('[data-full-worklog-tax-category]');
+  const action=form.querySelector('[data-full-worklog-tax-action]');
+  if(!d.fields.serviceId&&category&&d.fields.taxCategory){
+   category.value=String(d.fields.taxCategory);
+   fullWorkLogTaxSync(form,'category');
+   if(action&&d.fields.taxAction){
+    action.value=String(d.fields.taxAction);
+    fullWorkLogTaxSync(form,'action');
+   }
+  }else fullWorkLogTaxSync(form,'service');
+ }
  form.dataset.requestKey=d.requestKey;form.dataset.draftKey=key;
  form.dataset.draftDecision='active';fullWorkLogFormUpdated(form);
  worklogDraftButtons(form,false,true);
@@ -119,6 +132,11 @@ function worklogDraftAutosave(form){
  for(const name of WORKLOG_DRAFT_FIELDS){
   const el=form.elements?.namedItem?.(name);if(el)fields[name]=String(el.value??'');
  }
+ // The category/action selectors have no form names because they are not writer fields.
+ const category=form.querySelector('[data-full-worklog-tax-category]');
+ const action=form.querySelector('[data-full-worklog-tax-action]');
+ if(category)fields.taxCategory=String(category.value??'');
+ if(action)fields.taxAction=String(action.value??'');
  // A new order/date draft is a distinct transaction and must get its own idempotency key.
  const requestKey=prev&&prev!==key?crypto.randomUUID():
   (form.dataset.requestKey||(worklogDraftValid(old,form)?old.requestKey:crypto.randomUUID()));
