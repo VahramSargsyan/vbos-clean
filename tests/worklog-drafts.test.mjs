@@ -39,17 +39,20 @@ function harness(){
   const elements={...values,namedItem:n=>values[n]||null};
   const controls=[...Object.values(values)].filter(x=>x.name!=='orderId');
   const restore={hidden:true},del={hidden:true},copy={disabled:false};
+  const cat={value:'',disabled:false},act={value:'',disabled:true};
   const f={dataset:{act:'work_log_full_create'},elements,resetCount:0,
    querySelector:k=>({
     '[data-full-worklog-draft-status]':status,
     '[data-full-worklog-draft-restore]':restore,
     '[data-full-worklog-draft-delete]':del,
-    '[data-full-worklog-copy]':copy
+    '[data-full-worklog-copy]':copy,
+    '[data-full-worklog-tax-category]':cat,
+    '[data-full-worklog-tax-action]':act
    })[k]||null,
    querySelectorAll:()=>controls,
    reset(){this.resetCount++;}
   };
-  return {f,values,restore,del,copy};
+  return {f,values,restore,del,copy,cat,act};
  }
  function run(expression,extra={}){
   Object.assign(ctx,extra);
@@ -243,4 +246,33 @@ test('PR13 canonical gap correction is persisted, not resurrected on page reload
  assert.equal(x.values.gapReason.value,'');
  const saved=JSON.parse([...h.storage.values()][0]);
  assert.equal(saved.fields.gapReason,'','canonical clearance must update durable draft');
+});
+
+
+test('unfinished taxonomy category/action survives reload without a selected service',()=>{
+ const h=harness();h.run('worklogDraftSetOwner(OWNER_A)',{OWNER_A});
+ const first=h.form();h.run('worklogDraftOffer(testForm)',{testForm:first.f});
+ first.cat.value='Водоснабжение';first.act.value='INSTALL';
+ assert.equal(first.values.serviceId.value,'');
+ assert.equal(h.run('worklogDraftAutosave(testForm)'),true);
+ const stored=JSON.parse([...h.storage.values()][0]);
+ assert.equal(stored.fields.taxCategory,'Водоснабжение');
+ assert.equal(stored.fields.taxAction,'INSTALL');
+ assert.equal(stored.fields.serviceId,'');
+ const stages=[];
+ h.ctx.fullWorkLogTaxSync=(f,mode)=>stages.push(mode);
+ const recovered=h.form();h.run('worklogDraftOffer(testForm)',{testForm:recovered.f});
+ assert.equal(h.run('worklogDraftRestore(testForm)'),true);
+ assert.equal(recovered.cat.value,'Водоснабжение');
+ assert.equal(recovered.act.value,'INSTALL');
+ assert.deepEqual(stages,['category','action'],'derive taxonomy UI from local values only');
+ assert.equal(recovered.values.serviceId.value,'','no fake canonical service ID');
+});
+test('input and change both autosave while PR13 gap recheck stays connected',()=>{
+ const source=appSource;
+ assert.equal((source.match(/fullWorkLogGapSchedule\(full\);worklogDraftAutosave\(full\);/g)||[]).length,2);
+ assert.match(source,/worklogDraftRestore\(restoreDraft.closest\('form'\)\)/);
+ assert.match(source,/worklogDraftDelete\(deleteDraft.closest\('form'\)\)/);
+ assert.match(uiSource,/fullWorkLogGapSchedule/);
+ assert.match(source,/worklogDraftSetOwner\(''\)/);
 });
