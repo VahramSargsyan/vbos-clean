@@ -55,26 +55,6 @@ function myWorkView(){
    '<p class="muted small">Для записи работы сначала открой день и выбери действующий заказ.</p>')+
   (live?'<button type="button" class="wide-button" data-act="session_stop" data-id="'+esc(live.id)+'">Завершить рабочий интервал</button>':'')+
  '</section>';
- s+='<details class="card" data-workflow-secondary><summary>Подробнее: интервалы, присутствие и помощники</summary>';
- s+='<section class="card"><h2>Рабочий интервал</h2>';
- if(live){
-  s+='<p><strong>Идёт:</strong> '+esc(live.order_title||'Без заказа')+' · '+esc(when(live.started_at))+'</p>'+
-   (live.object_name?'<p class="muted small">Объект: '+esc(live.object_name)+'</p>':'')+
-   (live.day_date!==today?'<p class="muted">Внимание: незавершённый интервал начался '+esc(live.day_date)+'. Сначала заверши его.</p>':'')+
-   (order&&live.order_id&&order.id!==live.order_id?'<p class="muted">Выбранный заказ отличается от заказа активного интервала. Проверь привязку WorkLog.</p>':'')+
-   '<button type="button" class="primary wide-button" data-act="session_stop" data-id="'+esc(live.id)+'">Завершить интервал</button>';
- }else if(day?.status==='open'&&order&&['open','active'].includes(order.status)){
-  s+='<form data-act="session_start" class="grid">'+
-   '<input type="hidden" name="orderId" value="'+esc(order.id)+'">'+
-   formField('description','Чем занимаешься (необязательно)','text',false,'maxlength="300" placeholder="Например, монтаж отопления"')+
-   '<button type="submit" class="primary wide">Начать работу по заказу</button></form>'+
-   '<p class="muted small">Не отмечает приход и не меняет статус заказа.</p>';
- }else if(day?.status==='closed')s+='<p class="muted">Рабочий день уже закрыт.</p>';
- else if(!day)s+='<p class="muted">Сначала открой рабочий день.</p>';
- else if(order)s+='<p class="muted">По завершённому или отменённому заказу новый интервал не начинается.</p>';
- else s+='<p class="muted">Выбери активный заказ, чтобы начать интервал.</p>';
- s+='</section>';
-
  s+='<section class="card"><h2>📍 Присутствие на объекте</h2>'+
   '<p class="muted small">Физический приход и уход — отдельно от начала и окончания рабочего интервала.</p>';
  if(visit){
@@ -95,6 +75,27 @@ function myWorkView(){
    '<button type="submit" class="wide">Я на объекте · отметить приход</button></form>';
  }else s+='<p class="muted">Для отметки прихода открой день и выбери активный заказ.</p>';
  s+='</section>';
+
+ s+='<details class="card" data-workflow-secondary><summary>Подробнее: интервалы и помощники</summary>';
+ s+='<section class="card"><h2>Рабочий интервал</h2>';
+ if(live){
+  s+='<p><strong>Идёт:</strong> '+esc(live.order_title||'Без заказа')+' · '+esc(when(live.started_at))+'</p>'+
+   (live.object_name?'<p class="muted small">Объект: '+esc(live.object_name)+'</p>':'')+
+   (live.day_date!==today?'<p class="muted">Внимание: незавершённый интервал начался '+esc(live.day_date)+'. Сначала заверши его.</p>':'')+
+   (order&&live.order_id&&order.id!==live.order_id?'<p class="muted">Выбранный заказ отличается от заказа активного интервала. Проверь привязку WorkLog.</p>':'')+
+   '<button type="button" class="primary wide-button" data-act="session_stop" data-id="'+esc(live.id)+'">Завершить интервал</button>';
+ }else if(day?.status==='open'&&order&&['open','active'].includes(order.status)){
+  s+='<form data-act="session_start" class="grid">'+
+   '<input type="hidden" name="orderId" value="'+esc(order.id)+'">'+
+   formField('description','Чем занимаешься (необязательно)','text',false,'maxlength="300" placeholder="Например, монтаж отопления"')+
+   '<button type="submit" class="primary wide">Начать работу по заказу</button></form>'+
+   '<p class="muted small">Не отмечает приход и не меняет статус заказа.</p>';
+ }else if(day?.status==='closed')s+='<p class="muted">Рабочий день уже закрыт.</p>';
+ else if(!day)s+='<p class="muted">Сначала открой рабочий день.</p>';
+ else if(order)s+='<p class="muted">По завершённому или отменённому заказу новый интервал не начинается.</p>';
+ else s+='<p class="muted">Выбери активный заказ, чтобы начать интервал.</p>';
+ s+='</section>';
+
 
  s+='<section class="card"><h2>Исполнители текущего заказа</h2>'+
   '<p class="muted small">Назначение, присутствие и выполненная задача не приравниваются друг к другу. Зарплата не рассчитывается.</p>';
@@ -127,7 +128,7 @@ function myWorkView(){
   '<button type="button" class="wide-button" data-work-history data-history-range="all">История всех работ</button></div></section>';
 
  s+='<details class="card"><summary>A1 — подробности и исправления</summary>'+a1Card()+'</details>';
- s+='<details class="card"><summary>Дополнительно: посещения и исправления</summary>'+presencePane()+'</details>';
+ s+='<details class="card"><summary>Дополнительно: посещения и исправления</summary>'+presencePane(true)+'</details>';
  s+='<details class="card"><summary>Дополнительно: бизнес-время владельца</summary>'+ownerActivityPane()+'</details>';
  s+='<details class="card"><summary>Интервалы и рабочие дни</summary>'+
   (!w.todaySessions.length?'<p class="muted">Сегодня интервалов не было.</p>':
