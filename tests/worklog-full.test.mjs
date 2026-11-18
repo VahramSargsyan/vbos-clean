@@ -148,6 +148,30 @@ test('UI behavior: invalid fields retain data; only acknowledged save clears ent
  assert.equal(submit.textContent,'Сохранить работу');
 });
 
+
+test('WorkLog legacy taxonomy Category → Action → Service preserves canonical serviceId',()=>{
+ assert.match(server,/SELECT service_id,service_name,category,action_code,status FROM public\.mvp_services_reference/);
+ assert.match(ui,/data-full-worklog-tax-category/);
+ assert.match(ui,/data-full-worklog-tax-action/);
+ assert.match(ui,/Фактическая работа/);
+ assert.match(ui,/fullWorkLogTaxSync\(form,'service'\)/);
+ const context=vm.createContext({data:{workLogServiceReferences:[
+  {service_id:'s1',service_name:'Трубы',category:'Сантехника',action_code:'MOUNT',status:'active'},
+  {service_id:'s2',service_name:'Радиатор',category:'Сантехника',action_code:'INSTALL',status:'active'},
+  {service_id:'s3',service_name:'Проводка',category:'Электрика',action_code:'REPAIR',status:'active'},
+  {service_id:'s4',service_name:'Архивная',category:'Сантехника',action_code:null,status:'archived'}
+ ]},esc:x=>String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;')});
+ vm.runInContext(ui,context);
+ assert.equal(vm.runInContext("fullWorkLogTaxRows('').length",context),3);
+ assert.equal(vm.runInContext("fullWorkLogTaxRows('s4').length",context),4);
+ const choices=vm.runInContext("fullWorkLogTaxServices(fullWorkLogTaxRows(''),'Сантехника','MOUNT','')",context);
+ assert.match(choices,/Трубы/);
+ assert.doesNotMatch(choices,/Радиатор|Проводка|Архивная/);
+ const actions=vm.runInContext("fullWorkLogTaxActions(fullWorkLogTaxRows(''),'Сантехника')",context);
+ assert.deepEqual(Array.from(actions,row=>Array.from(row)[0]),['MOUNT','INSTALL']);
+ assert.doesNotMatch(ui,/name="taxCategory"|name="taxAction"/);
+});
+
 const presenceUi=get('public/presence.js');
 test('My Work shows arrival and departure above secondary details with canonical object and order IDs',()=>{
  const day='2026-11-18',id='11111111-1111-4111-8111-111111111111',objectId='22222222-2222-4222-8222-222222222222';
