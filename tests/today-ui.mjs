@@ -527,7 +527,10 @@ presenceHtml=vm.runInContext('presencePane()',sandbox);
 assert.match(presenceHtml,/name="departureTime"/);
 assert.doesNotMatch(presenceHtml,/data-act="presence_start"/);
 const withPresence=vm.runInContext('myWorkView()',sandbox);
-assert.match(withPresence,/Посещения объектов/);
+assert.match(withPresence,/Присутствие на объекте/);
+assert.ok(withPresence.indexOf('Присутствие на объекте')<withPresence.indexOf('data-workflow-secondary'),
+ 'Main arrival/departure control must be visible before secondary details');
+assert.match(withPresence,/История по объектам/,'Historical visits remain inside advanced details');
 const presentHtml=readFileSync(new URL('public/index.html',root),'utf8');
 assert.ok(presentHtml.indexOf('/presence.js')<presentHtml.indexOf('/my-work.js'));
 console.log('V7_OBJECT_PRESENCE_MOBILE_START_STOP_EDIT_SEPARATION_XSS_PASS');
