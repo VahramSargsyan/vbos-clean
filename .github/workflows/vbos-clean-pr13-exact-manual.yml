@@ -1,0 +1,59 @@
+# Explicit owner-approved, manual-only, single-candidate verification.
+# NOT a deploy workflow. Never point TEST_DATABASE_URL to Neon or an occupied database.
+# The approval for one run is not standing approval for later reruns.
+name: VBOS Clean PR13 exact manual verification
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: vbos-clean-pr13-exact-manual
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: vbos_clean_pr13_disposable
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: pr13_synthetic_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d vbos_clean_pr13_disposable"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PR13_SHA: bdd3fba6d2e10c77075effea54c157aa9917d3fd
+      TEST_DATABASE_URL: postgresql://ci:pr13_synthetic_only@127.0.0.1:5432/vbos_clean_pr13_disposable
+    steps:
+      - name: Checkout the exact reviewed PR13 candidate
+        uses: actions/checkout@v4
+        with:
+          ref: bdd3fba6d2e10c77075effea54c157aa9917d3fd
+          persist-credentials: false
+      - name: Verify source identity and disposable DB target
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$PR13_SHA"
+          case "$TEST_DATABASE_URL" in
+            postgresql://ci:pr13_synthetic_only@127.0.0.1:5432/vbos_clean_pr13_disposable) ;;
+            *) echo "Refusing non-disposable database target" >&2; exit 1 ;;
+          esac
+      - name: Prepare Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install existing app dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Verify repository source layout
+        run: npm run verify:source
+      - name: Execute unit and UI regressions
+        run: npm test
+      - name: Execute real temporary PostgreSQL E2E
+        run: npm run test:e2e
