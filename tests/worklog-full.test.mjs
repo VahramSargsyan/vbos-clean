@@ -147,3 +147,56 @@ test('UI behavior: invalid fields retain data; only acknowledged save clears ent
  assert.equal(submit.disabled,false);
  assert.equal(submit.textContent,'Сохранить работу');
 });
+
+const presenceUi=get('public/presence.js');
+test('My Work shows arrival and departure above secondary details with canonical object and order IDs',()=>{
+ const day='2026-11-18',id='11111111-1111-4111-8111-111111111111',objectId='22222222-2222-4222-8222-222222222222';
+ const order={id,object_id:objectId,object_name:'Квартира',title:'Монтаж',status:'open'};
+ const snapshot={today:day,day:{status:'open'},contextOrder:order,currentSession:null,currentPresence:null,
+  plannedOrders:[],todaySessions:[],todayLogs:[],todayTotals:{logCount:0,workMinutes:0},
+  assignedWorkers:[],recentWorkdays:[],selectedOrderId:id};
+ const sandbox=vm.createContext({
+  myWork:{snapshot},data:{today:day,orders:[],objects:[],listsTruncated:false},
+  dailyA1:{item:{goal:'Монтаж'}},workFlowLastNotice:'',
+  esc:x=>String(x??''),label:{open:'Открыт',closed:'Закрыт'},fmt:()=>0,when:()=>'',record:()=>'<div></div>',
+  a1Card:()=>'',ownerActivityPane:()=>'',presencePane:historyOnly=>{
+   assert.equal(historyOnly,true,'Historical panel must not duplicate the arrival form');return 'История посещений';
+  },
+  formField:()=>'<input>',editText:name=>'<input name="'+name+'">',currentYerevanTime:()=> '09:00'
+ });
+ vm.runInContext(mywork,sandbox,{filename:'my-work.js'});
+ const view=()=>vm.runInContext('myWorkView()',sandbox);
+ const open=view();
+ assert.ok(open.indexOf('data-act="presence_start"')>0);
+ assert.ok(open.indexOf('data-act="presence_start"')<open.indexOf('data-workflow-secondary'));
+ assert.equal(open.split('data-act="presence_start"').length-1,1);
+ assert.match(open,/Я на объекте · отметить приход/);
+ assert.ok(open.includes('name="objectId" value="'+objectId+'"'));
+ assert.ok(open.includes('name="orderId" value="'+id+'"'));
+ snapshot.currentPresence={id:'33333333-3333-4333-8333-333333333333',day_date:day,revision:1,
+  object_id:objectId,object_name:'Квартира',arrived_at:'2026-11-18T05:00:00Z'};
+ const active=view();
+ assert.ok(active.indexOf('data-act="presence_stop"')<active.indexOf('data-workflow-secondary'));
+ assert.doesNotMatch(active,/data-act="presence_start"/);
+ snapshot.currentPresence=null;snapshot.contextOrder=null;
+ assert.doesNotMatch(view(),/data-act="presence_start"/,'No arrival without selected order');
+ snapshot.contextOrder=order;snapshot.day=null;
+ assert.doesNotMatch(view(),/data-act="presence_start"/,'No arrival before WorkDay is opened');
+});
+test('Presence history-only mode keeps history and removes duplicate check-in writer',()=>{
+ const day='2026-11-18',p={date:day,day:{status:'open'},active:null,items:[],hasMore:false,loaded:true};
+ const sandbox=vm.createContext({
+  presence:p,data:{today:day,objects:[{id:'22222222-2222-4222-8222-222222222222',name:'Квартира'}],orders:[]},
+  esc:x=>String(x??''),currentYerevanTime:()=> '09:00',
+  form:(type,title)=>'<form data-act="'+type+'">'+title+'</form>',
+  select:()=>'<select></select>',option:()=>'<option></option>',
+  editText:()=>'<input>',record:()=>'<div></div>'
+ });
+ vm.runInContext(presenceUi,sandbox,{filename:'presence.js'});
+ const history=vm.runInContext('presencePane(true)',sandbox);
+ assert.match(history,/История по объектам/);
+ assert.doesNotMatch(history,/data-act="presence_start"/);
+ const regular=vm.runInContext('presencePane()',sandbox);
+ assert.match(regular,/data-act="presence_start"/);
+ assert.match(regular,/История по объектам/);
+});
