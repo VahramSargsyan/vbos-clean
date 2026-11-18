@@ -2920,7 +2920,7 @@ async function sendAction(type,payload,form){
  }catch(e){
   const detail=e.message+' Если запрос оборвался, сначала проверь список и затем повтори с тем же ключом.';
   if(type==='crm_won_order_create')crmWonOrderFeedback('Не сохранено: '+detail,true);
-  if(isFullLog){worklogDraftSaveFailed(form,e.status);fullWorkLogStatus(form,'Не сохранено: '+detail,'error');}
+  if(isFullLog){worklogDraftSaveFailed(form,e.status,e.message);fullWorkLogStatus(form,'Не сохранено: '+detail,'error');}
   message(detail,true);
  }
  finally{
