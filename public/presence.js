@@ -8,9 +8,11 @@ function presenceTime(iso){
 function currentYerevanTime(){
  return new Date().toLocaleTimeString('en-GB',{timeZone:'Asia/Yerevan',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
 }
-function presencePane(){
+function presencePane(historyOnly=false){
  const p=presence,day=p.day,now=data.today,isToday=(p.date||now)===now,active=p.active;
- let s='<section class="card presence-card"><h2>📍 Посещения объектов</h2>'+
+ let s='';
+ if(!historyOnly){
+  s+='<section class="card presence-card"><h2>📍 Посещения объектов</h2>'+
   '<p class="muted small">Приход и уход с конкретного объекта — отдельный учёт. Рабочий день, интервалы работы и WorkLog не изменяются автоматически.</p>';
  if(!p.loaded){return s+'<p class="muted">Загружаю посещения из PostgreSQL.</p></section>';}
  if(active){
@@ -38,6 +40,9 @@ function presencePane(){
   s+='<p class="muted">Сначала открой рабочий день'+(!data.objects.length?' и создай объект в CRM':'')+'. После этого можно отметить приход на объект.</p>';
  }
  s+='</section>';
+ }else if(!p.loaded){
+  return '<section class="card"><p class="muted">Загружаю историю посещений…</p></section>';
+ }
  s+='<section class="card"><h2>История по объектам</h2><form id="presenceFilters" class="grid">'+
   editText('date','Дата посещений',p.date||now,'date','required')+
   '<button type="submit" class="wide-button">Показать дату</button></form>';
