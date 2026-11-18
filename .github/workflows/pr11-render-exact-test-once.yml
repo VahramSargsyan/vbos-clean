@@ -1,0 +1,133 @@
+name: PR11 guarded exact Render TEST release (one-shot)
+on:
+  push:
+    branches:
+      - ci/pr11-guarded-render-exact-once-20261118
+    paths:
+      - .github/workflows/pr11-render-exact-test-once.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr11-render-test-exact-once
+  cancel-in-progress: false
+
+jobs:
+  guarded-release:
+    if: "${{ github.event.head_commit.message == 'ci: one-shot guarded Render TEST release PR11' }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+    steps:
+      - name: Exact-SHA guarded TEST deployment and rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          const key=process.env.RENDER_API_KEY;
+          if(!key){
+            if(process.env.RENDER_DEPLOY_HOOK_URL)console.error('RENDER_HOOK_PRESENT_BUT_API_KEY_REQUIRED_FOR_GUARDED_LIVE_PREFLIGHT_AND_ROLLBACK');
+            console.error('BLOCKED_NO_RENDER_API_KEY_GITHUB_SECRET; NO_RENDER_MUTATION');
+            process.exit(78);
+          }
+          const source='491808e1556fbd05759c5016c326e23c5843506e';
+          const main='e1c3c15435905ef91c00b99bf4687cb1ee7935cc';
+          const previous='04e8bfb221887c3f8c5d9fc594712dc9588f334c';
+          const serviceId='srv-dbkvfh2jnfac73a31nv0';
+          const base='/services/'+serviceId;
+          const verifiedRunId=44298905675;
+          const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+          async function gh(route){
+            const r=await fetch('https://api.github.com/repos/VahramSargsyan/vbos-clean/'+route,{headers:{Accept:'application/vnd.github+json','User-Agent':'vbos-pr11-guard'}});
+            if(!r.ok)throw Error('GITHUB_PREFLIGHT_'+r.status);
+            return r.json();
+          }
+          async function api(path,method='GET',body=null){
+            const r=await fetch('https://api.render.com/v1'+path,{
+              method,headers:{Authorization:'Bearer '+key,Accept:'application/json',...(body?{'Content-Type':'application/json'}:{})},
+              ...(body?{body:JSON.stringify(body)}:{})
+            });
+            if(!r.ok)throw Error('RENDER_API_'+method+'_'+r.status);
+            const s=await r.text();
+            try{return s?JSON.parse(s):null}catch{throw Error('RENDER_INVALID_JSON')}
+          }
+          const unwrap=x=>x?.deploy||x;
+          async function latestLive(){
+            const list=await api(base+'/deploys?limit=10');
+            const deployments=Array.isArray(list)?list.map(unwrap):[];
+            if(deployments.some(d=>['build_in_progress','update_in_progress','pre_deploy_in_progress','created'].includes(d.status)))throw Error('RENDER_OTHER_DEPLOY_IN_PROGRESS');
+            const lives=deployments.filter(d=>d.status==='live');
+            if(lives.length!==1)throw Error('RENDER_LIVE_DEPLOY_COUNT_UNEXPECTED');
+            return lives[0];
+          }
+          async function start(sha){
+            const d=unwrap(await api(base+'/deploys','POST',{commitId:sha}));
+            if(typeof d?.id!=='string'||!d.id.startsWith('dep-'))throw Error('RENDER_NEW_DEPLOY_ID_MISSING');
+            console.log('RENDER_DEPLOY_CREATED id='+d.id+' sha='+sha);
+            return d.id;
+          }
+          async function wait(id,sha){
+            for(let i=0;i<90;i++){
+              const d=unwrap(await api(base+'/deploys/'+id));
+              if(d?.commit?.id&&d.commit.id!==sha)throw Error('RENDER_SHA_MISMATCH');
+              if(d.status==='live'){
+                if(d.commit?.id!==sha)throw Error('RENDER_LIVE_SHA_UNKNOWN');
+                return;
+              }
+              if(['build_failed','update_failed','deactivated','canceled','cancelled'].includes(d.status))throw Error('RENDER_RELEASE_'+d.status);
+              await sleep(10000);
+            }
+            throw Error('RENDER_TIMEOUT_NOT_LIVE');
+          }
+          async function smoke(){
+            const host='https://vbos-clean-mvp-2026.onrender.com';
+            const h=await fetch(host+'/index.html?sha='+source,{headers:{'Cache-Control':'no-cache'}});
+            if(!h.ok)throw Error('RENDER_STATIC_HTML_HTTP_'+h.status);
+            if(!(await h.text()).includes('/worklog-full-ui.js'))throw Error('RENDER_WORKLOG_SCRIPT_MISSING');
+            const served=await fetch(host+'/worklog-full-ui.js?sha='+source,{headers:{'Cache-Control':'no-cache'}});
+            if(!served.ok)throw Error('RENDER_WORKLOG_JS_HTTP_'+served.status);
+            const repo=await fetch('https://raw.githubusercontent.com/VahramSargsyan/vbos-clean/'+source+'/public/worklog-full-ui.js');
+            if(!repo.ok)throw Error('GITHUB_SOURCE_JS_HTTP_'+repo.status);
+            const [a,b]=await Promise.all([served.text(),repo.text()]);
+            if(a!==b)throw Error('RENDER_WORKLOG_JS_SOURCE_MISMATCH');
+            if(!a.includes('data-full-worklog-tax-category')||!a.includes('data-full-worklog-tax-action')||!a.includes('Фактическая работа'))throw Error('RENDER_WORKLOG_TAXONOMY_MARKERS_MISSING');
+            console.log('PR11_RENDER_TEST_EXACT_JS_PARITY_PASS');
+          }
+          let attempted=false;
+          try{
+            const [pr,branch,ci]=await Promise.all([gh('pulls/11'),gh('branches/main'),gh('actions/runs/'+verifiedRunId)]);
+            if(pr.state!=='open'||pr.merged||pr.head.sha!==source||branch.commit.sha!==main)throw Error('GITHUB_SOURCE_HEAD_MOVED');
+            if(ci.status!=='completed'||ci.conclusion!=='success'||ci.head_sha!=='8a9c478568063ef960a272073ca4757aed56e1cc')
+              throw Error('PR11_EXACT_CI_EVIDENCE_MISSING');
+            const svc=await api(base);
+            if(svc.id!==serviceId||svc.repo!=='https://github.com/VahramSargsyan/vbos-clean'||svc.branch!=='main'||svc.type!=='web_service'||svc.autoDeploy!=='no'||svc.serviceDetails?.url!=='https://vbos-clean-mvp-2026.onrender.com')throw Error('RENDER_SERVICE_GUARD_MISMATCH');
+            const live=await latestLive();
+            if(live.commit?.id!==previous)throw Error('RENDER_TEST_OCCUPIED_BY_NEW_COMMIT');
+            console.log('PR11_EXACT_RENDER_PREFLIGHT_PASS service='+serviceId+' baseline='+previous);
+            attempted=true;
+            const newId=await start(source);
+            await wait(newId,source);
+            await smoke();
+            const current=await latestLive();
+            if(current.commit?.id!==source)throw Error('RENDER_POSTFLIGHT_LIVE_CHANGED');
+            console.log('PR11_RENDER_TEST_EXACT_SHA_STATIC_SMOKE_PASS id='+newId+' sha='+source);
+          }catch(err){
+            console.error('PR11_TEST_RELEASE_BLOCKED '+String(err?.message||err));
+            if(attempted){
+              try{
+                const current=await latestLive();
+                if(current.commit?.id===previous){
+                  console.log('PR11_PREVIOUS_ACCEPTED_RUNTIME_STILL_LIVE; ROLLBACK_NOT_NEEDED');
+                }else if(current.commit?.id===source){
+                  const rollbackId=await start(previous);
+                  await wait(rollbackId,previous);
+                  console.log('PR11_RENDER_TEST_ROLLBACK_EXACT_SHA_PASS id='+rollbackId+' sha='+previous);
+                }else throw Error('UNEXPECTED_NEW_LIVE; STOP_TO_AVOID_OVERWRITING_OTHER_RELEASE');
+              }catch(e){console.error('P0_RENDER_TEST_ROLLBACK_UNCONFIRMED '+String(e?.message||e))}
+            }else console.error('NO_RENDER_MUTATION');
+            process.exitCode=1;
+          }
+          JS
