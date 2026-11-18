@@ -84,8 +84,10 @@ test('draft captures every field and restores original start after reload, witho
  const reloaded=h.form();
  h.run('worklogDraftOffer(testForm)',{testForm:reloaded.f});
  assert.equal(reloaded.restore.hidden,false);
+ assert.equal(reloaded.values.location.disabled,true,'draft choice must block accidental new entry');
  assert.equal(h.run('worklogDraftAutosave(testForm)'),false,'existing draft must not be overwritten before a choice');
  assert.equal(h.run('worklogDraftRestore(testForm)'),true);
+ assert.equal(reloaded.values.location.disabled,false,'regular restored draft must be editable');
  assert.equal(reloaded.values.startClock.value,'09:15');
  for(const [k,v] of Object.entries(fields))assert.equal(reloaded.values[k].value,v,k);
  assert.match(h.status.textContent,/Восстановлен незавершённый черновик/);
