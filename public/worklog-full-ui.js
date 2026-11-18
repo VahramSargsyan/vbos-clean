@@ -46,6 +46,27 @@ function fullWorkLogTaxServices(rows,category,action,selectedId){
   String(row.service_id),String(row.service_name||row.service_id)+(row.status==='active'?'':' · Архив')
  ]),id,'Не связывать с каталогом');
 }
+function fullWorkLogTaxPreselect(form,id){
+ const serviceId=String(id||'');
+ if(!form||!serviceId)return false;
+ const catEl=form.querySelector('[data-full-worklog-tax-category]');
+ const actEl=form.querySelector('[data-full-worklog-tax-action]');
+ const svcEl=form.elements?.serviceId;
+ if(!catEl||!actEl||!svcEl)return false;
+ const rows=fullWorkLogTaxRows(serviceId);
+ const item=rows.find(row=>String(row.service_id)===serviceId);
+ if(!item)return false;
+ const category=String(item.category||'').trim(),action=fullWorkLogTaxCode(item);
+ catEl.innerHTML=fullWorkLogOptions(fullWorkLogTaxCategories(rows),category,'Не связывать с каталогом');
+ catEl.value=category;
+ actEl.innerHTML=fullWorkLogOptions(fullWorkLogTaxActions(rows,category),action,
+  category?'Выбери вид работ':'Сначала выбери категорию');
+ actEl.value=action;actEl.disabled=!category;
+ svcEl.innerHTML=fullWorkLogTaxServices(rows,category,action,serviceId);
+ svcEl.value=serviceId;
+ return true;
+}
+
 function fullWorkLogTaxSync(form,changed='service'){
  if(!form)return;
  const catEl=form.querySelector('[data-full-worklog-tax-category]');
@@ -75,6 +96,7 @@ if(typeof document!=='undefined')document.addEventListener('change',event=>{
  const target=event.target;
  if(!target?.matches?.('[data-full-worklog-tax-category], [data-full-worklog-tax-action], form[data-full-worklog-form] [name="serviceId"]'))return;
  const form=target.closest('form[data-full-worklog-form]');if(!form)return;
+ form.dataset.workflowDirty='1';
  fullWorkLogTaxSync(form,target.matches('[data-full-worklog-tax-category]')?'category':
   target.matches('[data-full-worklog-tax-action]')?'action':'service');
 },true);
@@ -245,7 +267,7 @@ function fullWorkLogCopyPrevious(form,orderLogs){
  const source=candidates.find(x=>x.detail&&x.order_id===form.elements.orderId?.value);
  if(!source){message('В истории этого заказа пока нет подробной работы для повторения.',true);return;}
  const d=source.detail;
- const fields={location:d.location,workType:d.work_type,serviceId:d.service_id,workDetail:d.work_detail,
+ const fields={location:d.location,workType:d.work_type,workDetail:d.work_detail,
   unit:source.unit,complexity:d.complexity,performerMode:d.performer_mode,workerId:d.worker_id,
   startClock:String(d.end_clock||'').slice(0,5)};
  for(const [k,v] of Object.entries(fields)){
@@ -256,6 +278,10 @@ function fullWorkLogCopyPrevious(form,orderLogs){
  if(form.elements.lossMinutes)form.elements.lossMinutes.value='0';
  if(form.elements.reworkMinutes)form.elements.reworkMinutes.value='0';
  if(form.elements.reworkStatus)form.elements.reworkStatus.value='no';
+ if(!fullWorkLogTaxPreselect(form,d.service_id||'')){
+  if(form.elements.serviceId)form.elements.serviceId.value='';
+  if(d.service_id)message('Каталожная услуга предыдущей работы недоступна в текущем списке. Проверь выбор вручную.',true);
+ }
  fullWorkLogTaxSync(form,'service');
  fullWorkLogFormUpdated(form);
  message('Контекст предыдущей работы перенесён. Укажи новые время окончания и результат.');
