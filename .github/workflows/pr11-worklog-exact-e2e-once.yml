@@ -1,0 +1,64 @@
+name: PR11 exact-source full Node and disposable PostgreSQL E2E (owner authorized)
+on:
+  push:
+    branches:
+      - ci/pr11-worklog-exact-e2e-once-20261118
+    paths:
+      - .github/workflows/pr11-worklog-exact-e2e-once.yml
+permissions:
+  contents: read
+concurrency:
+  group: pr11-worklog-exact-e2e-once
+  cancel-in-progress: false
+jobs:
+  exact-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pr11_ci
+          POSTGRES_PASSWORD: pr11_ci_disposable_only
+          POSTGRES_DB: vbos_mvp_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pr11_ci -d vbos_mvp_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 6
+    env:
+      TEST_DATABASE_URL: postgresql://pr11_ci:pr11_ci_disposable_only@127.0.0.1:5432/vbos_mvp_ci
+      MVP_DATABASE_SSL: disable
+      NODE_ENV: test
+    steps:
+      - name: Checkout exact PR11 source (not CI branch)
+        uses: actions/checkout@v4
+        with:
+          ref: 491808e1556fbd05759c5016c326e23c5843506e
+          persist-credentials: false
+      - name: Check exact source identity and clean checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "491808e1556fbd05759c5016c326e23c5843506e"
+          test -z "$(git status --porcelain)"
+          echo "PR11_EXACT_SHA_CHECKOUT_PASS 491808e1556fbd05759c5016c326e23c5843506e"
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies (no package-lock in repository)
+        run: npm install --no-audit --no-fund
+      - name: Verify standalone source layout
+        run: npm run verify:source
+      - name: Complete Node unit and UI test suite
+        run: npm test
+      - name: Complete isolated PostgreSQL E2E suite
+        run: npm run test:e2e
+      - name: Final CI evidence
+        shell: bash
+        run: |
+          echo "PR11_EXACT_SOURCE_NODE_AND_DISPOSABLE_POSTGRESQL_E2E_PASS"
+          git rev-parse HEAD
