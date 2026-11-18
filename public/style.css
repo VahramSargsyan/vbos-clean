@@ -532,7 +532,18 @@ html[data-theme] .crm-secondary-panel>.card{margin:10px 0}
 .crm23-archive-item>summary>strong{min-width:0;overflow-wrap:anywhere}
 .crm23-archive-item>summary>span{font-size:.8rem;opacity:.7;white-space:nowrap}
 
-/* Clean WorkLog form: local, persistent save/validation feedback on mobile. */
+/* WorkLog idle gap reason appears directly after work clocks only when server confirms >15 min. */
+.full-worklog-gap{
+ grid-column:1/-1;padding:12px 14px;border:1px solid var(--hairline,#ddd);
+ border-inline-start:4px solid var(--accent,#1557b0);border-radius:12px;
+ background:var(--s2,#f5f7fa);min-width:0
+}
+.full-worklog-gap-summary{font-size:14px;font-weight:700;margin:0 0 8px;line-height:1.45}
+.full-worklog-gap label{display:block;margin:0}
+.full-worklog-gap-feedback{grid-column:1/-1;margin:4px 0}
+[data-full-gap-retry]{grid-column:1/-1;min-height:44px}
+.work-flow-dialog-body [data-full-worklog-form]>.full-worklog-gap{grid-column:1/-1}
+ /* Clean WorkLog form: local, persistent save/validation feedback on mobile. */
 .full-worklog-feedback,.full-worklog-receipt{grid-column:1/-1;font-size:14px;line-height:1.45;margin:6px 0 10px;font-weight:600;overflow-wrap:anywhere}
 .full-worklog-feedback[data-state="error"]{color:var(--danger,#a6383f)}
 .full-worklog-feedback[data-state="pending"]{color:var(--info,#2e648d)}
