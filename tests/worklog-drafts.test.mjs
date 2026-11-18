@@ -140,7 +140,7 @@ test('uncertain network response retains locked exact payload and requestKey acr
 test('definite validation rejection unlocks correction; storage failure blocks unsafe send',()=>{
  const h=harness();h.run('worklogDraftSetOwner(OWNER_A)',{OWNER_A});
  const a=h.form();h.run('worklogDraftOffer(testForm)',{testForm:a.f});
- let out=h.run('worklogDraftPrepareSubmit(testForm,{orderId:ORDER_A,dayDate:"2026-11-18"})');
+ let out=h.run('worklogDraftPrepareSubmit(testForm,{orderId:ORDER_A,dayDate:"2026-11-18"})',{ORDER_A});
  assert.ok(out);assert.equal(a.values.location.disabled,true);
  h.run('worklogDraftSaveFailed(testForm,409)');
  assert.equal(a.values.location.disabled,false);
@@ -152,7 +152,7 @@ test('definite validation rejection unlocks correction; storage failure blocks u
  const conflict=h.form();
  h.run('worklogDraftOffer(testForm)',{testForm:conflict.f});
  h.run('worklogDraftRestore(testForm)');
- const samePayload=h.run('worklogDraftPrepareSubmit(testForm,{orderId:ORDER_A,dayDate:"2026-11-18"})');
+ const samePayload=h.run('worklogDraftPrepareSubmit(testForm,{orderId:ORDER_A,dayDate:"2026-11-18"})',{ORDER_A});
  assert.ok(samePayload);
  h.run('worklogDraftSaveFailed(testForm,409,"Ключ записи уже использован с другими данными.")');
  assert.equal(h.run('worklogDraftPending(testForm)'),true);
@@ -161,7 +161,7 @@ test('definite validation rejection unlocks correction; storage failure blocks u
  const noStorage=harness();noStorage.run('worklogDraftSetOwner(OWNER_A)',{OWNER_A});
  const f=noStorage.form();noStorage.run('worklogDraftOffer(testForm)',{testForm:f.f});
  noStorage.setWriteFailure(true);
- assert.equal(noStorage.run('worklogDraftPrepareSubmit(testForm,{orderId:ORDER_A})'),null);
+ assert.equal(noStorage.run('worklogDraftPrepareSubmit(testForm,{orderId:ORDER_A})',{ORDER_A}),null);
  assert.match(noStorage.status.textContent,/Не удалось сохранить/);
 });
 test('integration preserves existing server WorkLog writer and owner-only state',()=>{
