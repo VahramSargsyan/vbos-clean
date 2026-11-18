@@ -147,13 +147,14 @@ function fullWorkLogGapApply(form,context){
  const beforeClock=form.querySelector('[data-full-gap-minutes]'),
   afterClock=form.querySelector('[data-full-successor-gap-minutes]');
  if(beforeClock)beforeClock.textContent='Пауза между работами: '+before+' мин. Укажи причину.';
- if(afterClock)afterClock.textContent='До следующей работы: '+after+' мин. Укажи причину, если она не записана.';
+ if(afterClock)afterClock.textContent='До следующей работы: '+after+' мин. '+
+   (context?.successorReasonPresent?'Причина уже есть в следующей записи.':'Укажи причину.');
  if(form.elements?.gapReason){
   form.elements.gapReason.required=needsBefore;
   if(!needsBefore)form.elements.gapReason.value='';
  }
  if(form.elements?.successorGapReason){
-  form.elements.successorGapReason.required=false;
+  form.elements.successorGapReason.required=needsAfter&&!context.successorReasonPresent;
   if(!needsAfter)form.elements.successorGapReason.value='';
  }
  const feedback=form.querySelector('[data-full-gap-feedback]');
