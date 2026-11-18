@@ -140,6 +140,9 @@ function fullWorkLogForm(orderId,date,record){
   '<form class="grid" novalidate data-full-worklog-form data-act="'+(edit?'work_log_full_update':'work_log_full_create')+'">'+
    base+(edit?'':'<button type="button" data-full-worklog-copy class="compact">Повторить предыдущую работу</button>')+
    '<button type="submit" class="primary wide">'+(edit?'Сохранить исправления':'Сохранить работу')+'</button>'+receipt+
+   (edit?'':'<div class="full-worklog-draft-tools"><p class="muted small" role="status" aria-live="polite" data-full-worklog-draft-status></p>'+
+    '<button type="button" class="compact" data-full-worklog-draft-restore hidden>Восстановить черновик</button>'+
+    '<button type="button" class="compact" data-full-worklog-draft-delete hidden>Удалить черновик</button></div>')+
    '<p class="full-worklog-feedback" data-full-worklog-feedback role="status" aria-live="polite"></p>'+
   '</form></details>';
 }
