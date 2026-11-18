@@ -101,6 +101,105 @@ if(typeof document!=='undefined')document.addEventListener('change',event=>{
   target.matches('[data-full-worklog-tax-action]')?'action':'service');
 },true);
 
+
+/* Advisory only: this reuses the canonical, owner-authenticated WorkLog gap read.
+ * No hidden frontend guess is treated as proof; writer remains authoritative.
+ */
+const FULL_WORKLOG_GAP_LIMIT=15;
+function fullWorkLogGapSignature(form){
+ const f=form?.elements;
+ if(!f?.orderId?.value||!/^\d{4}-\d{2}-\d{2}$/.test(f.dayDate?.value||''))return '';
+ const start=f.startClock?.value||'',end=f.endClock?.value||'';
+ const minute=v=>/^\d{2}:\d{2}$/.test(v)?Number(v.slice(0,2))*60+Number(v.slice(3)):NaN;
+ if(!Number.isFinite(minute(start))||(end&&(!(minute(end)>minute(start)))))return '';
+ const mode=f.performerMode?.value||'OWNER',workerId=f.workerId?.value||'';
+ if(mode!=='OWNER'&&!workerId)return '';
+ const query=new URLSearchParams({orderId:f.orderId.value,dayDate:f.dayDate.value,
+  startClock:start,performerMode:mode});
+ if(end)query.set('endClock',end);
+ if(mode!=='OWNER')query.set('workerId',workerId);
+ if(f.id?.value)query.set('recordId',f.id.value);
+ return query.toString();
+}
+function fullWorkLogGapReset(form){
+ if(!form?.dataset)return;
+ if(form._fullGapTimer)clearTimeout(form._fullGapTimer);
+ form._fullGapSeq=(form._fullGapSeq||0)+1;
+ form.dataset.fullGapSignature='';
+ form.dataset.fullGapState='idle';
+ for(const selector of ['[data-full-gap-before]','[data-full-gap-after]',
+  '[data-full-gap-feedback]','[data-full-gap-retry]']){
+  const target=form.querySelector(selector);if(target)target.hidden=true;
+ }
+ if(form.elements?.gapReason)form.elements.gapReason.required=false;
+ if(form.elements?.successorGapReason)form.elements.successorGapReason.required=false;
+}
+function fullWorkLogGapApply(form,context){
+ const before=Number(context?.gapMinutes),after=Number(context?.successorGapMinutes||0);
+ const threshold=Number(context?.thresholdMinutes||FULL_WORKLOG_GAP_LIMIT);
+ if(!Number.isFinite(before)||before<0||!Number.isFinite(after)||after<0||
+    threshold!==FULL_WORKLOG_GAP_LIMIT)throw Error('Сервер вернул некорректный расчёт пауз.');
+ const needsBefore=before>threshold,needsAfter=Boolean(context?.hasEndClock)&&after>threshold;
+ const beforeWrap=form.querySelector('[data-full-gap-before]'),
+  afterWrap=form.querySelector('[data-full-gap-after]');
+ if(beforeWrap)beforeWrap.hidden=!needsBefore;
+ if(afterWrap)afterWrap.hidden=!needsAfter;
+ const beforeClock=form.querySelector('[data-full-gap-minutes]'),
+  afterClock=form.querySelector('[data-full-successor-gap-minutes]');
+ if(beforeClock)beforeClock.textContent='Пауза между работами: '+before+' мин. Укажи причину.';
+ if(afterClock)afterClock.textContent='До следующей работы: '+after+' мин. Укажи причину, если она не записана.';
+ if(form.elements?.gapReason){
+  form.elements.gapReason.required=needsBefore;
+  if(!needsBefore)form.elements.gapReason.value='';
+ }
+ if(form.elements?.successorGapReason){
+  form.elements.successorGapReason.required=false;
+  if(!needsAfter)form.elements.successorGapReason.value='';
+ }
+ const feedback=form.querySelector('[data-full-gap-feedback]');
+ if(feedback){feedback.hidden=true;feedback.textContent='';}
+ const retry=form.querySelector('[data-full-gap-retry]');if(retry)retry.hidden=true;
+}
+function fullWorkLogGapSchedule(form,immediate=false,force=false){
+ if(!form?.dataset||!form.hasAttribute?.('data-full-worklog-form'))return;
+ const signature=fullWorkLogGapSignature(form);
+ if(!signature){fullWorkLogGapReset(form);return;}
+ if(!force&&form.dataset.fullGapSignature===signature&&
+  ['pending','ready','error'].includes(form.dataset.fullGapState))return;
+ if(form._fullGapTimer)clearTimeout(form._fullGapTimer);
+ form.dataset.fullGapSignature=signature;
+ form.dataset.fullGapState='pending';
+ const seq=form._fullGapSeq=(form._fullGapSeq||0)+1;
+ const feedback=form.querySelector('[data-full-gap-feedback]');
+ const retry=form.querySelector('[data-full-gap-retry]');if(retry)retry.hidden=true;
+ if(feedback){feedback.hidden=false;feedback.textContent='Проверяем паузы между работами…';}
+ form._fullGapTimer=setTimeout(async()=>{
+  if(form.isConnected===false||seq!==form._fullGapSeq)return;
+  try{
+   const context=await api('/api/worklogs/full-context?'+signature);
+   if(form.isConnected===false||seq!==form._fullGapSeq||
+      signature!==fullWorkLogGapSignature(form))return;
+   if(!context?.ready||context.overlap)throw Error(context?.overlap?
+     'Время пересекается с другой работой этого исполнителя.':
+     'Проверка рабочего дня недоступна.');
+   fullWorkLogGapApply(form,context);
+   form.dataset.fullGapState='ready';
+  }catch(error){
+   if(form.isConnected===false||seq!==form._fullGapSeq)return;
+   form.dataset.fullGapState='error';
+   if(feedback){feedback.hidden=false;
+    feedback.textContent='Не удалось проверить паузы: '+String(error?.message||error);}
+   if(retry)retry.hidden=false;
+  }
+ },immediate?0:300);
+}
+if(typeof document!=='undefined')document.addEventListener('click',event=>{
+ const button=event.target?.closest?.('[data-full-gap-retry]');
+ if(!button)return;
+ const form=button.closest('form[data-full-worklog-form]');
+ if(form)fullWorkLogGapSchedule(form,true,true);
+},true);
+
 // Acknowledged save receipt persists across refresh(), which replaces the form DOM.
 // Never clear entered values before the server explicitly returns saved:true.
 let fullWorkLogLastSaved=null;
@@ -121,6 +220,11 @@ function fullWorkLogFieldError(form,field,explanation){
 }
 function fullWorkLogValidate(form){
  fullWorkLogFormUpdated(form);
+ if(['pending','error'].includes(form.dataset?.fullGapState))
+  return {ok:false,message:fullWorkLogFieldError(form,form.elements?.startClock,
+   form.dataset.fullGapState==='pending'?
+   'проверяем паузы, повтори сохранение после завершения проверки.':
+   'пауза не проверена. Нажми «Повторить проверку пауз».')};
  const controls=Array.from(form.elements||[]);
  const invalid=controls.find(el=>el.willValidate&&!el.checkValidity());
  if(invalid)return {ok:false,message:fullWorkLogFieldError(form,invalid)};
@@ -166,6 +270,7 @@ function fullWorkLogSaveConfirmed(form,result,type){
    if(el)el.value='';
   }
   fullWorkLogTaxSync(form,'service');
+  fullWorkLogGapReset(form);
   fullWorkLogFormUpdated(form);
  }
  fullWorkLogStatus(form,text,'success');
@@ -194,6 +299,16 @@ function fullWorkLogForm(orderId,date,record){
    select('workerId','Помощник',fullWorkLogOptions(workers,value('worker_id'),'Выбери назначенного помощника'),false)+'</div>'+
   editText('startClock','Начало',start,'time','required')+
   editText('endClock','Конец',time(value('end_clock')),'time','required')+
+  '<section class="full-worklog-gap" data-full-gap-before'+(value('gap_reason')?'':' hidden')+'>'+
+   '<p class="full-worklog-gap-summary" data-full-gap-minutes>Пауза больше 15 минут. Укажи причину.</p>'+
+   select('gapReason','Почему была пауза?',fullWorkLogOptions(FULL_WORKLOG_GAPS,value('gap_reason')),false)+
+  '</section>'+
+  '<section class="full-worklog-gap" data-full-gap-after hidden>'+
+   '<p class="full-worklog-gap-summary" data-full-successor-gap-minutes></p>'+
+   select('successorGapReason','Причина паузы до следующей работы',fullWorkLogOptions(FULL_WORKLOG_GAPS,''),false)+
+  '</section>'+
+  '<p class="full-worklog-gap-feedback muted small" data-full-gap-feedback role="status" aria-live="polite" hidden></p>'+
+  '<button type="button" data-full-gap-retry hidden>Повторить проверку пауз</button>'+
   '<label>Категория<select data-full-worklog-tax-category>'+
    fullWorkLogOptions(fullWorkLogTaxCategories(references),selectedCategory,'Не связывать с каталогом')+
   '</select></label>'+
@@ -224,8 +339,6 @@ function fullWorkLogForm(orderId,date,record){
    '<div data-full-rework'+(value('rework_status','no')==='no'?' hidden':'')+'>'+
     editText('reworkReason','Причина переделки',value('rework_reason'),'text','maxlength="300"')+
     editText('reworkMinutes','Переделка, минут',value('rework_minutes',0),'number','min="0" max="1440" step="1"')+'</div>'+
-   select('gapReason','Причина разрыва перед работой (>15 минут)',fullWorkLogOptions(FULL_WORKLOG_GAPS,value('gap_reason')),false)+
-   select('successorGapReason','Причина разрыва перед следующей работой (если меняется)',fullWorkLogOptions(FULL_WORKLOG_GAPS,''),false)+
    editText('comment','Что мешало или помогало',value('comment'),'textarea','maxlength="5000"')+
   '</div></details>'+
   editText('notes','Примечание',record?.notes||'','textarea','maxlength="5000"')+
@@ -284,5 +397,6 @@ function fullWorkLogCopyPrevious(form,orderLogs){
  }
  fullWorkLogTaxSync(form,'service');
  fullWorkLogFormUpdated(form);
+ fullWorkLogGapSchedule(form);
  message('Контекст предыдущей работы перенесён. Укажи новые время окончания и результат.');
 }
