@@ -120,7 +120,7 @@ async function api(url,payload){
  const init={credentials:'same-origin',headers:{'Accept':'application/json'}};
  if(payload!==undefined){init.method='POST';init.headers['Content-Type']='application/json';init.body=JSON.stringify(payload);}
  const r=await fetch(url,init);let j;try{j=await r.json();}catch{throw Error('Ответ сервера не распознан. Проверь историю перед повтором.');}
- if(!r.ok)throw Error(j.error||'HTTP '+r.status);
+ if(!r.ok){const error=Error(j.error||'HTTP '+r.status);error.status=r.status;throw error;}
  return j;
 }
 /** Finance B15: only protected dry-run request. CSRF is acquired just-in-time. */
@@ -2812,7 +2812,18 @@ function render(){
  if(tab!=='crm'){estimateWorkspaceOpen=false;if(crmDetailId){crmDetailId=null;crmReminderEditorLeadId=null;}}
  $('#tabs').querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
  $('#content').innerHTML=tab==='today'?todayView():tab==='myWork'?myWorkView():tab==='schedule'?scheduleView():tab==='crm'?crmView():tab==='estimator'?estimatorView():tab==='clients'?clientsView():tab==='objects'?objectsView():tab==='orders'?ordersView():tab==='workers'?workersView():tab==='serviceReference'?serviceReferenceView():tab==='historyOrders'?historyOrdersView():tab==='history'?historyView():tab==='catalog'?catalogView():tab==='engineering'?engineeringView():tab==='finance'||tab==='capital'?financeCapitalView(tab):reportView();
- if(tab==='myWork'&&workFlowModalState.kind)$('#content').insertAdjacentHTML('beforeend',workFlowModalHtml());
+ if(tab==='myWork'&&workFlowModalState.kind){
+  // render() replaces #content; a recreated WorkLog must be owner-scoped again.
+  // Never silently apply a saved draft: offer explicit recovery before input or replay.
+  $('#content').insertAdjacentHTML('beforeend',workFlowModalHtml());
+  const refreshedFullLog=document.getElementById('workFlowBackdrop')?.querySelector('form[data-full-worklog-form]');
+  if(refreshedFullLog){
+   worklogDraftOffer(refreshedFullLog);
+   if(refreshedFullLog.dataset.draftDecision==='active'||
+      refreshedFullLog.dataset.act==='work_log_full_update')
+    fullWorkLogGapSchedule(refreshedFullLog,true);
+  }
+ }
  if(tab==='crm'&&!crmDetailId&&!estimateWorkspaceOpen)void mountLegacyTransfers();
  if(tab==='historyOrders')void mountHistoricalOrders();
  if(tab==='report'||tab==='finance')void mountFinanceHistory();
@@ -2837,7 +2848,7 @@ function render(){
  if(data.listsTruncated)message('Основные списки показывают первые 500 записей. Для остальных используй «Поиск» и «Историю».',true);
 }
 async function refresh(){
- const [state,a1]=await Promise.all([api('/api/state'),api('/api/a1')]);data=state;dailyA1=a1;$('#loginPanel').hidden=true;$('#appPanel').hidden=false;$('#logout').hidden=false;$('#menuToggle').hidden=false;setMenuOpen(false,{restoreFocus:false});render();if(tab==='today')void loadTodayDashboard();
+ const [state,a1]=await Promise.all([api('/api/state'),api('/api/a1')]);data=state;worklogDraftSetOwner(state.draftOwnerScope);dailyA1=a1;$('#loginPanel').hidden=true;$('#appPanel').hidden=false;$('#logout').hidden=false;$('#menuToggle').hidden=false;setMenuOpen(false,{restoreFocus:false});render();if(tab==='today')void loadTodayDashboard();
 }
 async function sendAction(type,payload,form){
  if(busy)return;
@@ -2853,6 +2864,7 @@ async function sendAction(type,payload,form){
   if(fromClientLead){crmClientLeadContext=null;crmDetailId=null;}
   if(type==='crm_won_order_create')crmWonOrderClose(true);
   if(isFullLog){
+   worklogDraftAcknowledge(form);
    fullWorkLogSaveConfirmed(form,out,type);
    if(workFlowModalState.kind==='log'){
     workFlowLastNotice=fullWorkLogLastSaved?.text||'✓ Работа сохранена в PostgreSQL.';
@@ -2919,7 +2931,7 @@ async function sendAction(type,payload,form){
  }catch(e){
   const detail=e.message+' Если запрос оборвался, сначала проверь список и затем повтори с тем же ключом.';
   if(type==='crm_won_order_create')crmWonOrderFeedback('Не сохранено: '+detail,true);
-  if(isFullLog)fullWorkLogStatus(form,'Не сохранено: '+detail,'error');
+  if(isFullLog){worklogDraftSaveFailed(form,e.status,e.message);fullWorkLogStatus(form,'Не сохранено: '+detail,'error');}
   message(detail,true);
  }
  finally{
@@ -3030,7 +3042,7 @@ $('#content').addEventListener('submit',async e=>{
   return;
  }
  if(f.id==='passwordForm'){
-  const o=Object.fromEntries(new FormData(f));try{await api('/api/password',o);clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;crmClientLeadContext=null;data=null;crmFollowupState={loaded:false,loading:false,result:null,error:''};dailyA1=null;workerBenchmarkCache={};benchmarkProposalState={loaded:false,loading:false,error:'',payload:null};schedule.loaded=false;schedule.items=[];schedule.dayFilter='all';schedule.error='';capacity={startDate:'',durationWorkingDays:3,result:null,loading:false,loaded:false,error:''};capacityWorkOrderContext=null;workOrderCapacityOpenSeq++;scheduleCapacityDraft=null;resetHourlyManual();ownerActivity.loaded=false;ownerActivity.active=null;ownerActivity.items=[];presence.loaded=false;presence.active=null;presence.items=[];myWork.snapshot=null;myWork.loaded=false;myWork.selectedOrderId='';myWork.error='';clearDrawingSession();setMenuOpen(false,{restoreFocus:false});$('#menuToggle').hidden=true;$('#loginPanel').hidden=false;$('#appPanel').hidden=true;$('#logout').hidden=true;alert('Пароль изменён. Войди с новым.');}catch(err){message(err.message,true);}return;
+  const o=Object.fromEntries(new FormData(f));try{await api('/api/password',o);clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;crmClientLeadContext=null;data=null;worklogDraftSetOwner('');crmFollowupState={loaded:false,loading:false,result:null,error:''};dailyA1=null;workerBenchmarkCache={};benchmarkProposalState={loaded:false,loading:false,error:'',payload:null};schedule.loaded=false;schedule.items=[];schedule.dayFilter='all';schedule.error='';capacity={startDate:'',durationWorkingDays:3,result:null,loading:false,loaded:false,error:''};capacityWorkOrderContext=null;workOrderCapacityOpenSeq++;scheduleCapacityDraft=null;resetHourlyManual();ownerActivity.loaded=false;ownerActivity.active=null;ownerActivity.items=[];presence.loaded=false;presence.active=null;presence.items=[];myWork.snapshot=null;myWork.loaded=false;myWork.selectedOrderId='';myWork.error='';clearDrawingSession();setMenuOpen(false,{restoreFocus:false});$('#menuToggle').hidden=true;$('#loginPanel').hidden=false;$('#appPanel').hidden=true;$('#logout').hidden=true;alert('Пароль изменён. Войди с новым.');}catch(err){message(err.message,true);}return;
  }
  if(f.id==='crmMasterFilters'){
   const fields=Object.fromEntries(new FormData(f));
@@ -3098,10 +3110,17 @@ if(f.id==='presenceFilters'){
   if(['benchmark_approve','benchmark_revoke'].includes(type)&&!confirm(type==='benchmark_approve'?'Подтвердить сохранение выбранного норматива?':'Отменить действующий норматив?'))return;
  const isFullLog=f.hasAttribute('data-full-worklog-form');
  if(isFullLog){
-  const check=fullWorkLogValidate(f);
-  if(!check.ok){message(check.message,true);return;}
+  if(!worklogDraftPending(f)){
+   const check=fullWorkLogValidate(f);
+   if(!check.ok){message(check.message,true);return;}
+  }
  }else if(!f.reportValidity())return;
- const payload=Object.fromEntries(new FormData(f).entries());
+ let payload=Object.fromEntries(new FormData(f).entries());
+ if(isFullLog){
+  const frozen=worklogDraftPrepareSubmit(f,payload);
+  if(!frozen){message('Черновик не подготовлен для безопасной отправки.',true);return;}
+  payload=frozen;
+ }
  if(type==='lead_transfer')payload.confirm='TRANSFER_LEAD';
  if(type==='close_work_order'){
    const fields=['satisfaction','acceptance','paymentBehavior','communicationQuality','scopeChanges','workAgain'];
@@ -3128,7 +3147,7 @@ $('#content').addEventListener('input',e=>{
  const dialogForm=e.target.closest('#workFlowBackdrop form');
  if(dialogForm)dialogForm.dataset.workflowDirty='1';
  const full=e.target.closest('form[data-full-worklog-form]');
- if(full)fullWorkLogFormUpdated(full);
+ if(full){fullWorkLogFormUpdated(full);fullWorkLogGapSchedule(full);worklogDraftAutosave(full);}
  const scheduleForm=e.target.closest('form[data-act="schedule_save"]');
  if(scheduleForm)legacyConflictInvalidate(scheduleForm);
  const phone=e.target.closest('form[data-act="client_create"] input[name="phone"],form[data-act="client_update"] input[name="phone"]');
@@ -3142,7 +3161,7 @@ $('#content').addEventListener('input',e=>{
 });
 $('#content').addEventListener('change',e=>{
  const full=e.target.closest('form[data-full-worklog-form]');
- if(full)fullWorkLogFormUpdated(full);
+ if(full){fullWorkLogFormUpdated(full);fullWorkLogGapSchedule(full);worklogDraftAutosave(full);}
  const scheduleForm=e.target.closest('form[data-act="schedule_save"]');
  if(scheduleForm)legacyConflictInvalidate(scheduleForm);
  const pw=e.target.closest('input[data-pw-all],input[data-pw-action]');
@@ -3184,8 +3203,12 @@ $('#content').addEventListener('click',async e=>{
   }
   workFlowModalOpen(open.dataset.workflowOpen,{orderId,trigger:open});return;
  }
+ const restoreDraft=e.target.closest('button[data-full-worklog-draft-restore]');
+ if(restoreDraft){worklogDraftRestore(restoreDraft.closest('form'));return;}
+ const deleteDraft=e.target.closest('button[data-full-worklog-draft-delete]');
+ if(deleteDraft){worklogDraftDelete(deleteDraft.closest('form'));return;}
  const copy=e.target.closest('button[data-full-worklog-copy]');
- if(copy){fullWorkLogCopyPrevious(copy.closest('form'),orderLogs);return;}
+ if(copy){fullWorkLogCopyPrevious(copy.closest('form'),orderLogs);worklogDraftAutosave(copy.closest('form'));return;}
  if(tab==='schedule'&&legacyConflictHandleClick(e.target))return;
  if(e.target.closest('button[data-crm-master-load]')){
   const openLead=e.target.closest('[data-crm-detail-page]');
@@ -4086,7 +4109,7 @@ $('#loginForm').addEventListener('submit',async e=>{
  catch(err){const el=e.target.querySelector('p');if(el)el.remove();const p=document.createElement('p');p.textContent=err.message;p.className='muted';e.target.append(p);}
  finally{btn.disabled=false;}
 });
-$('#logout').addEventListener('click',async()=>{try{await api('/api/logout',{});}finally{crmWonOrderClose(true);if(historicalOrdersPanel){historicalOrdersPanel.unmount();historicalOrdersPanel=null;}if(financeAuditPanel){financeAuditPanel.unmount();financeAuditPanel=null;}if(financeCorrectionPanel){financeCorrectionPanel.unmount();financeCorrectionPanel=null;}if(financeReviewPanel){financeReviewPanel.unmount();financeReviewPanel=null;}if(financeReviewAuditPanel){financeReviewAuditPanel.unmount();financeReviewAuditPanel=null;}if(financeWorkerPanel){financeWorkerPanel.unmount();financeWorkerPanel=null;}if(financeArchivePanel){financeArchivePanel.unmount();financeArchivePanel=null;}if(financeHistoryPanel){financeHistoryPanel.unmount();financeHistoryPanel=null;}if(referencePanel){referencePanel.unmount();referencePanel=null;}closePreviewSeq++;closePreviewState={id:null,loading:false,result:null,error:''};nativeCloseReceiptSeq++;nativeCloseReceipt={id:null,busy:false,result:null,error:''};tab='today';crmDetailId=null;crmReminderEditorLeadId=null;crmListScrollY=0;clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;crmInteractionState={entityType:'',entityId:'',items:[],hasMore:false,nextCursor:null,loaded:false,loading:false,error:''};crmFollowupState={loaded:false,loading:false,result:null,error:''};todayDashboard={date:'',loaded:false,loading:false,work:null,crm:null,plan:null,errors:{}};data=null;dailyA1=null;workerBenchmarkCache={};benchmarkProposalState={loaded:false,loading:false,error:'',payload:null};schedule.loaded=false;schedule.items=[];schedule.dayFilter='all';schedule.error='';capacity={startDate:'',durationWorkingDays:3,result:null,loading:false,loaded:false,error:''};capacityWorkOrderContext=null;workOrderCapacityOpenSeq++;scheduleCapacityDraft=null;resetHourlyManual();ownerActivity.loaded=false;ownerActivity.active=null;ownerActivity.items=[];presence.loaded=false;presence.active=null;presence.items=[];myWork.snapshot=null;myWork.loaded=false;myWork.selectedOrderId='';myWork.error='';clearDrawingSession();setMenuOpen(false,{restoreFocus:false});$('#menuToggle').hidden=true;$('#loginPanel').hidden=false;$('#appPanel').hidden=true;$('#logout').hidden=true;}});
+$('#logout').addEventListener('click',async()=>{try{await api('/api/logout',{});}finally{crmWonOrderClose(true);if(historicalOrdersPanel){historicalOrdersPanel.unmount();historicalOrdersPanel=null;}if(financeAuditPanel){financeAuditPanel.unmount();financeAuditPanel=null;}if(financeCorrectionPanel){financeCorrectionPanel.unmount();financeCorrectionPanel=null;}if(financeReviewPanel){financeReviewPanel.unmount();financeReviewPanel=null;}if(financeReviewAuditPanel){financeReviewAuditPanel.unmount();financeReviewAuditPanel=null;}if(financeWorkerPanel){financeWorkerPanel.unmount();financeWorkerPanel=null;}if(financeArchivePanel){financeArchivePanel.unmount();financeArchivePanel=null;}if(financeHistoryPanel){financeHistoryPanel.unmount();financeHistoryPanel=null;}if(referencePanel){referencePanel.unmount();referencePanel=null;}closePreviewSeq++;closePreviewState={id:null,loading:false,result:null,error:''};nativeCloseReceiptSeq++;nativeCloseReceipt={id:null,busy:false,result:null,error:''};tab='today';crmDetailId=null;crmReminderEditorLeadId=null;crmListScrollY=0;clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;crmInteractionState={entityType:'',entityId:'',items:[],hasMore:false,nextCursor:null,loaded:false,loading:false,error:''};crmFollowupState={loaded:false,loading:false,result:null,error:''};todayDashboard={date:'',loaded:false,loading:false,work:null,crm:null,plan:null,errors:{}};data=null;worklogDraftSetOwner('');dailyA1=null;workerBenchmarkCache={};benchmarkProposalState={loaded:false,loading:false,error:'',payload:null};schedule.loaded=false;schedule.items=[];schedule.dayFilter='all';schedule.error='';capacity={startDate:'',durationWorkingDays:3,result:null,loading:false,loaded:false,error:''};capacityWorkOrderContext=null;workOrderCapacityOpenSeq++;scheduleCapacityDraft=null;resetHourlyManual();ownerActivity.loaded=false;ownerActivity.active=null;ownerActivity.items=[];presence.loaded=false;presence.active=null;presence.items=[];myWork.snapshot=null;myWork.loaded=false;myWork.selectedOrderId='';myWork.error='';clearDrawingSession();setMenuOpen(false,{restoreFocus:false});$('#menuToggle').hidden=true;$('#loginPanel').hidden=false;$('#appPanel').hidden=true;$('#logout').hidden=true;}});
 $('#setupForm').addEventListener('submit',async e=>{
  e.preventDefault();const f=e.target,btn=f.querySelector('button');if(!f.reportValidity())return;
  if(f.elements.password.value!==f.elements.confirmPassword.value){message('Пароли не совпадают.',true);return;}

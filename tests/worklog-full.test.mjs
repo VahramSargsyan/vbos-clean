@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import {workLogFullContextRead} from '../worklog-full.mjs';
 const get=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
 const app=get('public/app.js');
 const html=get('public/index.html');
@@ -63,7 +64,9 @@ test('Mobile WorkLog save has explicit validation, pending state, durable succes
  assert.match(ui,/role="status"/);
  assert.match(ui,/fullWorkLogLastSaved/);
  assert.match(app,/fullWorkLogSaveConfirmed\(form,out,type\)/);
- assert.match(app,/if\(isFullLog\)fullWorkLogStatus\(form,'Не сохранено:/);
+ assert.match(app,/if\(isFullLog\)\{\s*worklogDraftSaveFailed\(form,e\.status,e\.message\);\s*fullWorkLogStatus\(form,'Не сохранено:/);
+ assert.match(app,/worklogDraftAcknowledge\(form\);\s*fullWorkLogSaveConfirmed\(form,out,type\)/);
+ assert.match(app,/const frozen=worklogDraftPrepareSubmit\(f,payload\)/);
  const acknowledge=app.indexOf("if(!out.saved)throw Error('Сервер не подтвердил сохранение.');");
  const clear=app.indexOf('fullWorkLogSaveConfirmed(form,out,type)');
  assert.ok(acknowledge>=0&&clear>acknowledge,'Never clear form before server acknowledged');
@@ -146,6 +149,266 @@ test('UI behavior: invalid fields retain data; only acknowledged save clears ent
  vm.runInContext('fullWorkLogSavePending(testForm,false)',vmContext);
  assert.equal(submit.disabled,false);
  assert.equal(submit.textContent,'Сохранить работу');
+});
+
+
+test('WorkLog legacy taxonomy Category → Action → Service preserves canonical serviceId',()=>{
+ assert.match(server,/SELECT service_id,service_name,category,action_code,status FROM public\.mvp_services_reference/);
+ assert.match(ui,/data-full-worklog-tax-category/);
+ assert.match(ui,/data-full-worklog-tax-action/);
+ assert.match(ui,/Фактическая работа/);
+ assert.match(ui,/fullWorkLogTaxSync\(form,'service'\)/);
+ const context=vm.createContext({data:{workLogServiceReferences:[
+  {service_id:'s1',service_name:'Трубы',category:'Сантехника',action_code:'MOUNT',status:'active'},
+  {service_id:'s2',service_name:'Радиатор',category:'Сантехника',action_code:'INSTALL',status:'active'},
+  {service_id:'s3',service_name:'Проводка',category:'Электрика',action_code:'REPAIR',status:'active'},
+  {service_id:'s4',service_name:'Архивная',category:'Сантехника',action_code:null,status:'archived'}
+ ]},esc:x=>String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;')});
+ vm.runInContext(ui,context);
+ assert.equal(vm.runInContext("fullWorkLogTaxRows('').length",context),3);
+ assert.equal(vm.runInContext("fullWorkLogTaxRows('s4').length",context),4);
+ const choices=vm.runInContext("fullWorkLogTaxServices(fullWorkLogTaxRows(''),'Сантехника','MOUNT','')",context);
+ assert.match(choices,/Трубы/);
+ assert.doesNotMatch(choices,/Радиатор|Проводка|Архивная/);
+ const actions=vm.runInContext("fullWorkLogTaxActions(fullWorkLogTaxRows(''),'Сантехника')",context);
+ assert.deepEqual(Array.from(actions,row=>Array.from(row)[0]),['MOUNT','INSTALL']);
+ const categorySelect={value:'',innerHTML:''},actionSelect={value:'',innerHTML:''},serviceSelect={value:'',innerHTML:''};
+ const sampleForm={elements:{serviceId:serviceSelect},querySelector:s=>{
+  if(s==='[data-full-worklog-tax-category]')return categorySelect;
+  if(s==='[data-full-worklog-tax-action]')return actionSelect;
+  return null;
+ }};
+ context.sampleForm=sampleForm;
+ assert.equal(vm.runInContext("fullWorkLogTaxPreselect(sampleForm,'s2')",context),true);
+ assert.equal(categorySelect.value,'Сантехника');
+ assert.equal(actionSelect.value,'INSTALL');
+ assert.equal(serviceSelect.value,'s2','copy previous must preserve canonical serviceId');
+ assert.match(serviceSelect.innerHTML,/Радиатор/);
+ assert.doesNotMatch(ui,/name="taxCategory"|name="taxAction"/);
+});
+
+
+test('WorkLog idle gap UI uses the canonical read-only gap endpoint and does not move the writer',()=>{
+ assert.match(server,/\/api\/worklogs\/full-context/);
+ assert.match(writer,/endClock:url\.searchParams\.get\('endClock'\)\?/);
+ assert.match(writer,/const exceptId=url\.searchParams\.get\('recordId'\)/);
+ assert.match(writer,/work_log_id<>\$2/);
+ assert.match(ui,/fullWorkLogGapSchedule/);
+ assert.match(ui,/data-full-gap-before/);
+ assert.match(ui,/data-full-gap-after/);
+ assert.match(ui,/Повторить проверку пауз/);
+ assert.match(ui,/fullWorkLogGapReset\(form\)/);
+ assert.match(app,/fullWorkLogGapSchedule\(full\)/);
+ const modalSource=get('public/workday-legacy-ui.js');
+ assert.match(modalSource,/worklogDraftOffer\(form\)/);
+ assert.match(modalSource,/fullWorkLogGapSchedule\(form,true\)/);
+ assert.match(modalSource,/form\.dataset\.draftDecision==='active'\|\|form\.dataset\.act==='work_log_full_update'/);
+ assert.ok(modalSource.indexOf('worklogDraftOffer(form)')<
+  modalSource.indexOf('fullWorkLogGapSchedule(form,true)'),
+  'Draft must be offered before canonical gap advisory check');
+ const beforeIndex=ui.indexOf('data-full-gap-before'),advancedIndex=ui.indexOf('Дополнительно: детали');
+ assert.ok(beforeIndex>0&&beforeIndex<advancedIndex,'Gap reason must be immediately below clocks, not hidden in advanced');
+ assert.equal((ui.match(/select\('gapReason',/g)||[]).length,1,'One gapReason field only');
+ assert.equal((ui.match(/select\('successorGapReason',/g)||[]).length,1,'One successor reason field only');
+});
+test('WorkLog gap reason appears automatically only over 15 minutes and clears stale reason',async()=>{
+ const queue=[],calls=[],contexts=[
+  {ready:true,overlap:false,gapMinutes:15,successorGapMinutes:0,thresholdMinutes:15,hasEndClock:false},
+  {ready:true,overlap:false,gapMinutes:16,successorGapMinutes:0,thresholdMinutes:15,hasEndClock:false},
+  {ready:true,overlap:false,gapMinutes:16,successorGapMinutes:22,thresholdMinutes:15,hasEndClock:true},
+  {ready:true,overlap:false,gapMinutes:0,successorGapMinutes:0,thresholdMinutes:15,hasEndClock:true}
+ ];
+ const mk=()=>({hidden:true,textContent:''});
+ const before=mk(),after=mk(),hint=mk(),retry=mk(),minutes=mk(),successor=mk();
+ const elements={
+  orderId:{value:'11111111-1111-4111-8111-111111111111'},
+  dayDate:{value:'2026-11-18'},startClock:{value:'09:00'},endClock:{value:''},
+  performerMode:{value:'OWNER'},workerId:{value:''},
+  gapReason:{value:'waiting',required:false},successorGapReason:{value:'',required:false}
+ };
+ const lookups={
+  '[data-full-gap-before]':before,'[data-full-gap-after]':after,
+  '[data-full-gap-feedback]':hint,'[data-full-gap-retry]':retry,
+  '[data-full-gap-minutes]':minutes,'[data-full-successor-gap-minutes]':successor
+ };
+ const form={elements,dataset:{},isConnected:true,
+  hasAttribute:k=>k==='data-full-worklog-form',
+  querySelector:k=>lookups[k]||null};
+ const sandbox=vm.createContext({console,URLSearchParams,
+  setTimeout(fn){queue.push(fn);return queue.length;},clearTimeout(){},
+  api:async(url)=>{calls.push(url);return contexts.shift();}
+ });
+ vm.runInContext(ui,sandbox,{filename:'worklog-full-ui.js'});
+ sandbox.form=form;
+ async function check(){
+  vm.runInContext('fullWorkLogGapSchedule(form,true)',sandbox);
+  assert.equal(form.dataset.fullGapState,'pending');
+  await queue.shift()();
+  assert.equal(form.dataset.fullGapState,'ready');
+ }
+ await check();
+ assert.equal(before.hidden,true,'15 minutes must remain hidden');
+ assert.equal(elements.gapReason.required,false);
+ assert.equal(elements.gapReason.value,'','no stale gap reason');
+ assert.ok(!calls[0].includes('endClock='),'advisory query must work before entering end time');
+ elements.startClock.value='09:16';
+ await check();
+ assert.equal(before.hidden,false,'16-minute pause appears immediately');
+ assert.equal(elements.gapReason.required,true);
+ assert.match(minutes.textContent,/16 мин/);
+ assert.equal(after.hidden,true,'no successor check until end clock');
+ elements.gapReason.value='materials';
+ elements.endClock.value='10:00';
+ await check();
+ assert.equal(after.hidden,false,'successor gap prompts if >15');
+ assert.equal(elements.gapReason.value,'materials','valid user selection preserved');
+ assert.equal(elements.successorGapReason.required,true,'next WorkLog without explanation needs a reason');
+ elements.startClock.value='08:59';elements.endClock.value='09:59';
+ elements.successorGapReason.value='lunch';
+ await check();
+ assert.equal(before.hidden,true);
+ assert.equal(after.hidden,true);
+ assert.equal(elements.gapReason.value,'');
+ assert.equal(elements.successorGapReason.value,'');
+ assert.equal(hint.hidden,true);
+ assert.equal(calls.length,4);
+});
+
+test('Invalid ready gap context does not silently clear mandatory user reason',()=>{
+ const ctx=vm.createContext({console});
+ vm.runInContext(ui,ctx,{filename:'worklog-full-ui.js'});
+ const before={hidden:false},after={hidden:true};
+ const gap={value:'materials',required:true},successor={value:'waiting',required:false};
+ ctx.form={elements:{gapReason:gap,successorGapReason:successor},
+  querySelector:k=>({'[data-full-gap-before]':before,'[data-full-gap-after]':after}[k]||null)};
+ for(const candidate of [
+  {gapMinutes:null,successorGapMinutes:0,hasEndClock:false,thresholdMinutes:15},
+  {gapMinutes:16,successorGapMinutes:null,hasEndClock:true,thresholdMinutes:15},
+  {gapMinutes:16,successorGapMinutes:0,hasEndClock:null,thresholdMinutes:15},
+  {gapMinutes:'0',successorGapMinutes:0,hasEndClock:false,thresholdMinutes:15}
+ ]){
+  ctx.result=candidate;
+  assert.throws(()=>vm.runInContext('fullWorkLogGapApply(form,result)',ctx),/некорректный расчёт пауз/);
+  assert.equal(gap.value,'materials');
+  assert.equal(gap.required,true);
+  assert.equal(before.hidden,false);
+  assert.equal(successor.value,'waiting');
+ }
+});
+test('Gap check disregards an old response after a faster clock change',async()=>{
+ const timers=[],requests=[];
+ const wrap={hidden:true},hint={hidden:true,textContent:''};
+ const controls={orderId:{value:'11111111-1111-4111-8111-111111111111'},
+  dayDate:{value:'2026-11-18'},startClock:{value:'09:15'},endClock:{value:''},
+  performerMode:{value:'OWNER'},workerId:{value:''},
+  gapReason:{value:'',required:false},successorGapReason:{value:'',required:false}};
+ const form={dataset:{},elements:controls,isConnected:true,
+  hasAttribute:k=>k==='data-full-worklog-form',
+  querySelector:k=>({'[data-full-gap-before]':wrap,'[data-full-gap-feedback]':hint}[k]||null)};
+ const ctx=vm.createContext({console,URLSearchParams,
+  setTimeout:fn=>{timers.push(fn);return timers.length;},
+  clearTimeout(){},
+  api:url=>new Promise(resolve=>requests.push({url,resolve}))
+ });
+ vm.runInContext(ui,ctx,{filename:'worklog-full-ui.js'});ctx.form=form;
+ vm.runInContext('fullWorkLogGapSchedule(form,true)',ctx);
+ const oldRequest=timers.shift()();
+ controls.startClock.value='09:16';
+ vm.runInContext('fullWorkLogGapSchedule(form,true)',ctx);
+ const latestRequest=timers.shift()();
+ assert.equal(requests.length,2);
+ requests[1].resolve({ready:true,overlap:false,gapMinutes:16,successorGapMinutes:0,
+  thresholdMinutes:15,hasEndClock:false});
+ await latestRequest;
+ requests[0].resolve({ready:true,overlap:false,gapMinutes:15,successorGapMinutes:0,
+  thresholdMinutes:15,hasEndClock:false});
+ await oldRequest;
+ assert.equal(form.dataset.fullGapState,'ready');
+ assert.equal(wrap.hidden,false,'old 15-minute result must not mask new 16-minute gap');
+ assert.equal(controls.gapReason.required,true);
+ assert.match(requests[0].url,/startClock=09%3A15/);
+ assert.match(requests[1].url,/startClock=09%3A16/);
+});
+
+test('WorkLog preflight errors remain visible and retryable without hiding the real writer error',async()=>{
+ const callbacks=[],feedback={hidden:true,textContent:''},retry={hidden:true},before={hidden:true};
+ const elements={orderId:{value:'11111111-1111-4111-8111-111111111111'},dayDate:{value:'2026-11-18'},
+  startClock:{value:'09:00'},endClock:{value:''},performerMode:{value:'OWNER'},workerId:{value:''},
+  gapReason:{value:'materials',required:false},successorGapReason:{value:'',required:false}};
+ const form={elements,dataset:{},isConnected:true,
+  hasAttribute:k=>k==='data-full-worklog-form',
+  querySelector:k=>({'[data-full-gap-feedback]':feedback,'[data-full-gap-retry]':retry,
+   '[data-full-gap-before]':before}[k]||null)};
+ const sandbox=vm.createContext({console,URLSearchParams,
+  setTimeout:fn=>{callbacks.push(fn);return 1;},clearTimeout(){},
+  api:async()=>{throw Error('offline');}
+ });
+ vm.runInContext(ui,sandbox,{filename:'worklog-full-ui.js'});
+ sandbox.form=form;
+ vm.runInContext('fullWorkLogGapSchedule(form,true)',sandbox);
+ await callbacks.shift()();
+ assert.equal(form.dataset.fullGapState,'error');
+ assert.equal(feedback.hidden,false);
+ assert.equal(retry.hidden,false);
+ assert.match(feedback.textContent,/offline/);
+ assert.equal(elements.gapReason.value,'materials','failure must not erase selected reason');
+ assert.ok(vm.runInContext('fullWorkLogGapSignature(form)',sandbox).includes('startClock=09%3A00'));
+});
+
+
+test('Canonical read-only gap context detects idle time without end clock and excludes an edited WorkLog',async()=>{
+ const previous={work_log_id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  performer_mode:'OWNER',worker_id:null,start_clock:'08:00:00',end_clock:'09:00:00',gap_reason:''};
+ const edited={work_log_id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  performer_mode:'OWNER',worker_id:null,start_clock:'09:30:00',end_clock:'10:00:00',gap_reason:'waiting'};
+ const queries=[],all=[previous,edited];
+ const pool={async query(sql,params){
+  queries.push({sql,params});
+  if(sql.includes('SELECT id FROM public.mvp_work_days'))
+   return {rowCount:1,rows:[{id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc'}]};
+  assert.match(sql,/work_log_id<>\$2/,'edit exclusion must be an advisory parameter');
+  const rows=all.filter(item=>item.work_log_id!==params[1]);
+  return {rowCount:rows.length,rows};
+ }};
+ class AppError extends Error{constructor(status,message){super(message);this.status=status;}}
+ const common={pool,uuid:v=>String(v),safeDate:v=>String(v),AppError};
+ const request=({start='09:16',end='',recordId=''}={})=>{
+  const query=new URLSearchParams({orderId:'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+   dayDate:'2026-11-18',startClock:start,performerMode:'OWNER'});
+  if(end)query.set('endClock',end);
+  if(recordId)query.set('recordId',recordId);
+  return new URL('http://localhost/api/worklogs/full-context?'+query);
+ };
+ const atStart=await workLogFullContextRead({...common,url:request()});
+ assert.equal(atStart.ready,true);
+ assert.equal(atStart.gapMinutes,16);
+ assert.equal(atStart.hasEndClock,false,'start-time-only query must not need end clock');
+ assert.equal(atStart.successorGapMinutes,0);
+ const editing=await workLogFullContextRead({...common,url:request({
+  start:'09:16',end:'10:00',recordId:edited.work_log_id})});
+ assert.equal(editing.ready,true,'historical record must not collide with itself');
+ assert.equal(editing.gapMinutes,16);
+ assert.equal(queries.at(-1).params[1],edited.work_log_id);
+ assert.equal(queries.at(-1).params[0],'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+});
+test('Canonical gap context identifies whether the following WorkLog already contains a reason',async()=>{
+ const next={work_log_id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  performer_mode:'OWNER',worker_id:null,start_clock:'10:00:00',end_clock:'11:00:00',gap_reason:''};
+ const pool={async query(sql){
+  if(sql.includes('SELECT id FROM public.mvp_work_days'))return {rowCount:1,rows:[{id:'day'}]};
+  return {rowCount:1,rows:[next]};
+ }};
+ class AppError extends Error{constructor(status,message){super(message);this.status=status;}}
+ const url=new URL('http://localhost/api/worklogs/full-context?orderId=11111111-1111-4111-8111-111111111111&dayDate=2026-11-18&startClock=09%3A00&endClock=09%3A44&performerMode=OWNER');
+ const read=()=>workLogFullContextRead({pool,url,uuid:x=>x,safeDate:x=>x,AppError});
+ const unrecorded=await read();
+ assert.equal(unrecorded.ready,true);
+ assert.equal(unrecorded.successorGapMinutes,16);
+ assert.equal(unrecorded.successorReasonPresent,false);
+ next.gap_reason='waiting';
+ const annotated=await read();
+ assert.equal(annotated.successorGapMinutes,16);
+ assert.equal(annotated.successorReasonPresent,true);
 });
 
 const presenceUi=get('public/presence.js');

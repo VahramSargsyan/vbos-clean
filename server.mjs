@@ -95,6 +95,7 @@ const files = {
  '/my-work.js': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/my-work.js',import.meta.url))],
  '/workday-legacy-ui.js': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/workday-legacy-ui.js',import.meta.url))],
  '/worklog-full-ui.js': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/worklog-full-ui.js',import.meta.url))],
+ '/worklog-drafts.js': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/worklog-drafts.js',import.meta.url))],
  '/presence.js': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/presence.js',import.meta.url))],
  '/owner-activity.js': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/owner-activity.js',import.meta.url))],
  '/schedule.js': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/schedule.js',import.meta.url))],
@@ -251,14 +252,16 @@ async function state(){
  const workerSources=['mvp_workers','mvp_worker_order_assignments','mvp_manual_plan_workers','mvp_worker_days','mvp_worker_day_orders','mvp_worker_tasks'];
  const workerOrders=['created_at','assigned_at','assigned_at','day_date','linked_at','created_at'];
  const linked=await Promise.all(workerSources.map((name,i)=>pool.query('SELECT '+(name==='mvp_worker_days'?'w.*,w.day_date::text AS day_date':'w.*')+' FROM public.'+name+' AS w ORDER BY w.'+workerOrders[i]+' DESC,w.id LIMIT 501')));
- const workLogReferences=await pool.query('SELECT service_id,service_name,category,status FROM public.mvp_services_reference ORDER BY category,service_name,service_id LIMIT 201');
+ const workLogReferences=await pool.query('SELECT service_id,service_name,category,action_code,status FROM public.mvp_services_reference ORDER BY category,service_name,service_id LIMIT 201');
  const crmLinks=await pool.query('SELECT lead_id,client_id,object_id,source_kind,created_at FROM public.mvp_crm_lead_client_links ORDER BY created_at DESC,lead_id LIMIT 501');
  const crmIntakes=await pool.query('SELECT lead_id,client_id,source_kind,created_at FROM public.mvp_crm_lead_intakes ORDER BY created_at DESC,lead_id LIMIT 501');
  const leadTransfers=await pool.query('SELECT id,lead_id,recipient_name,master_id,reason,comment,transferred_at,source_system FROM public.mvp_crm_lead_transfers ORDER BY transferred_at DESC,id DESC LIMIT 501');
  const archivedClients=await pool.query("SELECT target_id FROM public.mvp_legacy_import_map WHERE source_entity='Clients' AND source_payload->>'status'='archived' ORDER BY source_id LIMIT 501");
  const legacyOrders=await pool.query(
   "SELECT target_id,source_payload->>'status' AS source_status FROM public.mvp_legacy_import_map WHERE source_system='Working IP APP / M8C cutover baseline' AND source_entity='WorkOrders' ORDER BY source_id LIMIT 501");
- const result={today:dayYerevan(),legacyReport:q.rows[0]||null,
+ const result={today:dayYerevan(),
+  draftOwnerScope:createHash('sha256').update('vbos-clean:worklog-draft:v1:'+(await ownerLogin())).digest('hex'),
+  legacyReport:q.rows[0]||null,
   workLogServiceReferences:workLogReferences.rows.slice(0,200),
   workLogServiceReferencesTruncated:workLogReferences.rows.length>200,
   legacyGoogleOrderIds:legacyOrders.rows.slice(0,500).map(x=>x.target_id),
