@@ -484,6 +484,8 @@ test('WorkDay start from My Work does not require daily A1 or write to its recor
    message:(...args)=>notices.push(args),tab:'myWork'
   });
   vm.runInContext(source,sandbox,{filename:'workday-legacy-ui.js'});
+  // The script declares this function, overwriting context mocks during evaluation.
+  sandbox.workFlowModalClose=()=>true;
   vm.runInContext("workFlowModalState.kind='start'",sandbox);
   const markup=vm.runInContext('workFlowModalHtml()',sandbox);
   assert.match(markup,/data-workflow-day-start/);
