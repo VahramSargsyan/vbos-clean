@@ -103,8 +103,12 @@ export function normalizeKnowledgePayload(raw,old,AppError){
  data.sortOrder=number;
  return data;
 }
+// pg returns timestamptz as Date, but an idempotent response is stored as JSONB.
+// Normalize on the first response as well: live write and replay must be identical.
+const knowledgeTimestamp=value=>value instanceof Date?value.toISOString():value==null?null:String(value);
 function knowledgeFromRow(r){
- return {knowledgeId:r.knowledge_id,createdAt:r.created_at,updatedAt:r.updated_at,
+ return {knowledgeId:r.knowledge_id,createdAt:knowledgeTimestamp(r.created_at),
+  updatedAt:knowledgeTimestamp(r.updated_at),
   status:r.status,type:r.type,code:r.code,title:r.title,sectionPath:r.section_path,
   summary:r.summary,fullText:r.full_text,tags:r.tags,version:r.version,
   sourceName:r.source_name,sourceVersion:r.source_version,sortOrder:Number(r.sort_order),
