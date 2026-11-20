@@ -13,7 +13,8 @@ knowledgeNames.OTHER='Справка';
 knowledgeNames.IMPROVEMENTS='Итоги и улучшения';
 knowledgeNames.STOP='STOP / исключения';
 const knowledgeState={loaded:false,loading:false,items:[],error:'',meta:null,
- writeEnabled:false,phase:'LEGACY',query:'',type:'ALL',status:'active',stage:'ALL',favoritesOnly:false};
+ writeEnabled:false,phase:'LEGACY',query:'',type:'ALL',status:'active',stage:'ALL',favoritesOnly:false,
+ pendingFavorites:new Map()};
 const knowledgeEsc=value=>String(value??'').replace(/[&<>"']/g,
  ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const knowledgeOption=(value,label,current)=>'<option value="'+knowledgeEsc(value)+'"'+
@@ -226,13 +227,19 @@ async function knowledgeFavorite(id){
  if(!knowledgeState.writeEnabled)return;
  const item=knowledgeItem(id);
  if(!item)return;
- const requestKey=crypto.randomUUID();
+ let pending=knowledgeState.pendingFavorites.get(id);
+ if(!pending){
+  pending={requestKey:crypto.randomUUID(),
+   payload:{...item,favorite:String(item.favorite)==='true'?'false':'true'}};
+  knowledgeState.pendingFavorites.set(id,pending);
+ }
  try{
-  await api('/api/knowledge/save',{requestKey,payload:{...item,favorite:String(item.favorite)==='true'?'false':'true'}});
+  await api('/api/knowledge/save',pending);
+  knowledgeState.pendingFavorites.delete(id);
   knowledgeState.loaded=false;await knowledgeLoad(true);
   const dlg=document.querySelector('#knowledgeDialog');
   if(dlg?.open&&knowledgeItem(id))knowledgeDetail(id);
- }catch(e){message('Не удалось сохранить избранное: '+e.message,true);}
+ }catch(e){message('Результат избранного не подтверждён. Обнови SOP; повтор использует прежний ключ. '+e.message,true);}
 }
 document.addEventListener('click',e=>{
  const t=e.target.closest('[data-knowledge-refresh],[data-knowledge-stage],[data-knowledge-open],'+
