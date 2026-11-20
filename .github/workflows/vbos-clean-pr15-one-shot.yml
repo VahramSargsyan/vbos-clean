@@ -1,4 +1,4 @@
-# Single authorized PR #15 verification run. Removing this file after readback restores the PR's source tree.
+# Bounded PR #15 verification after one focused test repair. Remove this file after readback to restore the PR's source tree.
 # Exact runtime code checkout is pinned independently of the workflow registration commit.
 name: VBOS Clean PR15 one-shot exact PostgreSQL verification
 on:
@@ -16,7 +16,7 @@ jobs:
   verify:
     if: >-
       github.event_name == 'push' &&
-      github.event.head_commit.message == 'ci(pr15): one-shot exact-source PostgreSQL verification'
+      github.event.head_commit.message == 'ci(pr15): verify exact source after focused stale-assertion fix'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
@@ -34,13 +34,13 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      PR15_SOURCE_SHA: 0c17af3b8f3b92690fe28ffcfbd4a348be834357
+      PR15_SOURCE_SHA: 50500064fb4b9943cec488822e6d9b8623909aa5
       TEST_DATABASE_URL: postgresql://ci:pr15_synthetic_only@127.0.0.1:5432/vbos_mvp_ci
     steps:
       - name: Checkout exact PR15 candidate
         uses: actions/checkout@v4
         with:
-          ref: 0c17af3b8f3b92690fe28ffcfbd4a348be834357
+          ref: 50500064fb4b9943cec488822e6d9b8623909aa5
           persist-credentials: false
       - name: Verify source identity and isolated DB target
         shell: bash
