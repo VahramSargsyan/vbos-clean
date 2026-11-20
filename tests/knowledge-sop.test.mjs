@@ -28,7 +28,7 @@ test('favorite first, numeric code and sort order; filtering all original fields
   ['KNW-2026-0003','KNW-2026-0002','KNW-2026-0010','KNW-2026-0004']);
  assert.equal(knowledgeFilter(rows,{favoritesOnly:true}).length,1);
  assert.equal(knowledgeFilter(rows,{stage:'STOP',status:'ALL'}).length,1);
- assert.equal(knowledgeFilter(rows,{query:'приём заявки'}).length,4);
+ assert.equal(knowledgeFilter(rows,{query:'приём заявки',status:'ALL'}).length,4);
  assert.equal(knowledgeFilter(rows,{query:'об адресе',status:'active'}).length,3);
  assert.equal(knowledgeFilter(rows,{type:'RULE',status:'active'}).length,0);
 });
@@ -74,6 +74,12 @@ test('write gate fails closed before any item or idempotency query',async()=>{
  assert.ok(queries.includes('ROLLBACK'));
  assert.ok(!queries.some(q=>q.includes('INSERT INTO public.mvp_knowledge_items')));
 });
+test('idempotency replay is keyed to original submitted request, not the later DB row',()=>{
+ const code=readFileSync(new URL('../knowledge.mjs',import.meta.url),'utf8');
+ assert.match(code,/JSON\.stringify\(\{knowledgeId:id,payload:p\}\)/);
+ assert.ok(!code.includes('JSON.stringify({knowledgeId:id,...data})'));
+});
+
 test('legacy screen is routed but editing remains visibly gated without approved source',()=>{
  const js=readFileSync(new URL('../public/knowledge.js',import.meta.url),'utf8');
  const index=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
