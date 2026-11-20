@@ -15,6 +15,7 @@
 - Screen: `Knowledge.html` and `Scripts.html` block `knowledgeItemById_` through `toggleKnowledgeFavorite_`.
 - Canonical fields (`Config.js`): knowledgeId, createdAt, updatedAt, status, type, code, title, sectionPath, summary, fullText, tags, version, sourceName, sourceVersion, sortOrder, priority, favorite, clientRequestId.
 - Stable IDs generated from prefix `KNW`, year, per-year durable sequence (`KNW-YYYY-0001` format); existing IDs must remain byte-identical. Do not mint Clean IDs while old writer is active.
+- **Exact year boundary:** original `IdService.js::generateStableIdUnlocked_` uses `new Date().getFullYear()` under legacy `appsscript.json` timezone `Asia/Yerevan`, not UTC. Clean helper `knowledgeYear()` preserves this; regression fixture verifies 2026-12-31T20:00:00Z maps to `2027` for a new ID. Sequence must be initialized independently for every legacy year at cutover.
 - Legacy read sorting: favorite first, sortOrder ascending, code ru natural-numeric. Filters: stage from code/terms, search across code/title/sectionPath/summary/fullText/tags/sourceName, type, status and favorites.
 - Legacy edits: owner create/update/favorite, online only; user-facing editor preserves original max lengths and enums; duplicate request replay has identical result.
 - Original seed metadata: `Карта SOP системы бизнеса v0.2.62`, **64 seed cards claimed by source** including 61 detailed cards. This is **not** a verified live snapshot row count. No card fullText or actual original record is embedded into public Clean GitHub.
