@@ -74,10 +74,54 @@ test('write gate fails closed before any item or idempotency query',async()=>{
  assert.ok(queries.includes('ROLLBACK'));
  assert.ok(!queries.some(q=>q.includes('INSERT INTO public.mvp_knowledge_items')));
 });
-test('idempotency replay is keyed to original submitted request, not the later DB row',()=>{
- const code=readFileSync(new URL('../knowledge.mjs',import.meta.url),'utf8');
- assert.match(code,/JSON\.stringify\(\{knowledgeId:id,payload:p\}\)/);
- assert.ok(!code.includes('JSON.stringify({knowledgeId:id,...data})'));
+test('idempotency delayed replay returns original response after another owner edit',async()=>{
+ const row={knowledge_id:'KNW-2026-0064',created_at:'2026-08-13',updated_at:'2026-08-13',
+  status:'active',type:'SOP',code:'1.1',title:'Старое',section_path:'',summary:'',full_text:'',
+  tags:'A',version:'',source_name:'',source_version:'',sort_order:0,
+  priority:'MEDIUM',favorite:false,client_request_id:''};
+ const requests=new Map();
+ const db={release(){},async query(sql,args=[]){
+  if(['BEGIN','COMMIT','ROLLBACK'].includes(sql))return {rows:[]};
+  if(sql.includes('FROM public.mvp_knowledge_authority'))
+   return {rows:[{phase:'CLEAN',source_snapshot_hash:'a'.repeat(64)}]};
+  if(sql.includes('FROM public.mvp_knowledge_items WHERE knowledge_id='))
+   return {rows:[{...row}]};
+  if(sql.startsWith('INSERT INTO public.mvp_knowledge_requests')){
+   const [key,operation,payload_sha256]=args;
+   if(requests.has(key))return {rows:[]};
+   requests.set(key,{operation,payload_sha256,response:null});
+   return {rows:[{request_key:key}]};
+  }
+  if(sql.startsWith('SELECT * FROM public.mvp_knowledge_requests'))
+   return {rows:[requests.get(args[0])]};
+  if(sql.startsWith('UPDATE public.mvp_knowledge_items')){
+   const cols=['status','type','code','title','section_path','summary','full_text','tags',
+    'version','source_name','source_version','sort_order','priority','favorite'];
+   cols.forEach((name,i)=>{row[name]=args[i+1];});
+   row.client_request_id=args[15];
+   return {rows:[{...row}]};
+  }
+  if(sql.startsWith('UPDATE public.mvp_knowledge_requests SET response')){
+   requests.get(args[0]).response=JSON.parse(args[1]);return {rows:[]};
+  }
+  throw Error('Unexpected test query '+sql.slice(0,55));
+ }};
+ const pool={connect:async()=>db};
+ const id=row.knowledge_id,k1='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  k2='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+ const firstPayload={knowledgeId:id,title:'Первый'};
+ const first=await knowledgeSave({pool,p:firstPayload,key:k1,AppError});
+ assert.equal(first.data.title,'Первый');
+ const second=await knowledgeSave({pool,p:{knowledgeId:id,title:'Второй',tags:'Изменено'},
+  key:k2,AppError});
+ assert.equal(second.data.title,'Второй');
+ const replay=await knowledgeSave({pool,p:firstPayload,key:k1,AppError});
+ assert.deepEqual(replay,first);
+ assert.equal(row.title,'Второй');
+ assert.equal(requests.size,2);
+ await assert.rejects(()=>knowledgeSave({pool,p:{knowledgeId:id,title:'Неверное повторение'},
+  key:k1,AppError}),e=>e.status===409);
+ assert.equal(row.title,'Второй');
 });
 
 test('legacy screen is routed but editing remains visibly gated without approved source',()=>{
