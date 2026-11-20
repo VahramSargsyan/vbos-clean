@@ -1,0 +1,123 @@
+# One-shot, owner-requested PR15 guarded TEST release. Never deploys PROD or main.
+# Uses only an EXISTING GitHub Actions secret RENDER_API_KEY; never prints its value.
+name: VBOS Clean PR15 guarded exact Render TEST release
+on:
+  push:
+    branches:
+      - fix/workday-open-without-a1-20261119
+    paths:
+      - .github/workflows/vbos-clean-pr15-guarded-render-test-once.yml
+permissions:
+  contents: read
+concurrency:
+  group: vbos-clean-pr15-guarded-render-release
+  cancel-in-progress: false
+jobs:
+  exact-test-release:
+    if: >-
+      github.event_name == 'push' &&
+      github.event.head_commit.message == 'ci(pr15): attempt guarded exact Render TEST release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 17
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      RENDER_SERVICE_ID: srv-dbkvfh2jnfac73a31nv0
+      TESTED_SHA: 50500064fb4b9943cec488822e6d9b8623909aa5
+      ROLLBACK_SHA: b4727f77fd4e452842c0fa16731a656787e40e8c
+      ROLLBACK_DEPLOY_ID: dep-dbv9c92jnfac73d0tl1g
+      SERVICE_URL: https://vbos-clean-mvp-2026.onrender.com
+    steps:
+      - name: Guarded exact SHA release and hosted smoke with rollback
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import {setTimeout as sleep} from 'node:timers/promises';
+          const key=process.env.RENDER_API_KEY||'';
+          const sid=process.env.RENDER_SERVICE_ID;
+          const target=process.env.TESTED_SHA, baseline=process.env.ROLLBACK_SHA;
+          const rollbackId=process.env.ROLLBACK_DEPLOY_ID;
+          const hosted=process.env.SERVICE_URL;
+          const fail=(code)=>{throw new Error(code)};
+          if(!key){console.error('BLOCKED_NO_EXISTING_RENDER_API_KEY_GITHUB_SECRET; no deploy was requested');process.exit(78)}
+          async function render(method,path,payload){
+            const res=await fetch('https://api.render.com/v1'+path,{
+              method,
+              headers:{Authorization:'Bearer '+key,Accept:'application/json','Content-Type':'application/json'},
+              ...(payload?{body:JSON.stringify(payload)}:{}),
+              signal:AbortSignal.timeout(30000)
+            });
+            if(!res.ok)fail('RENDER_'+method+'_HTTP_'+res.status);
+            return await res.json();
+          }
+          const service=await render('GET','/services/'+sid);
+          if(service.id!==sid||service.branch!=='main'||service.autoDeploy!=='no'||
+             service.repo!=='https://github.com/VahramSargsyan/vbos-clean'||
+             service.name!=='vbos-clean-mvp-2026'){
+            fail('PREDEPLOY_RENDER_SERVICE_FINGERPRINT_CHANGED');
+          }
+          const before=await render('GET','/services/'+sid+'/deploys?limit=2');
+          if(!Array.isArray(before))fail('PREDEPLOY_DEPLOYS_NOT_ARRAY');
+          const latest=before[0]?.deploy||before[0];
+          if(latest?.id!==rollbackId||latest?.status!=='live'||latest?.commit?.id!==baseline){
+            fail('PREDEPLOY_LIVE_BASELINE_MISMATCH');
+          }
+          const rollbackSource=await render('GET','/services/'+sid+'/deploys/'+rollbackId);
+          if(rollbackSource.id!==rollbackId||rollbackSource.commit?.id!==baseline||
+             rollbackSource.status!=='live'){
+            fail('PREDEPLOY_ROLLBACK_RECEIPT_UNVERIFIED');
+          }
+          console.log('PREDEPLOY_GUARDS_PASS source='+target+' rollback='+baseline+' autoDeploy=off');
+          const created=await render('POST','/services/'+sid+'/deploys',{commitId:target});
+          const started=created.deploy||created;
+          const deployId=started.id;
+          if(!/^dep-[a-z0-9]+$/.test(String(deployId||''))){
+            fail('DEPLOY_POST_OUTCOME_UNKNOWN_INSPECT_RENDER_BEFORE_ANY_RETRY');
+          }
+          console.log('EXACT_SHA_DEPLOY_REQUESTED id='+deployId+' source='+target);
+          let reachedLive=false;
+          for(let i=0;i<48;i++){
+            await sleep(12000);
+            const d=await render('GET','/services/'+sid+'/deploys/'+deployId);
+            if(d.commit?.id!==target)fail('DEPLOY_SOURCE_MISMATCH_ID='+deployId);
+            if(d.status==='live'){reachedLive=true;console.log('RENDER_EXACT_SHA_LIVE id='+deployId);break}
+            if(['build_failed','update_failed','canceled','deactivated'].includes(d.status)){
+              fail('RENDER_DEPLOY_TERMINAL_'+d.status+'_ID='+deployId);
+            }
+            if(i%5===0)console.log('DEPLOY_PROGRESS id='+deployId+' status='+d.status);
+          }
+          if(!reachedLive)fail('DEPLOY_WAIT_TIMEOUT_READBACK_REQUIRED_ID='+deployId);
+          let smokeError='';
+          async function get(path){
+            const r=await fetch(hosted+path,{headers:{'Cache-Control':'no-cache'},
+              signal:AbortSignal.timeout(25000)});
+            if(!r.ok)fail('HOSTED_HTTP_'+path+'_'+r.status);
+            return r;
+          }
+          for(let i=0;i<3;i++){
+            try{
+              const health=await (await get('/health')).json();
+              if(health.ok!==true||health.commit!==target||health.database!=='PostgreSQL'){
+                fail('HOSTED_HEALTH_COMMIT_OR_DB_MISMATCH');
+              }
+              const ui=await (await get('/workday-legacy-ui.js')).text();
+              if(!ui.includes('Рабочий день можно открыть без A1')||
+                 !ui.includes("type:'day_open'")||!ui.includes('A1 не создаётся и не изменяется')){
+                fail('HOSTED_UI_SOURCE_MISMATCH');
+              }
+              const myWork=await (await get('/my-work.js')).text();
+              if(!myWork.includes('Начать рабочий день'))fail('HOSTED_MYWORK_SOURCE_MISMATCH');
+              smokeError='';
+              break;
+            }catch(e){smokeError=e.message;await sleep(5000)}
+          }
+          if(smokeError){
+            console.error('HOSTED_SMOKE_FAILED code='+smokeError);
+            try{
+              const reverted=await render('POST','/services/'+sid+'/rollback',{deployId:rollbackId});
+              console.error('ROLLBACK_TO_PRIOR_TEST_DEPLOY_REQUESTED id='+(reverted.deploy?.id||reverted.id||'UNKNOWN'));
+            }catch(e){console.error('ROLLBACK_REQUEST_FAILED '+e.message)}
+            fail('HOSTED_TEST_UNACCEPTED_REVERT_REQUESTED_OR_BLOCKED');
+          }
+          console.log('RENDER_TEST_EXACT_SHA_AND_BASIC_HTTP_SMOKE_PASS deploy='+deployId+' source='+target);
+          console.log('OWNER_ANDROID_ACCEPTANCE_PENDING; NO PROD; NO MERGE');
+          NODE
