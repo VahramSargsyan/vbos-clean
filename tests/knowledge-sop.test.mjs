@@ -82,7 +82,8 @@ test('write gate fails closed before any item or idempotency query',async()=>{
  assert.ok(!queries.some(q=>q.includes('INSERT INTO public.mvp_knowledge_items')));
 });
 test('idempotency delayed replay returns original response after another owner edit',async()=>{
- const row={knowledge_id:'KNW-2026-0064',created_at:'2026-08-13',updated_at:'2026-08-13',
+ const row={knowledge_id:'KNW-2026-0064',created_at:new Date('2026-08-13T07:38:03.430Z'),
+  updated_at:new Date('2026-08-13T07:38:03.430Z'),
   status:'active',type:'SOP',code:'1.1',title:'Старое',section_path:'',summary:'',full_text:'',
   tags:'A',version:'',source_name:'',source_version:'',sort_order:0,
   priority:'MEDIUM',favorite:false,client_request_id:''};
@@ -119,6 +120,8 @@ test('idempotency delayed replay returns original response after another owner e
  const firstPayload={knowledgeId:id,title:'Первый'};
  const first=await knowledgeSave({pool,p:firstPayload,key:k1,AppError});
  assert.equal(first.data.title,'Первый');
+ assert.equal(first.data.createdAt,'2026-08-13T07:38:03.430Z');
+ assert.equal(first.data.updatedAt,'2026-08-13T07:38:03.430Z');
  const second=await knowledgeSave({pool,p:{knowledgeId:id,title:'Второй',tags:'Изменено'},
   key:k2,AppError});
  assert.equal(second.data.title,'Второй');
