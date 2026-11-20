@@ -57,11 +57,13 @@ test('read provides all rows in legacy order without claiming unimported 64 mate
    knowledge_id:'KNW-2026-0002',status:'active',type:'SOP',code:'2.1',title:'Осмотр',
    section_path:'',summary:'',full_text:'',tags:'',version:'',
    source_name:'',source_version:'',sort_order:0,priority:'MEDIUM',favorite:false,
-   created_at:'2026-08-12',updated_at:'2026-08-13',client_request_id:''
+   created_at:new Date('2026-08-12T02:03:04.000Z'),updated_at:new Date('2026-08-13T07:38:03.430Z'),client_request_id:''
   }]};
  }};
  const r=await knowledgeRead({pool,AppError});
  assert.equal(r.items[0].knowledgeId,'KNW-2026-0002');
+ assert.equal(r.items[0].createdAt,'2026-08-12T02:03:04.000Z');
+ assert.equal(r.items[0].updatedAt,'2026-08-13T07:38:03.430Z');
  assert.equal(r.total,1);assert.equal(r.sourceMeta.totalSeedItems,0);
  assert.equal(r.writeEnabled,false);assert.equal(r.authority,'LEGACY');
  assert.equal(queries.length,2);
