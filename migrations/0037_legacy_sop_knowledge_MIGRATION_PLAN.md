@@ -18,6 +18,7 @@
 - Legacy read sorting: favorite first, sortOrder ascending, code ru natural-numeric. Filters: stage from code/terms, search across code/title/sectionPath/summary/fullText/tags/sourceName, type, status and favorites.
 - Legacy edits: owner create/update/favorite, online only; user-facing editor preserves original max lengths and enums; duplicate request replay has identical result.
 - Original seed metadata: `Карта SOP системы бизнеса v0.2.62`, **64 seed cards claimed by source** including 61 detailed cards. This is **not** a verified live snapshot row count. No card fullText or actual original record is embedded into public Clean GitHub.
+- **Read-only live Google inspection, 2026-11-20:** the connected workbook titled `Working IP APP` has a visible `KnowledgeItems` sheet with the **exact 18 original headers**. Range A2:A120 contains **64 non-empty distinct IDs**, `KNW-2026-0001` through `KNW-2026-0064`; B2:C65 has 64 non-empty created/updated timestamp pairs (all displayed updatedAt `2026-08-13T07:38:03.430Z`). This supports count/ID-format only; **does not prove that the Google sheet remains current write authority after M8A API cutover**, or that row contents are reconciled with any newer shadow/API copy. No private spreadsheet identifier or SOP full text is added to this PUBLIC repository.
 - Source origin data may be private or contain proprietary business details. Public repository must contain **code and synthetic fixtures only**.
 
 ## Proposed additive destination
