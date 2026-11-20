@@ -1,0 +1,61 @@
+# One-shot, read-only post-release checks on the existing Clean Render TEST.
+# User authorized GitHub Actions for this PR15 bounded technical closure.
+name: VBOS Clean PR15 hosted exact source smoke
+on:
+  push:
+    branches:
+      - fix/workday-open-without-a1-20261119
+    paths:
+      - .github/workflows/vbos-clean-pr15-hosted-smoke-once.yml
+permissions:
+  contents: read
+concurrency:
+  group: vbos-clean-pr15-hosted-source-readback
+  cancel-in-progress: false
+jobs:
+  inspect-hosted:
+    if: >-
+      github.event_name == 'push' &&
+      github.event.head_commit.message == 'ci(pr15): read-only hosted TEST smoke once'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Read live health and UI sources (no writes)
+        shell: bash
+        env:
+          BASE: https://vbos-clean-mvp-2026.onrender.com
+          EXPECTED_SHA: 50500064fb4b9943cec488822e6d9b8623909aa5
+        run: |
+          node --input-type=module <<'NODE'
+          import {setTimeout as sleep} from 'node:timers/promises';
+          const base=process.env.BASE,sha=process.env.EXPECTED_SHA;
+          let last='NOT_RUN';
+          const get=async path=>{
+            const r=await fetch(base+path,{redirect:'error',signal:AbortSignal.timeout(20000),headers:{'Cache-Control':'no-cache'}});
+            if(r.status!==200)throw Error('HTTP_'+path+'_'+r.status);
+            return r;
+          };
+          for(let i=0;i<5;i++){
+            try {
+              const health=await (await get('/health')).json();
+              if(health.ok!==true||health.database!=='PostgreSQL'||health.commit!==sha){
+                throw Error('HEALTH_MISMATCH_'+String(health.commit).slice(0,14));
+              }
+              const w=await (await get('/workday-legacy-ui.js')).text();
+              if(!w.includes('Рабочий день можно открыть без A1')||
+                 !w.includes('A1 не создаётся и не изменяется')||
+                 !w.includes("type:'day_open'"))throw Error('WORKDAY_JS_MISMATCH');
+              const m=await (await get('/my-work.js')).text();
+              if(!m.includes('Начать рабочий день'))throw Error('MY_WORK_JS_MISMATCH');
+              const root=await (await get('/')).text();
+              if(!root.includes('/workday-legacy-ui.js')||!root.includes('/my-work.js'))throw Error('INDEX_REFERENCE_MISMATCH');
+              console.log('CLEAN_TEST_HOSTED_HEALTH_SHA_POSTGRES_PASS sha='+sha);
+              console.log('CLEAN_TEST_HOSTED_WORKDAY_JS_OPTIONAL_A1_PASS');
+              console.log('CLEAN_TEST_HOSTED_MYWORK_JS_AND_HTML_PASS');
+              console.log('READ_ONLY_TEST_SMOKE_PASS; AUTHENTICATED_ANDROID_ACCEPTANCE_NOT_RUN');
+              process.exit(0);
+            }catch(e){last=e.message;console.log('SMOKE_READBACK_ATTEMPT_'+(i+1)+'_'+last);if(i<4)await sleep(5000)}
+          }
+          console.error('READ_ONLY_TEST_SMOKE_FAILED reason='+last);
+          process.exit(1);
+          NODE
