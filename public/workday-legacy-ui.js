@@ -70,16 +70,12 @@ function workFlowModalHtml(){
    '</strong></p><p class="muted small">Выбери исполнителя; подробные показатели доступны в разделе «Дополнительно».</p>'+
    fullWorkLogForm(id,item?.day_date||date,item);
  }else if(kind==='start'){
-  heading='Начало рабочего дня / A1';
-  const already=Boolean(a1);
-  body='<p class="muted">A1 относится ко всему дню. Заказ можно выбрать или изменить отдельно.</p>'+
-    (already?'<div class="card"><strong>A1: '+esc(a1.goal)+'</strong><p class="muted">Почему: '+esc(a1.reason)+'</p></div>':'')+
+  heading='Начало рабочего дня';
+  body='<p class="muted">Рабочий день можно открыть без A1. Если нужна цель дня, задай её отдельно в разделе A1.</p>'+
+    (a1?'<div class="card"><strong>A1: '+esc(a1.goal)+'</strong><p class="muted">Почему: '+esc(a1.reason)+'</p></div>':'')+
     '<form class="grid" data-workflow-day-start novalidate>'+
     editText('date','Дата',date,'date','required readonly')+
-    (!already?editText('goal','A1 сегодня',undefined,'textarea','required maxlength="1000"')+
-      editText('reason','Почему именно это A1',undefined,'textarea','required maxlength="2000"')+
-      editText('notes','Заметки дня',undefined,'textarea','maxlength="5000"'):'')+
-    '<p class="muted small">Сначала сохраняется A1, затем открывается WorkDay. В случае ошибки оба результата будут показаны отдельно.</p>'+
+    '<p class="muted small">Открывается только рабочий день. A1 не создаётся и не изменяется.</p>'+
     '<button type="submit" class="primary wide">Начать день</button>'+
     '<p role="status" data-workflow-feedback aria-live="polite"></p></form>';
  }else if(kind==='continue'){
@@ -137,19 +133,11 @@ async function workFlowModalSubmitDay(form,kind){
  try{
   const date=myWork.snapshot?.today||data.today,a1=dailyA1?.item;
   if(kind==='start'){
-   if(!a1){
-    const goal=form.elements.goal?.value||'',reason=form.elements.reason?.value||'';
-    const out=await api('/api/action',{type:'a1_save',payload:{
-     date,revision:0,goal,reason,notes:form.elements.notes?.value||'',
-     requestKey:form.dataset.a1RequestKey||(form.dataset.a1RequestKey=crypto.randomUUID())
-    }});
-    if(!out.saved)throw Error('A1 не подтвердил сохранение.');
-   }
    const day=await api('/api/action',{type:'day_open',payload:{
     requestKey:form.dataset.dayRequestKey||(form.dataset.dayRequestKey=crypto.randomUUID())
    }});
-   if(!day.saved||day.item?.status!=='open')throw Error('Рабочий день не открылся (возможно, уже закрыт). Проверь A1 и состояние дня.');
-   workFlowLastNotice='✓ Рабочий день открыт. '+(a1?'Существующая A1 сохранена.':'A1 задана.');
+   if(!day.saved||day.item?.status!=='open')throw Error('Рабочий день не открылся (возможно, уже закрыт). Проверь состояние дня.');
+   workFlowLastNotice='✓ Рабочий день открыт. A1 не изменена.';
   }else{
    const out=await api('/api/action',{type:'day_close',payload:{
     requestKey:form.dataset.dayRequestKey||(form.dataset.dayRequestKey=crypto.randomUUID())

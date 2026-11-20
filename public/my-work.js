@@ -17,7 +17,7 @@ function myWorkView(){
   '<div class="summary"><div class="card"><span>Рабочий день</span><strong>'+esc(day?(label[day.status]||day.status):'Не открыт')+'</strong></div>'+
   '<div class="card"><span>Интервал</span><strong>'+esc(live?'Идёт':'Нет активного')+'</strong></div>'+
   '<div class="card"><span>Присутствие</span><strong>'+esc(visit?'На объекте':'Не отмечено')+'</strong></div></div>';
- if(!day)s+='<button type="button" class="primary wide-button" data-workflow-open="start">Начать день / задать A1</button>';
+ if(!day)s+='<button type="button" class="primary wide-button" data-workflow-open="start">Начать рабочий день</button>';
  else if(day.status==='open'&&!live&&!visit)
   s+='<button type="button" class="primary wide-button" data-workflow-open="finish">Я закончил работу</button>';
  else if(day.status==='open'&&(live||visit))

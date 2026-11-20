@@ -423,7 +423,7 @@ assert.ok(legacyIndex.indexOf('/workday-legacy-ui.js')<legacyIndex.indexOf('/my-
 assert.match(legacyScriptMarkup,/function workFlowModalHtml\(\)/);
 assert.match(legacyScriptMarkup,/function workFlowModalSubmitDay\(form,kind\)/);
 assert.match(legacyScriptMarkup,/aria-modal="true"/);
-assert.match(legacyScriptMarkup,/A1 сегодня/);
+assert.match(legacyScriptMarkup,/Рабочий день можно открыть без A1/);
 assert.match(legacyScriptMarkup,/Завершить рабочий день/);
 assert.match(legacyScriptMarkup,/workFlowModalClose\(\{force:true\}\)/);
 vm.runInContext('myWork.snapshot='+JSON.stringify(myWorkSample)+';workFlowModalState.kind="log";workFlowModalState.orderId="'+id1+'";workFlowModalState.item=null',sandbox);
@@ -438,7 +438,8 @@ assert.match(legacyModal,/Что сделано сегодня/);
 assert.match(legacyModal,/Сначала заверши рабочий интервал/);
 vm.runInContext('workFlowModalState.kind="start";workFlowModalState.item=null',sandbox);
 legacyModal=vm.runInContext('workFlowModalHtml()',sandbox);
-assert.match(legacyModal,/Начало рабочего дня \/ A1/);
+assert.match(legacyModal,/Начало рабочего дня/);
+assert.match(legacyModal,/A1 не создаётся и не изменяется/);
 assert.match(legacyModal,/data-workflow-day-start/);
 vm.runInContext('myWork.snapshot='+JSON.stringify({...myWorkSample,currentSession:null})+
  ';workFlowModalState.kind="continue";workFlowModalState.item={source:"session_stop",orderTitle:"Прокладка труб"};workFlowModalState.orderId="'+id1+'"',sandbox);
