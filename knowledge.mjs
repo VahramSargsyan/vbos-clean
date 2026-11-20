@@ -123,14 +123,16 @@ export async function knowledgeRead({pool,AppError}){
 const values=x=>[x.status,x.type,x.code,x.title,x.sectionPath,x.summary,x.fullText,x.tags,
  x.version,x.sourceName,x.sourceVersion,x.sortOrder,x.priority,x.favorite==='true'];
 export async function knowledgeSave({pool,p,key,AppError}){
- if(typeof key!=='string'||!(/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(key)))
+ if(typeof key!=='string'||!(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key)))
   err(AppError,400,'Неверный ключ сохранения.');
  const id=String(p?.knowledgeId||'').trim();
  if(id&&!/^KNW-\d{4}-\d{4,}$/.test(id))err(AppError,400,'Неверный ID материала.');
  const db=await pool.connect();
  try{
   await db.query('BEGIN');
-  const a=(await db.query('SELECT phase,source_snapshot_hash FROM public.mvp_knowledge_authority WHERE id=1 FOR SHARE')).rows[0];
+  let a;
+  try{a=(await db.query('SELECT phase,source_snapshot_hash FROM public.mvp_knowledge_authority WHERE id=1 FOR SHARE')).rows[0];}
+  catch(e){if(e.code==='42P01')err(AppError,409,'База знаний ещё не перенесена.');throw e;}
   if(!a||a.phase!=='CLEAN'||!a.source_snapshot_hash)
    err(AppError,409,'Сохранение SOP заблокировано до подтверждённой миграции источника.');
   const old=id?(await db.query('SELECT * FROM public.mvp_knowledge_items WHERE knowledge_id=$1 FOR UPDATE',[id])).rows[0]:null;
