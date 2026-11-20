@@ -16,7 +16,7 @@ test('legacy SOP stage keys by exact code and fallback tags, no invented stage',
  assert.deepEqual(knowledgeStageKeys(item()),['LEADS']);
  assert.deepEqual(knowledgeStageKeys(item({code:'S.1',title:'Остановка'})),['STOP']);
  assert.deepEqual(knowledgeStageKeys(item({code:'SOP-ARCH',title:'Лиды'})),[]);
- assert.deepEqual(knowledgeStageKeys(item({code:'',sectionPath:'Гарантия',tags:''})),['WARRANTY','LEADS']);
+ assert.deepEqual(knowledgeStageKeys(item({code:'',sectionPath:'Гарантия',tags:'лид'})),['LEADS','WARRANTY']);
  assert.deepEqual(knowledgeStageKeys(item({code:'',sectionPath:'',tags:'',title:'Несвязанная справка'})),[]);
 });
 test('favorite first, numeric code and sort order; filtering all original fields',()=>{
