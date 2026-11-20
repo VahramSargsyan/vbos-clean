@@ -138,7 +138,9 @@ export async function knowledgeSave({pool,p,key,AppError}){
   const old=id?(await db.query('SELECT * FROM public.mvp_knowledge_items WHERE knowledge_id=$1 FOR UPDATE',[id])).rows[0]:null;
   if(id&&!old)err(AppError,404,'Материал не найден.');
   const data=normalizeKnowledgePayload(p,old&&knowledgeFromRow(old),AppError);
-  const hash=createHash('sha256').update(JSON.stringify({knowledgeId:id,...data})).digest('hex');
+  // Idempotency keys bind to the submitted request, not mutable current row state.
+  // A delayed retry must replay its original response even after another owner edit.
+  const hash=createHash('sha256').update(JSON.stringify({knowledgeId:id,payload:p})).digest('hex');
   const op=id?'update_knowledge_item':'create_knowledge_item';
   const reserved=await db.query('INSERT INTO public.mvp_knowledge_requests(request_key,operation,payload_sha256) VALUES($1,$2,$3) ON CONFLICT(request_key) DO NOTHING RETURNING request_key',[key,op,hash]);
   if(!reserved.rows.length){
