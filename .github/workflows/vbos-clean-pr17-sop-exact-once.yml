@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      PR17_SOURCE_SHA: 411e79470b54787747e6156d53ef3d09ce43a68d
+      PR17_SOURCE_SHA: 24adbb90e80bc9219055af2cd1d92c5cef17cda3
       TEST_DATABASE_URL: postgresql://ci:pr17_disposable_synthetic@127.0.0.1:5432/vbos_mvp_ci
     services:
       postgres:
