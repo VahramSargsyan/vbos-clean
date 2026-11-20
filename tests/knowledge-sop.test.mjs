@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {knowledgeStageKeys,knowledgeSort,knowledgeFilter,normalizeKnowledgePayload,
- knowledgeRead,knowledgeSave} from '../knowledge.mjs';
+ knowledgeRead,knowledgeSave,knowledgeYear} from '../knowledge.mjs';
 
 class AppError extends Error{constructor(status,message){super(message);this.status=status;}}
 const item=(changes={})=>({
@@ -11,6 +11,11 @@ const item=(changes={})=>({
  sectionPath:'Работа с лидами',summary:'Приём заявки',fullText:'Спросить об адресе',
  tags:'лид',version:'1',sourceName:'Карта SOP',sourceVersion:'v0.2.62',
  sortOrder:1,priority:'MEDIUM',favorite:'false',...changes
+});
+test('legacy KNW ID year follows appsscript Asia/Yerevan, not UTC',()=>{
+ assert.equal(knowledgeYear(new Date('2026-12-31T19:59:59.999Z')),2026);
+ assert.equal(knowledgeYear(new Date('2026-12-31T20:00:00.000Z')),2027);
+ assert.equal(knowledgeYear(new Date('2027-01-01T00:00:00.000Z')),2027);
 });
 test('legacy SOP stage keys by exact code and fallback tags, no invented stage',()=>{
  assert.deepEqual(knowledgeStageKeys(item()),['LEADS']);
