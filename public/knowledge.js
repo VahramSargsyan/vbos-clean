@@ -142,7 +142,7 @@ async function knowledgeLoad(force=false){
   knowledgeState.writeEnabled=result.writeEnabled===true;
   knowledgeState.phase=result.authority||'LEGACY';
   knowledgeState.loaded=true;
- }catch(e){knowledgeState.error='Не удалось загрузить SOP / базу знаний. '+e.message;}
+ }catch(e){knowledgeState.error='Не удалось загрузить SOP / базу знаний. '+e.message;knowledgeState.loaded=true;}
  finally{
   knowledgeState.loading=false;
   if(tab==='knowledge'){render();}
@@ -153,6 +153,7 @@ function knowledgeItem(id){return knowledgeState.items.find(x=>String(x.knowledg
 function knowledgeOpenDialog(html){
  const dlg=document.querySelector('#knowledgeDialog');
  if(!dlg)return;
+ if(dlg.open)dlg.close();
  dlg.innerHTML='<div class="knowledge-dialog-inner">'+
   '<button type="button" class="knowledge-dialog-close" data-knowledge-close aria-label="Закрыть окно">×</button>'+html+'</div>';
  dlg.showModal();
