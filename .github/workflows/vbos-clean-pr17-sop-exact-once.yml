@@ -1,0 +1,64 @@
+# One explicitly owner-approved PR #17 verification. No deploy, secrets, Render or Neon.
+# Temporary verification branch; push-path and commit-message guard only one job.
+name: VBOS Clean PR17 SOP exact one-time PostgreSQL verification
+on:
+  push:
+    branches:
+      - verify/pr17-sop-one-run-20261120
+    paths:
+      - .github/workflows/vbos-clean-pr17-sop-exact-once.yml
+permissions:
+  contents: read
+concurrency:
+  group: vbos-clean-pr17-sop-once-20261120
+  cancel-in-progress: false
+jobs:
+  source-node-postgres:
+    if: github.event.head_commit.message == 'ci(pr17): owner-approved single exact PostgreSQL verification'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PR17_SOURCE_SHA: 411e79470b54787747e6156d53ef3d09ce43a68d
+      TEST_DATABASE_URL: postgresql://ci:pr17_disposable_synthetic@127.0.0.1:5432/vbos_mvp_ci
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: vbos_mvp_ci
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: pr17_disposable_synthetic
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d vbos_mvp_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout exact PR17 source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PR17_SOURCE_SHA }}
+          persist-credentials: false
+      - name: Assert source lock and isolated database
+        shell: bash
+        run: |
+          set -eu
+          test "$(git rev-parse HEAD)" = "$PR17_SOURCE_SHA"
+          test "$GITHUB_REF_NAME" = "verify/pr17-sop-one-run-20261120"
+          case "$TEST_DATABASE_URL" in
+            postgresql://ci:pr17_disposable_synthetic@127.0.0.1:5432/vbos_mvp_ci) ;;
+            *) echo 'Refusing a non-disposable database target' >&2; exit 1 ;;
+          esac
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies without lifecycle scripts
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Verify source layout
+        run: npm run verify:source
+      - name: Run full Node and UI tests
+        run: npm test
+      - name: Real disposable PostgreSQL E2E
+        run: npm run test:e2e
