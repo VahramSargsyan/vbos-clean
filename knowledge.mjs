@@ -30,6 +30,13 @@ const choice=(v,allowed,AppError,label)=>{
  return v;
 };
 const favorite=v=>/^(1|true|yes|да)$/i.test(String(v??'').trim())?'true':'false';
+// Legacy Apps Script uses appsscript.json timezone Asia/Yerevan for
+// new Date().getFullYear(); UTC would assign the wrong KNW ID year
+// during local Jan 1 00:00-03:59.
+export function knowledgeYear(at=new Date()){
+ return Number(new Intl.DateTimeFormat('en-US',
+  {timeZone:'Asia/Yerevan',year:'numeric'}).format(at));
+}
 export function knowledgeStageKeys(item){
  const code=String(item?.code||'').trim().toUpperCase();
  const section=String(item?.sectionPath||'').trim().toLowerCase();
@@ -152,7 +159,7 @@ export async function knowledgeSave({pool,p,key,AppError}){
   }
   let knowledgeId=id;
   if(!id){
-   const year=new Date().getUTCFullYear();
+   const year=knowledgeYear();
    const sequence=(await db.query(
     'INSERT INTO public.mvp_knowledge_sequences(year,last_value) VALUES($1,1) '+
     'ON CONFLICT(year) DO UPDATE SET last_value=public.mvp_knowledge_sequences.last_value+1 '+
