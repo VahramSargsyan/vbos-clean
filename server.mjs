@@ -1,4 +1,5 @@
 import {createServer} from 'node:http';
+import {knowledgeRead,knowledgeSave} from './knowledge.mjs';
 import {leadConversionAction} from './crm-lead-conversion.mjs';
 import {crmWonOrderCreate} from './crm-won-order-handoff.mjs';
 import {leadTransferAction} from './crm-lead-transfer.mjs';
@@ -74,6 +75,8 @@ const originPolicy = process.env.ALLOWED_ORIGIN || '';
 const files = {
  '/': ['text/html; charset=utf-8',readFileSync(new URL('./public/index.html',import.meta.url))],
  '/app.js': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/app.js',import.meta.url))],
+ '/knowledge.js': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/knowledge.js',import.meta.url))],
+ '/knowledge.css': ['text/css; charset=utf-8',readFileSync(new URL('./public/knowledge.css',import.meta.url))],
  '/estimate-plumbing.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/estimate-plumbing.mjs',import.meta.url))],
  '/estimate-pricebook.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/estimate-pricebook.mjs',import.meta.url))],
  '/engineering-preview.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/engineering-preview.mjs',import.meta.url))],
@@ -180,10 +183,10 @@ function cookie(res,req,clear=false){
  const value=clear?'':(()=>{const value=String(Date.now())+'.'+randomBytes(18).toString('base64url');return value+'.'+signature(value);})();
  res.setHeader('Set-Cookie','vbos_sid='+value+'; HttpOnly; SameSite=Strict; Path=/; Max-Age='+(clear?'0':'2592000')+';'+secure);
 }
-async function readBody(req){
+async function readBody(req,maxChars=25000){
  if(!String(req.headers['content-type']||'').startsWith('application/json'))throw new AppError(415,'Требуется JSON.');
  let text='';
- for await(const c of req){text+=c;if(text.length>25000)throw new AppError(413,'Слишком большой запрос.');}
+ for await(const c of req){text+=c;if(text.length>maxChars)throw new AppError(413,'Слишком большой запрос.');}
  try{const o=JSON.parse(text);if(!o||typeof o!=='object'||Array.isArray(o))throw Error('bad');return o;}
  catch{throw new AppError(400,'Некорректные данные.');}
 }
@@ -625,6 +628,13 @@ async function handler(req,res){
    if(pathname==='/api/orders/interactions'&&req.method==='GET')return json(res,200,await orderInteractionsPage({pool,url:new URL(req.url,'http://localhost'),uuid,AppError}));
    if(pathname==='/api/orders/capacity-context'&&req.method==='GET')return json(res,200,await workOrderCapacityContext(new URL(req.url,'http://localhost')));
    if(pathname==='/api/crm/legacy-transfers'&&req.method==='GET')return json(res,200,await legacyLeadTransfersPage({pool,url:new URL(req.url,'http://localhost'),AppError}));
+   if(pathname==='/api/knowledge'&&req.method==='GET')return json(res,200,await knowledgeRead({pool,AppError}));
+   if(pathname==='/api/knowledge/save'&&req.method==='POST'){
+    const body=await readBody(req,70000);
+    if(!body.payload||typeof body.payload!=='object'||Array.isArray(body.payload))
+     throw new AppError(400,'Материал: неверный формат.');
+    return json(res,200,await knowledgeSave({pool,p:body.payload,key:body.requestKey,AppError}));
+   }
    if(pathname==='/api/crm/masters'&&req.method==='GET')return json(res,200,await mastersRead({pool,url:new URL(req.url,'http://localhost'),AppError}));
    if(pathname==='/api/crm/interactions'&&req.method==='GET')return json(res,200,await crmInteractionsPage({pool,url:new URL(req.url,'http://localhost'),uuid,AppError}));
    if(pathname==='/api/crm/legacy-interactions'&&req.method==='GET')return json(res,200,await crmLegacyInteractionsForClient({pool,clientId:new URL(req.url,'http://localhost').searchParams.get('clientId'),uuid,AppError}));

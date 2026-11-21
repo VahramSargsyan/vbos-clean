@@ -2811,7 +2811,7 @@ function render(){
  if(tab!=='finance')financeDraftIntent='';
  if(tab!=='crm'){estimateWorkspaceOpen=false;if(crmDetailId){crmDetailId=null;crmReminderEditorLeadId=null;}}
  $('#tabs').querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
- $('#content').innerHTML=tab==='today'?todayView():tab==='myWork'?myWorkView():tab==='schedule'?scheduleView():tab==='crm'?crmView():tab==='estimator'?estimatorView():tab==='clients'?clientsView():tab==='objects'?objectsView():tab==='orders'?ordersView():tab==='workers'?workersView():tab==='serviceReference'?serviceReferenceView():tab==='historyOrders'?historyOrdersView():tab==='history'?historyView():tab==='catalog'?catalogView():tab==='engineering'?engineeringView():tab==='finance'||tab==='capital'?financeCapitalView(tab):reportView();
+ $('#content').innerHTML=tab==='today'?todayView():tab==='myWork'?myWorkView():tab==='schedule'?scheduleView():tab==='crm'?crmView():tab==='knowledge'?knowledgeView():tab==='estimator'?estimatorView():tab==='clients'?clientsView():tab==='objects'?objectsView():tab==='orders'?ordersView():tab==='workers'?workersView():tab==='serviceReference'?serviceReferenceView():tab==='historyOrders'?historyOrdersView():tab==='history'?historyView():tab==='catalog'?catalogView():tab==='engineering'?engineeringView():tab==='finance'||tab==='capital'?financeCapitalView(tab):reportView();
  if(tab==='myWork'&&workFlowModalState.kind){
   // render() replaces #content; a recreated WorkLog must be owner-scoped again.
   // Never silently apply a saved draft: offer explicit recovery before input or replay.
@@ -2824,6 +2824,7 @@ function render(){
     fullWorkLogGapSchedule(refreshedFullLog,true);
   }
  }
+ if(tab==='knowledge')knowledgeMount();
  if(tab==='crm'&&!crmDetailId&&!estimateWorkspaceOpen)void mountLegacyTransfers();
  if(tab==='historyOrders')void mountHistoricalOrders();
  if(tab==='report'||tab==='finance')void mountFinanceHistory();
