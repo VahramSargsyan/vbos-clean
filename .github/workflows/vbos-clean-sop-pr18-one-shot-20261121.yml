@@ -1,0 +1,68 @@
+# One use, owner approved 2026-11-21 for PR #18 exact SHA.
+# Only push event for registration commit; test code pinned separately.
+# No Render, Neon, Google, PROD, secrets, or persistent database access.
+name: VBOS Clean SOP PR18 one-shot PostgreSQL verification
+on:
+  push:
+    branches:
+      - verify/sop-pr18-single-postgres-20261121
+    paths:
+      - .github/workflows/vbos-clean-sop-pr18-one-shot-20261121.yml
+permissions:
+  contents: read
+concurrency:
+  group: vbos-clean-sop-pr18-once-20261121
+  cancel-in-progress: false
+jobs:
+  exact-sop-verification:
+    if: >-
+      github.event_name == 'push' &&
+      github.event.head_commit.message == 'ci(sop): run exact PR18 once with disposable PostgreSQL'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: vbos_sop_pr18_ci
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: sop_pr18_synthetic_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d vbos_sop_pr18_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      EXACT_CANDIDATE: 7878f9f10bc52eb0e55a06fc1e29efe7cfef54bc
+      TEST_DATABASE_URL: postgresql://ci:sop_pr18_synthetic_only@127.0.0.1:5432/vbos_sop_pr18_ci
+    steps:
+      - name: Checkout exact reviewed PR18 candidate, not workflow branch
+        uses: actions/checkout@v4
+        with:
+          ref: 7878f9f10bc52eb0e55a06fc1e29efe7cfef54bc
+          persist-credentials: false
+      - name: Refuse unexpected commit or database target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXACT_CANDIDATE"
+          test "$TEST_DATABASE_URL" = "postgresql://ci:sop_pr18_synthetic_only@127.0.0.1:5432/vbos_sop_pr18_ci"
+          test -f migrations/0037_legacy_sop_knowledge_CANDIDATE.sql
+          test -f tests/knowledge-sop.pg.e2e.mjs
+          echo "EXACT_PR18_SOURCE=PASS DISPOSABLE_DATABASE_ONLY=PASS"
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install app dependencies without lifecycle scripts
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Verify source layout
+        run: npm run verify:source
+      - name: Execute entire Node and UI unit suite
+        run: npm test
+      - name: Execute real PostgreSQL E2E suite including SOP
+        run: npm run test:e2e
+      - name: Confirm protected one-shot checks
+        run: echo "PR18_EXACT_FULL_NODE_POSTGRES_E2E_PASS"
