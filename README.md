@@ -1175,3 +1175,15 @@ The existing V1G `Свободный →` navigator originally counted all zero-
 - **Release and rollback:** no Render TEST release, no PROD, no migration, no manual copy. Source rollback: revert the specific `render()` and regression changes or abandon this integration branch; hosted TEST is already PR13, unchanged. Exact PR13 `bdd3fba6d2e10c77075effea54c157aa9917d3fd` remains future code-only TEST rollback if a later guarded PR12 release is approved. Required full runtime gates and Android acceptance are pending.
 - **STOP boundary:** park manual workflow on exact current source head without triggering it. Obtain per-run explicit authorization before an isolated Node/PostgreSQL Actions check; do not displace PR13 Android acceptance session automatically.
 
+
+
+## Finance B19 — isolated Order-linked input, independent of My Work (2026-11-22)
+
+- CAPABILITY_ID: VBOS_CLEAN_FINANCE_B19_ORDER_LINKED_INPUT. Owner: Vahram. Mode: PATCH_FIX / isolate existing IMPLEMENT_FEATURE candidate. Risk: L3 financial source and mobile UI.
+- USER RESULT: B18 PostgreSQL-native Finance form has direct exact canonical native Order UUID choices for work income and advances. No inferred or name-matched legacy Order links. Editing leaves the existing link unchanged. All financial POSTs remain disabled while actual authority stays BLOCKED/GOOGLE.
+- BASE COMMIT: stable Clean main 74fc15457db7375e39d2ce2b13169adc5d21b105; previous stacked source 44198ca79f16ad40b8736b42a2e24cd5b7a622a9 is preserved as an archive branch. This isolation does NOT ship the new form to the occupied Render TEST, currently d46f5b016480a4a5c51b079b179677039564504a.
+- FILES CHANGED: domains/finance/finance-native-workspace-view.mjs, domains/finance/native-finance-workspace-read.mjs, tests/finance-b18-workspace.test.mjs; this existing README Build Packet. No unrelated My Work/WorkLog files or changes.
+- CANONICAL: native PostgreSQL Order UUID and immutable Google historical finance. Schema/migration NONE in this source-only change. 2026-10-01 accounting cutoff approved by owner; dated October–November receipts still require factual reconciliation. No new money, no Google source switch, no created fake Order.
+- VALIDATION PLAN: exact source/blob and three-file diff readback, native npm run verify:source and npm test, isolated PostgreSQL E2E, guarded exact-source hosted TEST and authenticated Android save/reload with idempotency, finance non-posting under BLOCKED/GOOGLE. Static readback is not runtime or E2E.
+- ROLLBACK: abandon source branch/revert these three file changes; no database rollback needed for source-only candidate. Previously stacked exact head remains recoverable. No PROD/Neon/Render/Apps Script mutation, no paid API, no Codex or GitHub Actions triggered.
+- STOP: financial single-writer switch still requires independently verified deployed old Google fence and signed source/owner receipts; no force-enable of ACTIVE/POSTGRES. User has already approved accounting date; don't ask for it again. One existing TEST service, no new server.

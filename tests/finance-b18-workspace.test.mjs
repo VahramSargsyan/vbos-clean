@@ -39,6 +39,9 @@ function fakePool({opening=open,funds=nativeFunds,gateControl=gate,archive=24}={
    if(sql.includes('FROM mvp_finance_native.v_cash_ledger'))return {rows:[ledger]};
    if(sql.includes('FROM mvp_finance_native.transactions ORDER BY'))return {rows:[]};
    if(sql.includes('FROM mvp_finance_native.fund_movements ')&&sql.includes('ORDER BY'))return {rows:[]};
+   if(sql.includes('FROM public.mvp_orders o JOIN public.mvp_objects obj'))
+    return {rows:[{id:'00000000-0000-4000-8000-000000000031',title:'Монтаж',
+     object_title:'Объект 1',status:'active'}]};
    if(sql.includes('(SELECT count(*)::int FROM mvp_finance_native.transactions)'))
     return {rows:[{tx:0,movements:0}]};
    throw Error('Unexpected SQL in read-only test: '+sql);
@@ -77,6 +80,8 @@ test('B18 read-only source authenticates owner and stays disabled on BLOCKED/GOO
  assert.equal(view.ledger.isCurrentFinanceBalance,false);
  assert.equal(view.counts.transactions,0);
  assert.equal(view.funds.length,8);
+ assert.equal(view.orders.length,1);
+ assert.equal(view.orderListComplete,true);
  assert.ok(queries[0].includes('READ ONLY'));
  assert.equal(queries.at(-1),'COMMIT');
  assert.ok(queries.every(q=>!/^\s*(INSERT|UPDATE|DELETE|ALTER|DROP|CREATE|TRUNCATE|GRANT)\b/i.test(q)));
@@ -117,6 +122,26 @@ test('B18 after separate signed approval enables native-only form + escaped row 
  assert.match(html,/Остаток по внесённым операциям/);
  const cap=nativeWorkspaceHtml(state,'capital');
  assert.match(cap,/data-b18-form="capital"/);
+});
+test('B19 checked native Order UUID and money-authority separation',()=>{
+ const id='00000000-0000-4000-8000-000000000031';
+ const orders=[{id,title:'Монтаж',objectTitle:'Объект 1'}];
+ const active=uiState(true);active.orders=orders;
+ const html=nativeWorkspaceHtml(active,'finance',{today:'2026-11-10'});
+ assert.match(html,/Оплата работы по заказу/);
+ assert.match(html,/name="workOrderId"/);
+ const form={date:'2026-11-10',amount:'190000',category:'current_work',
+  operationType:'INCOME',workOrderId:id};
+ const result=nativeWorkspaceFormAction({mode:'finance',form,orders,today:'2026-11-10'});
+ assert.equal(result.payload.workOrderId,id);
+ for(const bad of ['','00000000-0000-4000-8000-000000000099','invalid'])
+  assert.throws(()=>nativeWorkspaceFormAction({mode:'finance',orders,today:'2026-11-10',
+   form:{...form,workOrderId:bad}}));
+ const without=nativeWorkspaceFormAction({mode:'finance',orders,today:'2026-11-10',
+  form:{...form,category:'other',workOrderId:''}});
+ assert.equal(without.payload.workOrderId,undefined);
+ const blocked=uiState(false);blocked.orders=orders;
+ assert.doesNotMatch(nativeWorkspaceHtml(blocked,'finance'),/name="workOrderId"|data-b18-form/);
 });
 test('B18 form derives only server-approved actions; rejects invalid date/amount/linked category',()=>{
  const form={date:'2026-10-02',amount:'50.00',category:'other',

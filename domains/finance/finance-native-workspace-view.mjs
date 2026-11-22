@@ -9,7 +9,8 @@ const VALID_DAY=/^\d{4}-\d\d-\d\d$/;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MONEY=/^(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/;
 const CATEGORY={
- INCOME:[['other','Прочее поступление'],['bonus','Бонус']],
+ INCOME:[['other','Прочее поступление'],['bonus','Бонус'],
+  ['current_work','Оплата работы по заказу'],['advance','Аванс по заказу']],
  EXPENSE:[['other','Прочий расход'],['materials','Материалы'],
   ['transport','Транспорт'],['tools','Инструменты'],
   ['subcontractor','Субподряд'],['office','Офис']]
@@ -32,6 +33,7 @@ const check=x=>{
   throw Error('B18_UNVERIFIED_WRITE_AUTHORITY');
  return x;
 };
+const requiresOrder=(type,category)=>type==='INCOME'&&['current_work','advance'].includes(category);
 const options=(a,selected='')=>a.map(([v,label])=>
  '<option value="'+esc(v)+'"'+(v===selected?' selected':'')+'>'+esc(label)+'</option>').join('');
 function fundOptions(funds,selected=''){
@@ -42,7 +44,11 @@ function fundOptions(funds,selected=''){
 function categoryChoices(type,selected){
  return options(CATEGORY[type]||[],selected);
 }
-function editor(row,today){
+function orderOptions(orders){
+ return '<option value="">Без заказа</option>'+orders.map(o=>
+  '<option value="'+esc(o.id)+'">'+esc(o.title)+' · '+esc(o.objectTitle)+'</option>').join('');
+}
+function editor(row,today,orders=[],orderListComplete=true){
  const type=row?.operationType||'INCOME';
  const date=row?.date||today;
  const amount=row?.amountOriginal||'';
@@ -61,6 +67,9 @@ function editor(row,today){
   '<label>Сумма, ֏<input name="amount" type="text" inputmode="decimal" maxlength="20" value="'+
    esc(amount)+'" required placeholder="Например, 15000"></label>'+
   '<label>Категория<select name="category" data-b18-category required>'+categoryChoices(type,row?.category||'')+'</select></label>'+
+   (row?(row.workOrderId?'<p class="small muted">Привязанный заказ: '+esc(row.workOrderId)+' (не меняется)</p>':''):
+    '<label>Заказ<select name="workOrderId" data-b18-order>'+orderOptions(orders)+'</select></label>'+
+    (!orderListComplete?'<p class="muted">Список заказов неполный: отсутствующий заказ нельзя выбирать по названию.</p>':''))+
   '<label>Примечание<textarea name="notes" maxlength="300" rows="2">'+esc(note)+'</textarea></label>'+
   '<div class="actions"><button type="submit" class="primary">'+(row?'Сохранить изменение':'Сохранить операцию')+'</button>'+
    (row?'<button type="button" data-b18-cancel-editor>Закрыть редактор</button>':'')+
@@ -110,9 +119,9 @@ export function nativeWorkspaceHtml(raw,mode,{today='2026-11-10',editingId=null}
     ' · '+fmt(row.amountAMD)+' ֏</strong><div class="muted">'+esc(row.date)+
     ' · '+(row.status==='archived'?'Отменена':'Активна')+
     ' · версия '+esc(row.revision)+'</div><p>'+esc(row.notes)+'</p>'+actions+
-    (writable&&isSelected?editor(row,today):'')+'</article>';
+    (writable&&isSelected?editor(row,today,data.orders||[],data.orderListComplete!==false):'')+'</article>';
   }).join(''):'<p class="muted">Новых операций пока нет.</p>';
-  if(writable)body+='<section class="card">'+editor(null,today)+'</section>';
+  if(writable)body+='<section class="card">'+editor(null,today,data.orders||[],data.orderListComplete!==false)+'</section>';
  }else{
   body='<h3>Фонды</h3>'+data.funds.map(f=>'<p><strong>'+esc(f.code)+'</strong>: '+
    (writable?fmt(f.balanceAMD)+' ֏':'Начальный баланс '+fmt(f.openingBalanceAMD)+' ֏')+'</p>').join('')+
@@ -137,7 +146,7 @@ function dayValid(date,today){
 function moneyValid(money){
  return typeof money==='string'&&MONEY.test(money)&&Number(money)>0;
 }
-export function nativeWorkspaceFormAction({mode,form,record=null,today='2026-11-10'}={}){
+export function nativeWorkspaceFormAction({mode,form,record=null,orders=[],today='2026-11-10'}={}){
  if(!['finance','capital'].includes(mode)||!form||typeof form!=='object')
   throw Error('B18_INVALID_FORM');
  const date=form.date,amount=form.amount;
@@ -148,6 +157,15 @@ export function nativeWorkspaceFormAction({mode,form,record=null,today='2026-11-
   const type=record?.operationType||form.operationType;
   if(!CATEGORY[type]?.some(([k])=>k===form.category))throw Error('B18_CATEGORY_INVALID');
   const content={transactionDate:date,amountOriginal:amount,category:form.category,notes};
+  if(!record){
+   const id=String(form.workOrderId||'');
+   if(requiresOrder(type,form.category)&&!id)throw Error('B19_ORDER_REQUIRED');
+   if(id){
+    if(!UUID.test(id)||!Array.isArray(orders)||!orders.some(o=>o.id===id))
+     throw Error('B19_UNKNOWN_CANONICAL_ORDER');
+    content.workOrderId=id;
+   }
+  }
   if(record){
    if(record.status!=='active'||!Number.isSafeInteger(record.revision)||record.revision<1||
       record.currencyOriginal!=='AMD'||record.operationType!==type)
@@ -258,8 +276,14 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
   const field=e.target;if(field?.matches?.('[data-b18-type]')){
    const s=field.closest('form')?.querySelector('[data-b18-category]');
    if(s)s.innerHTML=categoryChoices(field.value,'');
+    const select=field.closest('form')?.querySelector('[data-b18-order]');
+    if(select)select.required=false;
   }
-  if(field?.matches?.('[data-b18-fund-type]')){
+  if(field?.matches?.('[data-b18-category]')){
+    const f=field.closest('form'),order=f?.querySelector('[data-b18-order]');
+    if(order)order.required=requiresOrder(f.querySelector('[data-b18-type]')?.value,field.value);
+   }
+   if(field?.matches?.('[data-b18-fund-type]')){
    const label=field.closest('form')?.querySelector('[data-b18-to-fund]');
    if(label){label.hidden=field.value!=='CAPITAL_TRANSFER';
     const select=label.querySelector('select');if(select)select.disabled=label.hidden;}
@@ -273,7 +297,7 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
   const row=values.nativeId?state.entries.find(x=>x.id===values.nativeId&&x.id===editingId):null;
   try{
    if(values.nativeId&&!row)throw Error('B18_EDITOR_STATE_CHANGED');
-   void act(nativeWorkspaceFormAction({mode,form:values,record:row,today}));
+   void act(nativeWorkspaceFormAction({mode,form:values,record:row,orders:state.orders||[],today}));
   }
   catch(error){status(String(error.message||'Неправильная операция.'),true);}
  };

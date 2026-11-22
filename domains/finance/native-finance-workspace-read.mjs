@@ -88,6 +88,10 @@ export async function readNativeFinanceWorkspace(pool,{authorizeOwner}={}){
    'from_fund_id::text,to_fund_id::text,amount_base::text,status '+
    'FROM mvp_finance_native.fund_movements '+
    'ORDER BY created_at DESC,movement_id DESC LIMIT 50')).rows;
+  const orders=(await c.query(
+   'SELECT o.id::text AS id,o.title,o.status,obj.title AS object_title '+
+   'FROM public.mvp_orders o JOIN public.mvp_objects obj ON obj.id=o.object_id '+
+   'ORDER BY o.created_at DESC,o.id DESC LIMIT 201')).rows;
   const count=(await c.query(
    'SELECT (SELECT count(*)::int FROM mvp_finance_native.transactions) AS tx,'+
    '(SELECT count(*)::int FROM mvp_finance_native.fund_movements) AS movements')).rows[0];
@@ -117,6 +121,7 @@ export async function readNativeFinanceWorkspace(pool,{authorizeOwner}={}){
     amountOriginal:String(t.normalized?.amountOriginal??t.amount_base),
     currencyOriginal:String(t.normalized?.currencyOriginal||'AMD'),
     notes:String(t.normalized?.notes||''),
+    workOrderId:String(t.normalized?.workOrderId||''),
     linkedToLegacy:false
    })),
    movements:movements.map(m=>({
@@ -124,6 +129,9 @@ export async function readNativeFinanceWorkspace(pool,{authorizeOwner}={}){
     fromFundId:m.from_fund_id,toFundId:m.to_fund_id,
     amountAMD:m.amount_base,status:m.status
    })),
+   orders:orders.slice(0,200).map(o=>({id:o.id,title:String(o.title),
+    objectTitle:String(o.object_title),status:String(o.status)})),
+   orderListComplete:orders.length<=200,
    counts:{transactions:count.tx,movements:count.movements},
    truncated:count.tx>100||count.movements>50
   });
