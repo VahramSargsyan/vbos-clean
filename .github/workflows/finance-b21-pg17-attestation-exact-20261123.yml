@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 134de79844f7c033e8a67e74a7de75e8447e7f88
+          ref: bca850d9130e6a3e95ac16e135f6c649b6f5bc3e
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -43,7 +43,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = 134de79844f7c033e8a67e74a7de75e8447e7f88
+          test "$(git rev-parse HEAD)" = bca850d9130e6a3e95ac16e135f6c649b6f5bc3e
           npm run verify:source
           node --check domains/finance/native-finance-writer.mjs
           node --check tests/finance-b21-postfence-attestation-pg.e2e.mjs
@@ -58,6 +58,6 @@ jobs:
         run: npm test
       - name: Receipt scope
         run: |
-          echo 'B21_EXACT_SOURCE=134de79844f7c033e8a67e74a7de75e8447e7f88'
+          echo 'B21_EXACT_SOURCE=bca850d9130e6a3e95ac16e135f6c649b6f5bc3e'
           echo 'B21_ISOLATED_POSTGRESQL_17_PG_TEST_NO_SHARED_DB_WRITES'
           echo 'B21_NO_RENDER_GOOGLE_NEON_PROD_SECRETS_OR_MONEY_POSTS'
