@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   exact-source-full-verify:
-    if: "${{ github.event.head_commit.message == 'ci(pr21): verify repaired exact native tests' }}"
+    if: "${{ github.event.head_commit.message == 'ci(pr21): final exact native and PostgreSQL verification' }}"
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
@@ -33,13 +33,13 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      EXPECTED_SOURCE_SHA: 3478b447d94e5698dc2b1f2e5254813be75c4b5c
+      EXPECTED_SOURCE_SHA: d46f5b016480a4a5c51b079b179677039564504a
       TEST_DATABASE_URL: postgresql://ci:pr21_local_synthetic@127.0.0.1:5432/vbos_mvp_ci
     steps:
       - name: Checkout exact PR21 candidate, never the workflow registration commit
         uses: actions/checkout@v4
         with:
-          ref: 3478b447d94e5698dc2b1f2e5254813be75c4b5c
+          ref: d46f5b016480a4a5c51b079b179677039564504a
           persist-credentials: false
       - name: Strict identity, temporary Postgres target and branch gate
         shell: bash
