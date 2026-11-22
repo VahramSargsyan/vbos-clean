@@ -1,0 +1,103 @@
+# Owner-authorized B19 exact Render TEST promotion attempt.
+# Works only with already-configured GitHub secret RENDER_API_KEY.
+# NEVER deploys latest main or changes any database/financial authority.
+name: VBOS Clean Finance B19 exact Render TEST 20261122
+on:
+  push:
+    branches:
+      - integration/finance-b19-on-render-d46f-20261122
+    paths:
+      - .github/workflows/vbos-clean-finance-b19-exact-render-test-20261122.yml
+permissions:
+  contents: read
+concurrency:
+  group: vbos-clean-finance-b19-render-test-exact-one-shot-20261122
+  cancel-in-progress: false
+jobs:
+  guarded-release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact already-tested B19 integration source
+        uses: actions/checkout@v4
+        with:
+          ref: 439296d3f431f518820a362d2c4749d70b519e9e
+          persist-credentials: false
+      - name: Install Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Recheck exact source and approved successful CI receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '439296d3f431f518820a362d2c4749d70b519e9e'
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 \
+            -H 'Accept: application/vnd.github+json' \
+            'https://api.github.com/repos/VahramSargsyan/vbos-clean/actions/runs/45022856523' > "$RUNNER_TEMP/source-ci.json"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const run=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/source-ci.json','utf8'));
+          if(run.id!==45022856523||run.status!=='completed'||run.conclusion!=='success'||
+             run.head_sha!=='92e47b4d29ceae9d8103abcfbf124dcfb8090107')
+             throw Error('FINANCE_B19_REQUIRED_EXACT_SOURCE_CI_NOT_VERIFIED');
+          console.log('FINANCE_B19_EXACT_SOURCE_AND_PRIOR_CI_PASS');
+          NODE
+      - name: Strictly guarded existing Render TEST exact-SHA deployment
+        shell: bash
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RENDER_API_KEY:-}" ]; then
+            echo "BLOCKED_NO_GITHUB_RENDER_API_KEY_SECRET: exact deployment not attempted"
+            exit 28
+          fi
+          API='https://api.render.com/v1'
+          ID='srv-dbkvfh2jnfac73a31nv0'
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            -H 'Accept: application/json' \
+            "$API/services/$ID" > "$RUNNER_TEMP/render-service.json"
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            -H 'Accept: application/json' \
+            "$API/services/$ID/deploys?limit=5" > "$RUNNER_TEMP/render-deploys.json"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const dir=process.env.RUNNER_TEMP;
+          const src=JSON.parse(fs.readFileSync(dir+'/render-service.json','utf8'));
+          const s=src.service||src;
+          const d=JSON.parse(fs.readFileSync(dir+'/render-deploys.json','utf8'));
+          const items=(Array.isArray(d)?d:Array.isArray(d.items)?d.items:[]).map(x=>x.deploy||x);
+          const latest=items[0];
+          if(s.id!=='srv-dbkvfh2jnfac73a31nv0'||
+             s.repo!=='https://github.com/VahramSargsyan/vbos-clean'||
+             s.branch!=='main'||s.type!=='web_service'||
+             s.ownerId!=='tea-d1r9ktmmcj7s73am6c10'||
+             !(s.autoDeployTrigger==='off'||s.autoDeploy==='no'))
+               throw Error('BLOCKED_RENDER_TEST_SERVICE_IDENTITY_OR_AUTODEPLOY_DRIFT');
+          if(!latest||latest.status!=='live'||
+             latest.commit?.id!=='d46f5b016480a4a5c51b079b179677039564504a'||
+             latest.id!=='dep-dc1aso59fdbs73aassjg'||
+             items.some(x=>!['live','deactivated','cancelled','failed'].includes(x.status)))
+               throw Error('BLOCKED_RENDER_TEST_LIVE_SHA_OR_CONCURRENT_DEPLOY_DRIFT');
+          console.log('EXACT_EXISTING_RENDER_TEST_PREDEPLOY_GATE_PASS');
+          NODE
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 25 \
+            -X POST \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            -H 'Content-Type: application/json' \
+            -d '{"commitId":"439296d3f431f518820a362d2c4749d70b519e9e","clearCache":"do_not_clear"}' \
+            "$API/services/$ID/deploys" > "$RUNNER_TEMP/render-new-deploy.json"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const response=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/render-new-deploy.json','utf8'));
+          const d=response.deploy||response;
+          if(typeof d.id!=='string'||!d.id.startsWith('dep-'))
+            throw Error('EXACT_RENDER_TEST_DEPLOY_RESPONSE_ID_MISSING');
+          console.log('EXACT_RENDER_TEST_DEPLOY_REQUEST_ACCEPTED_ID='+d.id);
+          console.log('REQUESTED_SOURCE_SHA=439296d3f431f518820a362d2c4749d70b519e9e');
+          console.log('NOT_FINANCIAL_AUTHORITY_ACTIVATION');
+          NODE
