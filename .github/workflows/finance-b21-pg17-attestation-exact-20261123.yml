@@ -37,9 +37,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
       - name: Install exact package-lock dependencies
-        run: npm ci --ignore-scripts --no-audit --no-fund
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund
       - name: Source guard, syntax and bounded B21 contract unit
         shell: bash
         run: |
