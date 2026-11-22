@@ -39,9 +39,12 @@ function fakePool({opening=open,funds=nativeFunds,gateControl=gate,archive=24}={
    if(sql.includes('FROM mvp_finance_native.v_cash_ledger'))return {rows:[ledger]};
    if(sql.includes('FROM mvp_finance_native.transactions ORDER BY'))return {rows:[]};
    if(sql.includes('FROM mvp_finance_native.fund_movements ')&&sql.includes('ORDER BY'))return {rows:[]};
-   if(sql.includes('FROM public.mvp_orders o JOIN public.mvp_objects obj'))
+   if(sql.includes('FROM public.mvp_orders o JOIN public.mvp_objects obj')){
+    assert.match(sql,/obj\.name AS object_title/);
+    assert.doesNotMatch(sql,/obj\.title/);
     return {rows:[{id:'00000000-0000-4000-8000-000000000031',title:'Монтаж',
      object_title:'Объект 1',status:'active'}]};
+   }
    if(sql.includes('(SELECT count(*)::int FROM mvp_finance_native.transactions)'))
     return {rows:[{tx:0,movements:0}]};
    throw Error('Unexpected SQL in read-only test: '+sql);

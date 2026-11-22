@@ -89,7 +89,7 @@ export async function readNativeFinanceWorkspace(pool,{authorizeOwner}={}){
    'FROM mvp_finance_native.fund_movements '+
    'ORDER BY created_at DESC,movement_id DESC LIMIT 50')).rows;
   const orders=(await c.query(
-   'SELECT o.id::text AS id,o.title,o.status,obj.title AS object_title '+
+   'SELECT o.id::text AS id,o.title,o.status,obj.name AS object_title '+
    'FROM public.mvp_orders o JOIN public.mvp_objects obj ON obj.id=o.object_id '+
    'ORDER BY o.created_at DESC,o.id DESC LIMIT 201')).rows;
   const count=(await c.query(
