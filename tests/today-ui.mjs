@@ -491,7 +491,7 @@ assert.doesNotMatch(legacyModal,/data-workflow-day-finish/);
 vm.runInContext('workFlowModalState.kind="start";workFlowModalState.item=null',sandbox);
 legacyModal=vm.runInContext('workFlowModalHtml()',sandbox);
 assert.match(legacyModal,/Открыть рабочий день/);
-assert.match(legacyModal,/A1, присутствие, WorkLog не создаются/);
+assert.match(legacyModal,/A1 не создаётся и не изменяется; присутствие и WorkLog тоже не создаются/);
 assert.match(legacyModal,/data-workflow-day-start/);
 vm.runInContext('myWork.snapshot='+JSON.stringify({...myWorkSample,currentSession:null})+
  ';workFlowModalState.kind="continue";workFlowModalState.item={source:"session_stop",orderTitle:"Прокладка труб"};workFlowModalState.orderId="'+id1+'"',sandbox);
