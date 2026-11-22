@@ -512,6 +512,8 @@ assert.match(script,/if\(\['session_stop','close_work_order'\]\.includes\(type\)
 assert.match(script,/workFlowContinuationPrompt\(/);
 assert.match(script,/if\(keepDay\)\{/);
 assert.match(script,/if\(endDay\)\{workFlowModalOpen\('finish'/);
+assert.match(script,/await sendAction\('session_stop',\{id:live\.id\},stopForFinish\);[\s\S]{0,180}workFlowModalOpen\('finish'\)/);
+assert.match(script,/await sendAction\('presence_stop',payload,f\);[\s\S]{0,180}workFlowModalOpen\('finish'\)/);
 vm.runInContext('workFlowModalState.kind=null',sandbox);
 console.log('LEGACY_MY_WORK_DIALOG_OPEN_DAY_FULL_LOG_END_DAY_PARITY_STATIC_VM_PASS');
 console.log('WORKDAY_MULTIPLE_ORDER_CONTINUATION_CHOICE_NO_AUTO_CLOSE_STATIC_VM_PASS');

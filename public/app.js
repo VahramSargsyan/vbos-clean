@@ -3038,7 +3038,11 @@ $('#content').addEventListener('submit',async e=>{
    message('Присутствие изменилось. Обнови день.',true);return;
   }
   const payload=Object.fromEntries(new FormData(f));
-  workFlowModalClose({force:true});await sendAction('presence_stop',payload,f);return;
+  workFlowModalClose({force:true});
+  await sendAction('presence_stop',payload,f);
+  if(tab==='myWork'&&myWork.snapshot?.day?.status==='open'&&!myWork.snapshot?.currentPresence)
+   workFlowModalOpen('finish');
+  return;
  }
  if(tab==='schedule'&&f.id==='capacitySearch'){
   const v=Object.fromEntries(new FormData(f));
@@ -3217,7 +3221,11 @@ $('#content').addEventListener('click',async e=>{
   if(!live||live.id!==stopForFinish.dataset.id||live.day_date!==myWork.snapshot?.today){
    message('Интервал изменился. Обнови экран.',true);return;
   }
-  workFlowModalClose({force:true});await sendAction('session_stop',{id:live.id},stopForFinish);return;
+  workFlowModalClose({force:true});
+  await sendAction('session_stop',{id:live.id},stopForFinish);
+  if(tab==='myWork'&&myWork.snapshot?.day?.status==='open'&&!myWork.snapshot?.currentSession)
+   workFlowModalOpen('finish');
+  return;
  }
  const keepDay=e.target.closest('button[data-workflow-day-continues]');
  if(keepDay){
