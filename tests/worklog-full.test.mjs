@@ -131,6 +131,16 @@ test('UI behavior: invalid fields retain data; only acknowledged save clears ent
  assert.equal(vals.location.focusCount,1);
  assert.equal(form.resetCalls,0);
  vals.location.valid=true;
+ vals.workType.valid=false;
+ result=vm.runInContext('fullWorkLogValidate(testForm)',vmContext);
+ assert.equal(result.ok,false);
+ assert.match(status.textContent,/напиши, что именно сделал/);
+ assert.match(status.textContent,/Вид работ из каталога не заменяет описание/);
+ assert.equal(vals.workType.focusCount,1);
+ assert.equal(vals.workType.reportCount,1);
+ assert.equal(vals.workType.value,'Монтаж трубы');
+ assert.equal(form.resetCalls,0);
+ vals.workType.valid=true;
  result=vm.runInContext('fullWorkLogValidate(testForm)',vmContext);
  assert.equal(result.ok,true);
  vm.runInContext('fullWorkLogSavePending(testForm,true)',vmContext);
@@ -157,6 +167,10 @@ test('WorkLog legacy taxonomy Category → Action → Service preserves canonica
  assert.match(ui,/data-full-worklog-tax-category/);
  assert.match(ui,/data-full-worklog-tax-action/);
  assert.match(ui,/Фактическая работа/);
+ assert.match(ui,/data-full-worklog-required-help/);
+ assert.match(ui,/data-full-worklog-detail-help/);
+ assert.match(ui,/Вид работ из каталога/);
+ assert.match(ui,/Фактическая работа \*/);
  assert.match(ui,/fullWorkLogTaxSync\(form,'service'\)/);
  const context=vm.createContext({data:{workLogServiceReferences:[
   {service_id:'s1',service_name:'Трубы',category:'Сантехника',action_code:'MOUNT',status:'active'},
