@@ -75,7 +75,8 @@ function workFlowModalHtml(){
   body='<p>Сегодня: <strong>'+esc(date)+'</strong></p>'+
    '<p class="muted">Рабочий день можно открыть без A1 и без заказа. После выбора заказа отдельно начни интервал.</p>'+
    '<form class="grid" data-workflow-day-start novalidate>'+
-   '<p class="muted small">Создаётся только WorkDay. A1, присутствие, WorkLog не создаются.</p>'+
+   '<p class="muted small">Создаётся только WorkDay. A1 не создаётся и не изменяется; присутствие и WorkLog тоже не создаются.</p>'+
+   (a1?'<div class="card"><strong>A1: '+esc(a1.goal)+'</strong></div>':'')+
    '<button type="submit" class="primary wide">Открыть день</button>'+
    '<p role="status" data-workflow-feedback aria-live="polite"></p></form>';
  }else if(kind==='continue'){

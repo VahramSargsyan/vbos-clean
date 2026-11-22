@@ -467,7 +467,8 @@ test('Presence history-only mode keeps history and removes duplicate check-in wr
 
 test('WorkDay start from My Work does not require daily A1 or write to its record',async()=>{
  const source=get('public/workday-legacy-ui.js');
- assert.match(mywork,/data-workflow-open="start">Начать рабочий день/);
+ assert.match(mywork,/data-workflow-open="start">Открыть день без заказа/);
+ assert.match(mywork,/data-act="work_start_order" data-my-work-quick-start="1"/);
  assert.match(mywork,/a1Card\(\)/,'Existing separate A1 editor must remain');
  assert.match(source,/type:'a1_complete'/,'Unrelated day-finish behavior must remain untouched');
  for(const item of [null,{id:'DA1-2026-11-19',goal:'Сохранённая цель',reason:'Отдельная запись'}]){
@@ -492,7 +493,7 @@ test('WorkDay start from My Work does not require daily A1 or write to its recor
   assert.match(markup,/A1 не создаётся и не изменяется/);
   assert.doesNotMatch(markup,/name="(?:goal|reason|notes)"/,'Opening WorkDay must not require A1 fields');
   assert.equal(markup.includes('<strong>A1:'),Boolean(item),'Existing A1 remains read-only on start');
-  const feedback={textContent:''},button={textContent:'Начать день',disabled:false,isConnected:true};
+  const feedback={textContent:''},button={textContent:'Открыть день',disabled:false,isConnected:true};
   sandbox.testForm={dataset:{},elements:[],querySelector:selector=>
    selector==='[data-workflow-feedback]'?feedback:
    selector==='button[type="submit"]'?button:null};
