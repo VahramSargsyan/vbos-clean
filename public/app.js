@@ -276,37 +276,43 @@ function crmWonOrderModalHtml(leadId){
  const duplicates=(data.orders||[]).filter(o=>o.lead_id===leadId);
  return '<div id="crmWonOrderModal" class="work-flow-backdrop" data-crm-won-order-backdrop>'+
   '<section class="work-flow-dialog" role="dialog" aria-modal="true" aria-label="Новый заказ после договорённости">'+
-  '<header class="work-flow-dialog-head"><h2>Договорились → новый заказ</h2>'+
+  '<header class="work-flow-dialog-head"><h2 tabindex="-1">Договорились → новый заказ</h2>'+
   '<button type="button" data-crm-won-order-close aria-label="Закрыть">✕</button></header>'+
-  '<div class="work-flow-dialog-body">'+
+  '<form data-act="crm_won_order_create" class="crm-won-order-form" data-crm-won-order-form>'+
+  '<div class="work-flow-dialog-body crm-won-order-fields">'+
   '<p class="muted">Клиент: <strong>'+esc(client?.name||link.client_id)+'</strong>. Обращение: '+esc(lead.title)+'</p>'+
   (duplicates.length?'<p class="muted small">По этому лиду уже есть '+duplicates.length+
     ' заказ(ов). Не создавай второй заказ на ту же работу случайно.</p>':'')+
-  '<form data-act="crm_won_order_create" class="grid" data-crm-won-order-form>'+
   '<input type="hidden" name="leadId" value="'+esc(lead.id)+'">'+
   '<fieldset class="crm-won-order-object-choice"><legend>Объект заказа</legend>'+
-  (allowed.length?'<label><input type="radio" name="objectMode" value="existing"'+(mode==='existing'?' checked':'')+'> Выбрать существующий</label>':'')+
-  (canNew?'<label><input type="radio" name="objectMode" value="new"'+(mode==='new'?' checked':'')+'> + Создать новый объект</label>':
+  (allowed.length?'<label class="crm-won-order-mode-option"><input type="radio" name="objectMode" value="existing"'+(mode==='existing'?' checked':'')+'><span>Выбрать существующий</span></label>':'')+
+  (canNew?'<label class="crm-won-order-mode-option"><input type="radio" name="objectMode" value="new"'+(mode==='new'?' checked':'')+'><span>+ Создать новый объект</span></label>':
     '<p class="muted small">Объект уже привязан к этому лиду. Для заказа по другому объекту нужно новое обращение.</p>')+
   '</fieldset>'+
   '<div data-crm-won-existing'+(mode==='new'?' hidden':'')+'>'+
-   '<label>Объект клиента<select name="objectId"'+(mode==='existing'?' required':' disabled')+'>'+options+'</select></label>'+
+   '<label>Объект клиента *<select name="objectId"'+(mode==='existing'?' required':' disabled')+'>'+options+'</select></label>'+
   '</div>'+
   (canNew?'<div data-crm-won-new'+(mode==='existing'?' hidden':'')+'>'+
     '<label>Название нового объекта *<input name="objectName" maxlength="160" placeholder="Квартира, дом, магазин…"'+(mode==='new'?' required':' disabled')+'></label>'+
-    '<label>Адрес объекта<input name="objectAddress" maxlength="300"'+(mode==='existing'?' disabled':'')+'></label>'+
-    '<label>Тип объекта<input name="objectType" maxlength="100"'+(mode==='existing'?' disabled':'')+'></label>'+
    '</div>':'')+
   '<label>Название заказа *<input name="title" maxlength="180" value="'+esc(lead.title)+'" required></label>'+
-  '<label>Плановая дата (если есть)<input name="plannedOn" type="date"></label>'+
-  '<label>Примечание к заказу<textarea name="notes" maxlength="5000"></textarea></label>'+
-  '<button type="submit" class="primary wide">Создать заказ</button>'+
-  '<p role="status" data-crm-won-feedback class="muted small" aria-live="polite"></p>'+
-  '</form></div></section></div>';
+  (canNew?'<p class="crm-won-order-tip">Для нового объекта достаточно названия. Остальные поля можно заполнить позже.</p>':'')+
+  '<details class="crm-won-order-extra"><summary>Дополнительно · адрес, тип, дата, примечание</summary>'+
+   (canNew?'<div data-crm-won-new-details'+(mode==='existing'?' hidden':'')+'>'+
+     '<label>Адрес объекта<input name="objectAddress" maxlength="300"'+(mode==='existing'?' disabled':'')+'></label>'+
+     '<label>Тип объекта<input name="objectType" maxlength="100"'+(mode==='existing'?' disabled':'')+'></label>'+
+    '</div>':'')+
+   '<label>Плановая дата (если есть)<input name="plannedOn" type="date"></label>'+
+   '<label>Примечание к заказу<textarea name="notes" maxlength="5000"></textarea></label>'+
+  '</details>'+
+  '</div><div class="crm-won-order-actions">'+
+   '<button type="submit" class="primary wide">Создать заказ</button>'+
+   '<p role="status" data-crm-won-feedback class="muted small" aria-live="polite"></p>'+
+  '</div></form></section></div>';
 }
 function crmWonOrderToggle(form){
  const mode=form?.querySelector('input[name="objectMode"]:checked')?.value||'';
- for(const [part,enabled] of [['[data-crm-won-existing]',mode==='existing'],['[data-crm-won-new]',mode==='new']]){
+ for(const [part,enabled] of [['[data-crm-won-existing]',mode==='existing'],['[data-crm-won-new]',mode==='new'],['[data-crm-won-new-details]',mode==='new']]){
   const block=form.querySelector(part);
   if(!block)continue;
   block.hidden=!enabled;
@@ -343,8 +349,22 @@ function crmWonOrderOpen(leadId,trigger=null){
   if(e.target.closest('[data-crm-won-order-close]')||e.target===root)crmWonOrderClose();
  });
  root.addEventListener('change',e=>{
-  if(e.target.name==='objectMode')crmWonOrderToggle(root.querySelector('form'));
+  if(e.target.name==='objectMode'){
+   const form=root.querySelector('form');
+   crmWonOrderToggle(form);
+   if(form)form.dataset.dirty='1';
+  }
  });
+ root.addEventListener('invalid',e=>{
+  const field=e.target;
+  if(!field?.closest?.('[data-crm-won-order-form]'))return;
+  const extra=field.closest('details');
+  if(extra)extra.open=true;
+  const hint=field.name==='objectName'?'Укажи название нового объекта.':
+   field.name==='objectId'?'Выбери объект клиента.':
+   field.name==='title'?'Укажи название заказа.':'Проверь обязательное поле.';
+  crmWonOrderFeedback(hint,true);
+ },true);
  root.addEventListener('input',()=>{const form=root.querySelector('form');if(form)form.dataset.dirty='1';});
  root.addEventListener('submit',async e=>{
   e.preventDefault();
@@ -362,7 +382,7 @@ function crmWonOrderOpen(leadId,trigger=null){
   }
  });
  document.body.classList.add('work-flow-modal-open');
- root.querySelector('input[name="title"]')?.focus?.({preventScroll:true});
+ root.querySelector('.work-flow-dialog-head h2')?.focus?.({preventScroll:true});
 }
 function leadEdit(x){
  return editRecord('lead_update',x,

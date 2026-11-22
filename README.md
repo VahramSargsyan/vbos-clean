@@ -1175,3 +1175,10 @@ The existing V1G `Свободный →` navigator originally counted all zero-
 - **Release and rollback:** no Render TEST release, no PROD, no migration, no manual copy. Source rollback: revert the specific `render()` and regression changes or abandon this integration branch; hosted TEST is already PR13, unchanged. Exact PR13 `bdd3fba6d2e10c77075effea54c157aa9917d3fd` remains future code-only TEST rollback if a later guarded PR12 release is approved. Required full runtime gates and Android acceptance are pending.
 - **STOP boundary:** park manual workflow on exact current source head without triggering it. Obtain per-run explicit authorization before an isolated Node/PostgreSQL Actions check; do not displace PR13 Android acceptance session automatically.
 
+
+## CRM-WON mobile form completion repair — PATCH_FIX (2026-11-22)
+- CAPABILITY_ID: VBOS_CLEAN_CRM_WON_MOBILE_ORDER_FORM_FIX. Owner: Vahram. Mode PATCH_FIX. Risk L2 (mobile UI/form validation). Stable main base: 74fc15457db7375e39d2ce2b13169adc5d21b105. Installed Clean TEST is separately running PR #15 source 50500064fb4b9943cec488822e6d9b8623909aa5; do not overwrite that TEST.
+- Expected: after Lead → agreement, a new Object needs only its name; Order title remains required and prefilled. Submission and feedback visible on phone. Radio controls normal-sized. Address, type, planned date, notes optional and expandable. Existing/pinned Object flows preserved.
+- Scope: public/app.js, public/style.css, tests/crm01-ui.mjs and this existing packet. No changes to server.mjs, crm-won-order-handoff.mjs, DB contracts, statuses, stable IDs, finance or schedules.
+- Migration: NONE. Reversible by code-only revert, preserving all canonical records and untouched DB. No PROD release. No Codex, paid API or GitHub Actions triggered.
+- Checks: source JS parsing and isolated UI render/logic smoke during patch; full repository npm test, disposable PostgreSQL E2E, hosted authenticated TEST and Android runtime must be independently verified before feature acceptance. TEST lease/PR #15 source reconciliation required before deployment.

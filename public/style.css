@@ -668,3 +668,20 @@ html[data-theme] .finance-legacy-reference-search [data-finance-legacy-search-mo
 .estimator-price-rule button{min-height:48px;margin-top:9px}
 .estimator-price-rule input{min-height:44px;width:100%;box-sizing:border-box}
 @media(max-width:520px){.estimator-price-fields{grid-template-columns:1fr}.estimator-price-rule button{width:100%}}
+
+/* CRM-WON: independent scroll area and permanently visible order submit. */
+.crm-won-order-form{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;overflow:hidden}
+.crm-won-order-fields{flex:1 1 auto;min-height:0;overflow-y:auto}
+.crm-won-order-fields>label{display:block}
+.crm-won-order-object-choice{min-width:0;display:grid;gap:8px;padding:12px;border:1px solid var(--hairline,#ddd);border-radius:12px;margin:6px 0 12px}
+.crm-won-order-object-choice legend{font-size:14px;font-weight:650;padding:0 5px}
+.work-flow-dialog .crm-won-order-mode-option{display:flex;align-items:center;gap:12px;padding:10px 12px;min-height:48px;min-width:0;margin:0;border:1px solid var(--hairline,#ddd);border-radius:10px;cursor:pointer;font-size:15px;font-weight:600}
+.work-flow-dialog .crm-won-order-mode-option input[type=radio]{display:block;appearance:auto;flex:0 0 20px;width:20px;max-width:20px;min-width:20px;height:20px;min-height:20px;margin:0;padding:0;accent-color:var(--accent,#1557b0)}
+.crm-won-order-tip{font-size:13px;line-height:1.4;color:var(--muted,#657184);margin:4px 0 10px}
+.crm-won-order-extra{border:1px solid var(--hairline,#ddd);border-radius:10px;padding:0 12px;margin:8px 0 14px}
+.crm-won-order-extra>summary{cursor:pointer;display:flex;align-items:center;min-height:48px;font-size:14px;font-weight:650}
+.crm-won-order-extra[open]{padding-bottom:12px}
+.crm-won-order-actions{flex:0 0 auto;padding:12px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--hairline,#ddd);background:var(--s1,#fff)}
+.crm-won-order-actions>button{display:flex;width:100%;min-height:52px;font-size:16px}
+.crm-won-order-actions [data-crm-won-feedback]{margin:5px 0 0;min-height:1em;overflow-wrap:anywhere}
+@media(max-width:560px){.crm-won-order-actions{padding:10px 14px calc(10px + env(safe-area-inset-bottom))}.crm-won-order-object-choice{padding:10px}}
