@@ -3032,6 +3032,14 @@ $('#content').addEventListener('submit',async e=>{
  const f=e.target;
  if(f.matches('[data-workflow-day-start]')){await workFlowModalSubmitDay(f,'start');return;}
  if(f.matches('[data-workflow-day-finish]')){await workFlowModalSubmitDay(f,'finish');return;}
+ if(f.matches('[data-workflow-finish-presence-stop]')){
+  const visit=myWork.snapshot?.currentPresence;
+  if(!visit||visit.id!==f.elements.id?.value||visit.day_date!==myWork.snapshot.today){
+   message('Присутствие изменилось. Обнови день.',true);return;
+  }
+  const payload=Object.fromEntries(new FormData(f));
+  workFlowModalClose({force:true});await sendAction('presence_stop',payload,f);return;
+ }
  if(tab==='schedule'&&f.id==='capacitySearch'){
   const v=Object.fromEntries(new FormData(f));
   const duration=Number(v.durationWorkingDays);
@@ -3202,6 +3210,14 @@ $('#content').addEventListener('click',async e=>{
   if(!item||!item.detail){message('Подробная работа не найдена в истории. Обнови список.',true);return;}
   if(tab!=='myWork'){tab='myWork';render();await loadMyWork();}
   workFlowModalOpen('log',{item,orderId:item.order_id,trigger:editLog});return;
+ }
+ const stopForFinish=e.target.closest('button[data-workflow-finish-stop-session]');
+ if(stopForFinish){
+  const live=myWork.snapshot?.currentSession;
+  if(!live||live.id!==stopForFinish.dataset.id||live.day_date!==myWork.snapshot?.today){
+   message('Интервал изменился. Обнови экран.',true);return;
+  }
+  workFlowModalClose({force:true});await sendAction('session_stop',{id:live.id},stopForFinish);return;
  }
  const keepDay=e.target.closest('button[data-workflow-day-continues]');
  if(keepDay){
