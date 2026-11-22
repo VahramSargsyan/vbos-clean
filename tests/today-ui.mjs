@@ -427,6 +427,9 @@ const simpleNoDay={...myWorkSample,day:null,currentSession:null,currentPresence:
 vm.runInContext('myWork.snapshot='+JSON.stringify(simpleNoDay),sandbox);
 let simpleHtml=vm.runInContext('myWorkView()',sandbox);
 assert.match(simpleHtml,/data-act="work_start_order"/);
+assert.match(simpleHtml,/data-my-work-quick-start="1"/);
+assert.match(simpleHtml,/Начать день и работу по заказу/);
+assert.match(script,/myWorkQuickStart/);
 assert.match(simpleHtml,/data-workflow-open="start"/);
 vm.runInContext('myWork.snapshot='+JSON.stringify({...simpleNoDay,contextOrder:null}),sandbox);
 simpleHtml=vm.runInContext('myWorkView()',sandbox);
@@ -458,7 +461,7 @@ vm.runInContext('myWork.snapshot='+JSON.stringify({...myWorkSample,currentSessio
 workHtml=vm.runInContext('myWorkView()',sandbox);
 assert.match(workHtml,/data-act="presence_stop"/);
 assert.doesNotMatch(workHtml,/data-act="presence_start"/);
-assert.doesNotMatch(workHtml,/data-workflow-open="finish"/);
+assert.match(workHtml,/data-workflow-open="finish"/);
 vm.runInContext('myWork.snapshot=null',sandbox);
 assert.match(vm.runInContext('myWorkView()',sandbox),/Загружаю текущую работу/);
 

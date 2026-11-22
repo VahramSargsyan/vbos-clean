@@ -21,7 +21,7 @@ function myWorkView(){
   if(live||visit)s+='<p role="alert" class="muted">Открыт интервал или присутствие другого дня. Сначала исправь запись.</p>';
   else{
    if(order&&['open','active'].includes(order.status))
-    s+='<button type="button" class="primary wide-button" data-act="work_start_order" data-order-id="'+esc(order.id)+'">Начать день и работу по заказу</button>'+
+    s+='<button type="button" class="primary wide-button" data-act="work_start_order" data-my-work-quick-start="1" data-order-id="'+esc(order.id)+'">Начать день и работу по заказу «'+esc(order.title)+'»</button>'+
      '<p class="muted small">Открывает день и интервал. Присутствие и A1 отмечаются отдельно.</p>';
    s+='<button type="button" class="wide-button" data-workflow-open="start">Открыть день без заказа</button>';
   }

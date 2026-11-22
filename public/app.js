@@ -3034,7 +3034,7 @@ $('#content').addEventListener('submit',async e=>{
  if(f.matches('[data-workflow-day-finish]')){await workFlowModalSubmitDay(f,'finish');return;}
  if(f.matches('[data-workflow-finish-presence-stop]')){
   const visit=myWork.snapshot?.currentPresence;
-  if(!visit||visit.id!==f.elements.id?.value||visit.day_date!==myWork.snapshot.today){
+  if(!visit||visit.id!==f.elements.namedItem('id')?.value||visit.day_date!==myWork.snapshot.today){
    message('Присутствие изменилось. Обнови день.',true);return;
   }
   const payload=Object.fromEntries(new FormData(f));
@@ -4133,6 +4133,13 @@ $('#content').addEventListener('click',async e=>{
  if(type==='day_open'||type==='day_close'){
   tab='myWork';render();await loadMyWork();
   workFlowModalOpen(type==='day_open'?'start':'finish');return;
+ }
+ if(type==='work_start_order'&&b.dataset.myWorkQuickStart==='1'){
+  const order=myWork.snapshot?.contextOrder;
+  if(!order||order.id!==b.dataset.orderId||myWork.snapshot?.day){
+   message('Заказ или рабочий день изменился. Обнови экран.',true);return;
+  }
+  if(!confirm('Открыть рабочий день и начать интервал по заказу «'+order.title+'»? Приход на объект отмечается отдельно.'))return;
  }
  const payload={id:b.dataset.id,orderId:b.dataset.orderId,workerId:b.dataset.workerId,revision:b.dataset.revision,status:b.dataset.status,date:b.dataset.date};
  if(type==='day_close'&&!confirm('Завершить сегодняшний рабочий день?'))return;
