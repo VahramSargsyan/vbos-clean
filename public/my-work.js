@@ -43,14 +43,18 @@ function myWorkView(){
  if(workFlowLastNotice)s+='<p class="full-worklog-receipt" role="status">'+esc(workFlowLastNotice)+'</p>';
  s+='</section>';
  const hasOrderSession=Boolean(order&&(
-  live?.order_id===order.id||w.todaySessions?.some(item=>item.order_id===order.id)));
+  (live?.day_date===today&&live.order_id===order.id)||w.todaySessions?.some(item=>item.order_id===order.id)));
  s+='<section class="card" data-workflow-quick><h2>Текущий заказ и действия</h2>'+
   (order&&['open','active'].includes(order.status)&&day?.status==='open'?
    '<p class="muted">Объект: '+esc(order.object_name)+' · заказ: '+esc(order.title)+'</p>'+
    (!hasOrderSession?
-    '<p class="muted small">Сначала начни работу по выбранному заказу, затем добавляй результаты.</p>'+
-    '<form data-act="session_start" class="grid"><input type="hidden" name="orderId" value="'+esc(order.id)+'">'+
-    '<button type="submit" class="primary wide">Начать работу по заказу</button></form>':
+    (live?
+     '<p role="alert" class="muted">Уже открыт интервал по заказу «'+esc(live.order_title||'Другой заказ')+
+     '»'+(live.day_date!==today?' с '+esc(live.day_date):'')+
+     '. Чтобы начать работу по выбранному заказу и записывать действия, сначала заверши прежний интервал. Интервал не закроется автоматически.</p>':
+     '<p class="muted small">Сначала начни работу по выбранному заказу, затем добавляй результаты.</p>'+
+     '<form data-act="session_start" class="grid"><input type="hidden" name="orderId" value="'+esc(order.id)+'">'+
+     '<button type="submit" class="primary wide">Начать работу по заказу</button></form>'):
     '<button type="button" class="primary wide-button" data-workflow-open="log" data-order-id="'+esc(order.id)+'">+ Записать работу</button>'):
    '<p class="muted small">Для записи работы сначала открой день и выбери действующий заказ.</p>')+
   (live?'<button type="button" class="wide-button" data-act="session_stop" data-id="'+esc(live.id)+'">Завершить рабочий интервал</button>':'')+
