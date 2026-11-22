@@ -1,10 +1,9 @@
 # One-shot Finance B21 TEST only. Explicit earlier owner approval for bounded GitHub Actions.
 # No Neon, Google, Render, PROD, secrets, money postings or deployment.
 name: VBOS Clean Finance B21 isolated PG17 source and negative receipt tests 20261123
+# One-shot exact-source B21 run #45070583918 SUCCESS; disabled after receipt.
 on:
-  push:
-    branches: [feature/finance-b21-postfence-attestation-20261123]
-    paths: [.github/workflows/finance-b21-pg17-attestation-exact-20261123.yml]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -12,8 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   finance-b21:
-    if: >-
-      github.event.head_commit.message == 'test(finance): execute isolated B21 PG17 exact-source suite'
+    if: false # consumed one-shot job; no repeated Actions without renewed owner scope
     runs-on: ubuntu-24.04
     timeout-minutes: 14
     services:
