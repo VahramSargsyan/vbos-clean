@@ -1,0 +1,45 @@
+# Exact hosted read-only smoke. No cookies, no finance POST, no DB writes, no secrets.
+name: VBOS Clean Finance B19 hosted read-only asset and auth smoke 20261122
+on:
+  push:
+    branches: [integration/finance-b19-on-render-d46f-20261122]
+    paths: ['.github/workflows/vbos-clean-finance-b19-hosted-readonly-smoke-20261122.yml']
+permissions:
+  contents: read
+concurrency:
+  group: vbos-clean-finance-b19-hosted-readonly-20261122
+  cancel-in-progress: false
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 439296d3f431f518820a362d2c4749d70b519e9e
+          persist-credentials: false
+      - name: Match verified exact source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '439296d3f431f518820a362d2c4749d70b519e9e'
+          test -s domains/finance/finance-native-workspace-view.mjs
+      - name: Compare live served Finance asset to exact source and check unauthenticated API denial
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://vbos-clean-mvp-2026.onrender.com'
+          curl --fail --location --silent --show-error --connect-timeout 15 --max-time 80 --retry 2 --retry-delay 3 \
+            -H 'Cache-Control: no-cache' \
+            "$URL/finance-native-workspace-view.mjs" > "$RUNNER_TEMP/finance-live.mjs"
+          cmp domains/finance/finance-native-workspace-view.mjs "$RUNNER_TEMP/finance-live.mjs"
+          echo 'FINANCE_B19_HOSTED_EXACT_JS_BYTE_PARITY_PASS'
+          for endpoint in /api/finance/native-workspace /api/finance/csrf; do
+            status="$(curl --silent --show-error --connect-timeout 15 --max-time 45 --retry 2 \
+              -o /dev/null -w '%{http_code}' -H 'Cache-Control: no-cache' "$URL$endpoint")"
+            if [ "$status" != '401' ] && [ "$status" != '403' ]; then
+              echo "UNAUTHENTICATED_FINANCE_API_NOT_PROVEN_CLOSED: endpoint=$endpoint http=$status" >&2
+              exit 14
+            fi
+            echo "UNAUTHENTICATED_FINANCE_GET_REFUSED_PASS: path=$endpoint http=$status"
+          done
+          echo 'READ_ONLY_HOSTED_TEST_PASS_NO_FINANCIAL_WRITES'
