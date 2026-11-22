@@ -1,0 +1,63 @@
+# One-shot owner-authorized GitHub Actions verification for PR #21 on 2026-11-22.
+# Trigger only on this CI branch when THIS workflow file is first registered.
+# No Render/Neon/PROD access. Synthetic, disposable PostgreSQL container only.
+name: VBOS Clean PR21 exact-source TEST verification 20261122
+on:
+  push:
+    branches:
+      - ci/pr21-exact-one-shot-20261122
+    paths:
+      - .github/workflows/vbos-clean-pr21-exact-once-20261122.yml
+permissions:
+  contents: read
+concurrency:
+  group: vbos-clean-pr21-one-shot-20261122
+  cancel-in-progress: false
+jobs:
+  exact-source-full-verify:
+    if: ${{ github.event.head_commit.message == 'ci(pr21): run owner-authorized one-shot exact verification' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: vbos_mvp_ci
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: pr21_local_synthetic
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d vbos_mvp_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      EXPECTED_SOURCE_SHA: c2a9cffeb925e1775fa3c546dae00ea5590373d9
+      TEST_DATABASE_URL: postgresql://ci:pr21_local_synthetic@127.0.0.1:5432/vbos_mvp_ci
+    steps:
+      - name: Checkout exact PR21 candidate, never the workflow registration commit
+        uses: actions/checkout@v4
+        with:
+          ref: c2a9cffeb925e1775fa3c546dae00ea5590373d9
+          persist-credentials: false
+      - name: Strict identity, temporary Postgres target and branch gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          test "$GITHUB_REF" = "refs/heads/ci/pr21-exact-one-shot-20261122"
+          test "$TEST_DATABASE_URL" = "postgresql://ci:pr21_local_synthetic@127.0.0.1:5432/vbos_mvp_ci"
+          echo "PR21_EXACT_SOURCE_LOCK_PASS $EXPECTED_SOURCE_SHA"
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install application dependency without lifecycle scripts
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Required repository source layout verification
+        run: npm run verify:source
+      - name: Run full native Node and UI test suite
+        run: npm test
+      - name: Run all real disposable PostgreSQL end-to-end stages
+        run: npm run test:e2e
