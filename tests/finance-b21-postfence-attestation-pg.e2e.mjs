@@ -7,6 +7,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import pg from 'pg';
+import {hostedFinancePostingReadiness} from '../domains/finance/native-finance-writer.mjs';
 
 const uri=process.env.TEST_DATABASE_URL||'';
 let url;
@@ -19,10 +20,10 @@ const pool=new pg.Pool({connectionString:uri,ssl:false,max:1});
 const migration=readFileSync(
  new URL('../migrations/0037_finance_postfence_attestation_CANDIDATE_TEST_ONLY.sql',import.meta.url),
  'utf8');
-const openingId='SYNTHETIC_FINANCE_B9_ORIGINAL';
-const openingSha='a'.repeat(64);
-const googleId='SYNTHETIC_GOOGLE_PROTECTED_SOURCE_AAAAAAAAAAAA';
-const copyId='SYNTHETIC_SNAPSHOT_COPY_BBBBBBBBBBBBBBBBB';
+const openingId='FINANCE_CAPITAL_GOOGLE_SNAPSHOT_20261106_R1';
+const openingSha='8bdfd30faa9e45785f928c2861d7e3645a9dd168bb6d678004c0df730a04871d';
+const googleId='13LRWLgHJQb24WXOsPLCIP2W8ZIaSX9AI3sfXJgF2-y8';
+const copyId='1jN8nuyFOCozJ3rEeOhIMOVLrbRhkfY8VGkPSiFsvhH0';
 const modified='2026-11-22T16:39:20.917Z';
 const captured='2026-11-22T17:04:23.012Z';
 const counts={
@@ -107,6 +108,52 @@ test('Finance B21 source-verified post-fence attestation is separate from histor
     /B21_RECEIPT_IMMUTABLE/);
    await assert.rejects(q('UPDATE mvp_finance_stage.freeze_manifests SET owner_identity_approved=true'),
     /owner_identity_approved/);
+  });
+  await t.test('hosted B17 readiness requires this signed receipt and original opening; still no writes',async()=>{
+   // Exact archived values are synthetic test fixtures here; no Neon access.
+   await q('CREATE TABLE mvp_finance_native.opening_snapshot('+
+    'as_of_date date,opening_cash_base numeric(24,6),opening_profit_base numeric(24,6),'+
+    'opening_worker_payable_base numeric(24,6))');
+   await q("INSERT INTO mvp_finance_native.opening_snapshot VALUES("+
+    "'2026-09-30',203000.000000,588000.000000,0.000000)");
+   await q('CREATE TABLE mvp_finance_native.fund_openings(opening_balance_base numeric(24,6))');
+   await q("INSERT INTO mvp_finance_native.fund_openings SELECT 1250.000000 FROM generate_series(1,8)");
+   const receipt=await buildReceipt();
+   const g={
+    phase:'ACTIVE',financial_write_authority:'POSTGRES',
+    owner_identity_approved:true,google_frozen_confirmed:true,
+    cutover_date_key:'2026-10-01',expected_fund_count:8,
+    snapshot_id:openingId,manifest_sha256:openingSha,
+    crm_bridge_sha256:receipt[4]
+   };
+   const old={};
+   for(const key of ['FINANCE_NATIVE_POSTING_ENABLE','RENDER_SERVICE_ID',
+     'FINANCE_NATIVE_FROZEN_MANIFEST_SHA256','FINANCE_NATIVE_CRM_BRIDGE_SHA256',
+     'DATABASE_URL'])old[key]=process.env[key];
+   Object.assign(process.env,{
+    FINANCE_NATIVE_POSTING_ENABLE:'OWNER_APPROVED_CLEAN_TEST',
+    RENDER_SERVICE_ID:'srv-dbkvfh2jnfac73a31nv0',
+    FINANCE_NATIVE_FROZEN_MANIFEST_SHA256:receipt[3],
+    FINANCE_NATIVE_CRM_BRIDGE_SHA256:receipt[4],
+    DATABASE_URL:uri
+   });
+   const c=await pool.connect();
+   try {
+    const positive=await hostedFinancePostingReadiness(pool,c,g);
+    assert.deepEqual(positive,{ready:true,reason:'SIGNED_SINGLE_WRITER_READY'});
+    const wrongOwner=await hostedFinancePostingReadiness(pool,c,{...g,owner_identity_approved:false});
+    assert.deepEqual(wrongOwner,{ready:false,reason:'B17_SOURCE_AUTHORITY_NOT_APPROVED'});
+    const disabled=await hostedFinancePostingReadiness(pool,c,{...g,google_frozen_confirmed:false});
+    assert.deepEqual(disabled,{ready:false,reason:'B17_SOURCE_AUTHORITY_NOT_APPROVED'});
+    process.env.FINANCE_NATIVE_FROZEN_MANIFEST_SHA256='0'.repeat(64);
+    const wrongSource=await hostedFinancePostingReadiness(pool,c,g);
+    assert.deepEqual(wrongSource,{ready:false,reason:'B17_POST_FENCE_SNAPSHOT_NOT_OWNER_ACCEPTED'});
+   }finally{
+    c.release();
+    for(const [key,value] of Object.entries(old)){
+     if(value===undefined)delete process.env[key];else process.env[key]=value;
+    }
+   }
   });
   await t.test('new archive row after freeze is not accepted even if hash recomputed',async()=>{
    await pool.query('INSERT INTO mvp_finance_stage.source_facts VALUES($1,$2,$3::jsonb)',
