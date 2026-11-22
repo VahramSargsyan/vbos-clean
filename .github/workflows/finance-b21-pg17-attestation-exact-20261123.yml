@@ -1,0 +1,64 @@
+# One-shot Finance B21 TEST only. Explicit earlier owner approval for bounded GitHub Actions.
+# No Neon, Google, Render, PROD, secrets, money postings or deployment.
+name: VBOS Clean Finance B21 isolated PG17 source and negative receipt tests 20261123
+on:
+  push:
+    branches: [feature/finance-b21-postfence-attestation-20261123]
+    paths: [.github/workflows/finance-b21-pg17-attestation-exact-20261123.yml]
+permissions:
+  contents: read
+concurrency:
+  group: finance-b21-single-disposable-pg17-20261123
+  cancel-in-progress: false
+jobs:
+  finance-b21:
+    if: >-
+      github.event.head_commit.message == 'test(finance): execute isolated B21 PG17 exact-source suite'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test_only_password
+          POSTGRES_DB: vbos_mvp_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vbos_mvp_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:test_only_password@127.0.0.1:5432/vbos_mvp_ci
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 46ccf53a73ebd790d95f7c0bd80701abd8beafb5
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install exact package-lock dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Source guard, syntax and bounded B21 contract unit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 46ccf53a73ebd790d95f7c0bd80701abd8beafb5
+          npm run verify:source
+          node --check domains/finance/native-finance-writer.mjs
+          node --check tests/finance-b21-postfence-attestation-pg.e2e.mjs
+          node --test tests/finance-b21-postfence-contract.test.mjs
+      - name: REAL disposable PostgreSQL 17 E2E source attestations
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/finance-b21-postfence-attestation-pg.e2e.mjs
+          echo 'B21_DISPOSABLE_PG17_SOURCE_IMMUTABILITY_AND_NEGATIVE_GATES_PASS'
+      - name: Full existing Node and UI regression
+        run: npm test
+      - name: Receipt scope
+        run: |
+          echo 'B21_EXACT_SOURCE=46ccf53a73ebd790d95f7c0bd80701abd8beafb5'
+          echo 'B21_ISOLATED_POSTGRESQL_17_PG_TEST_NO_SHARED_DB_WRITES'
+          echo 'B21_NO_RENDER_GOOGLE_NEON_PROD_SECRETS_OR_MONEY_POSTS'
