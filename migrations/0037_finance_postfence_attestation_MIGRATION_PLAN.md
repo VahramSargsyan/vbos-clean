@@ -1,0 +1,39 @@
+# Finance B21 — Post-fence immutable attestation, separate from historical Google freeze
+
+**CAPABILITY_ID:** `VBOS_CLEAN_FINANCE_B21_POSTFENCE_SIGNED_RECEIPT`.
+**MODE:** IMPLEMENT_FEATURE / TEST_PREPARATION (L3, irreversible finance authority dependency).
+**OWNER:** Vahram. **TEST:** existing isolated Render `srv-dbkvfh2jnfac73a31nv0` and occupied Neon branch `br-crimson-hat-b9kwg7n6` / DB `vbos_mvp_clean`. **BASE:** exact actually deployed Render commit `439296d3f431f518820a362d2c4749d70b519e9e` (includes verified B19 native-order UI and installed My Work/WorkLogs), not unmerged/main-only source.
+**SOURCE:** `migrations/0030_finance_native_cutover_MIGRATION_PLAN.md` and `0031_finance_opening_stock_OWNER_CONFIRMED_TEST_ONLY.sql`, and existing Finance B17 writer. This is an additive extension to those already accepted plans, not a new finance redesign.
+
+## Need / hard blocker
+
+Real current Neon `mvp_finance_stage.freeze_manifests` has literal CHECK constraints `owner_identity_approved=false` and `financial_write_authority='GOOGLE'`, protecting original November 6 Google history. B17 hosted writer previously tried to read a `true` post-fence owner approval from that historical table — impossible without changing the archived schema. Do **not** loosen its CHECK constraints or mutate historical data.
+
+Create only a distinct `mvp_finance_native.post_fence_attestations` table whose INSERT trigger independently recalculates the original 80 archived records' SHA-256, validates exactly seven kind counts and the no-link CRM bridge SHA, and requires the explicit owner attestation. UPDATE/DELETE of a signed row always raise `B21_RECEIPT_IMMUTABLE`. The historical snapshot `FINANCE_CAPITAL_GOOGLE_SNAPSHOT_20261106_R1` and its SHA-256 `8bdfd30faa9e45785f928c2861d7e3645a9dd168bb6d678004c0df730a04871d` never change. B17 must read this new native signed receipt, still requiring matching env SHA(s), exact opening/8 funds, owner session/CSRF, TEST Render service and ACTIVE/POSTGRES DB gate on every write.
+
+## Reconciled source and owner policy
+
+- Live original Google spreadsheet: `13LRWLgHJQb24WXOsPLCIP2W8ZIaSX9AI3sfXJgF2-y8`; reported Google modified UTC `2026-11-22T16:39:20.917Z`.
+- Independently verified owner-only post-fence evidence copy: `1jN8nuyFOCozJ3rEeOhIMOVLrbRhkfY8VGkPSiFsvhH0`, captured UTC `2026-11-22T17:04:23.012Z`, Google Apps Script PROD writer fence exact webapp `@93`. Copy is *editable*; it is not a technically immutable export by itself.
+- Seven verified group counts (Google live vs archive AND evidence copy vs archive): FinanceTransactions 24, FinanceBalances 30, BusinessMonthlyGains 3, CapitalFunds 8, CapitalAllocationBatches 1, CapitalFundTransactions 6, CapitalFundBalances 8 = 80 records and 1,564 typed fields exactly equal. Readback was read-only; no money data modified.
+- Database canonical fingerprint for these 80 archived payloads plus exact Google/source-copy IDs and UTC timestamps: `f08953e3308b7786b0e2bd462745405d9c293556d647d16562d581e57a577712`. Computed by PostgreSQL built-in SHA-256 over sorted JSONB archival records; the new migration recomputes the hash on insertion.
+- **Owner-approved historical policy:** keep all 24 legacy finance transactions and original 14 legacy Order IDs as read-only history. Zero historical legacy Orders or transactions are inserted into native CRM/ledger; no heuristic name/phone → UUID joins. New money uses only genuine UUIDs in `public.mvp_orders` and B19 validation. Canonical no-link policy SHA: `0fbb128717b7081f983c2648f65f421496c8f94fa2ced238684398c2a4aaa1d4` (derived deterministically from the exact JSONB policy declared in migration).
+- Opening date `2026-09-30`, new accounting `2026-10-01`, cash 203000 AMD, carried profit 588000 AMD, payable 0 AMD, 8 fund openings totaling 10000 AMD already matched. **11 paper receipts totaling 1,022,000 AMD have unconfirmed dates and duplication status; do not silently post/re-date these.**
+
+## Delivery, checks and migration gate
+
+**Scope:** add 0037 DDL + its isolated PG17 test; change only B17 hosted source read from the impossible historical signed manifest to this separate signed native receipt; unit contract test and bounded existing README packet. **Out of scope:** modifying `mvp_history`, historical `mvp_finance_stage`, opening stocks, Google PROD/TEST, CRM Orders/IDs, ledger money, Render env, Neon occupied TEST without guarded rehearsal, PROD. No Codex or paid API.
+
+**Required rehearsal before occupied TEST application:** exact repo SHA, source/B17 test, repeat 0037 SQL twice on disposable PostgreSQL 17 with synthetic 80 historical rows; prove 0 automatic attestation inserts, rejects fake source/bridge hashes and unsigned receipts, immutable receipt UPDATE/DELETE, original historical CHECKs remain, source drift rejected. `npm run verify:source` and existing targeted/full Node tests. A static test is NOT a PostgreSQL E2E.
+
+**Before applying migration to occupied TEST:** independently confirm no competing active migration/PR owner; record 96-table or equivalent checksum baseline; create and verify a proper fresh Neon branch backup/snapshot with tested rollback and no new spend; verify old Google PROD `@93` and actual no-GOOGLE ScriptProperty; verify new owner signed post-fence source receipt and all 80 objects; exact UI/service commit for Render TEST. Run one guarded, transaction-safe TEST migration only after that. Migration is additive and does NOT activate payments.
+
+**Signed receipt:** migration does not insert any receipt. Actual signed INSERT must use repository-owned, reviewed, guarded one-shot evidence inputs and *new, owner-affirmed* exact Google snapshot, not synthetic test receipts. It must use `google_manifest_sha256` above and no-link bridge SHA, and retain unchanged historical Google opening snapshot. The owner signing the archive-only legacy Order policy alone is not proof of accepting the entire post-fence financial snapshot.
+
+**ACTIVATION is separate after successful TEST migration and owner acceptance:** B9 single authority row requires `ACTIVE/POSTGRES`, `google_frozen_confirmed=true`, `owner_identity_approved=true`, `cutover_date_key='2026-10-01'`, original opening snapshot ID/manifest SHA, verified no-link bridge SHA. Render env must exactly match `FINANCE_NATIVE_POSTING_ENABLE=OWNER_APPROVED_CLEAN_TEST`, `FINANCE_NATIVE_FROZEN_MANIFEST_SHA256=<new signed post-fence SHA>`, `FINANCE_NATIVE_CRM_BRIDGE_SHA256=<owner-confirmed no-link SHA>`; no credentials printed or sent to GitHub. Writer additionally locks and rechecks DB authority/owner/CSRF/idempotency. Authorize real TEST writer only after authenticated Android create/edit/reverse/replay test in proper isolated context. **No such activation or real money posting belongs to this migration preflight.**
+
+## Rollback and STOP
+
+Before any native money exists, source rollback = exact Render `439296d3f431f518820a362d2c4749d70b519e9e`, retain untouched original historical archive. An empty new table can remain unused safely; dropping/mutating schema requires a separately approved tested rollback/backup. After activation, emergency rollback = `PAUSED/POSTGRES` only; never reactivate Google writer or rewrite opening/legacy data. STOP for changed archives, wrong hash, missing owner consent, missing backup or E2E, migrating an occupied shared DB without lane owner, untested env/deploy, or any risk of double-posting.
+
+**FILES_TO_COPY:** none; GitHub source candidate only. **TEST_LEVEL at authoring:** source/provenance reads, remote Neon read-only consistency; Node/PG17/hosted runtime NOT_RUN until their actual receipts.
