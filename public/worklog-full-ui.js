@@ -238,7 +238,13 @@ function fullWorkLogValidate(form){
    'пауза не проверена. Нажми «Повторить проверку пауз».')};
  const controls=Array.from(form.elements||[]);
  const invalid=controls.find(el=>el.willValidate&&!el.checkValidity());
- if(invalid)return {ok:false,message:fullWorkLogFieldError(form,invalid)};
+ if(invalid){
+  const help={workType:'напиши, что именно сделал. Вид работ из каталога не заменяет описание.',
+   location:'укажи зону или помещение, где выполнялась работа.',
+   endClock:'укажи фактическое время окончания.',
+   startClock:'укажи фактическое время начала.'};
+  return {ok:false,message:fullWorkLogFieldError(form,invalid,help[invalid.name])};
+ }
  const f=form.elements;
  if(Number(f.quantity?.value||0)>0&&!f.unit?.value)
   return {ok:false,message:fullWorkLogFieldError(form,f.unit,'выбери единицу измерения для количества.')};
@@ -300,7 +306,8 @@ function fullWorkLogForm(orderId,date,record){
  const mode=value('performer_mode','OWNER');
  const start=time(value('start_clock',currentYerevanTime()));
  const day=String(edit?record.day_date||date:date).slice(0,10);
- const base='<input type="hidden" name="orderId" value="'+esc(orderId)+'">'+
+ const base='<p class="muted small" data-full-worklog-required-help>Обязательно: время начала и конца, помещение и конкретное выполненное действие. Количество и остальные показатели можно не заполнять; при количестве нужна единица.</p>'+
+  '<input type="hidden" name="orderId" value="'+esc(orderId)+'">'+
   (edit?'<input type="hidden" name="id" value="'+esc(record.id)+'"><input type="hidden" name="revision" value="'+esc(record.revision)+'">'+
     '<input type="hidden" name="dayDate" value="'+esc(day)+'"><p class="muted">Дата работы: '+esc(day)+'. Перенос в другой день/заказ не выполняется через эту форму.</p>':
     editText('dayDate','Дата',day,'date','required'))+
@@ -308,8 +315,8 @@ function fullWorkLogForm(orderId,date,record){
    ['OWNER','Я'],['WORKER','Помощник'],['JOINT','Я и помощник']],mode),true)+
   '<div data-full-worker'+(mode==='OWNER'?' hidden':'')+'>'+
    select('workerId','Помощник',fullWorkLogOptions(workers,value('worker_id'),'Выбери назначенного помощника'),false)+'</div>'+
-  editText('startClock','Начало',start,'time','required')+
-  editText('endClock','Конец',time(value('end_clock')),'time','required')+
+  editText('startClock','Начало *',start,'time','required')+
+  editText('endClock','Конец *',time(value('end_clock')),'time','required')+
   '<section class="full-worklog-gap" data-full-gap-before'+(value('gap_reason')?'':' hidden')+'>'+
    '<p class="full-worklog-gap-summary" data-full-gap-minutes>Пауза больше 15 минут. Укажи причину.</p>'+
    select('gapReason','Почему была пауза?',fullWorkLogOptions(FULL_WORKLOG_GAPS,value('gap_reason')),false)+
@@ -323,13 +330,14 @@ function fullWorkLogForm(orderId,date,record){
   '<label>Категория<select data-full-worklog-tax-category>'+
    fullWorkLogOptions(fullWorkLogTaxCategories(references),selectedCategory,'Не связывать с каталогом')+
   '</select></label>'+
-  '<label>Вид работ<select data-full-worklog-tax-action'+(selectedCategory?'':' disabled')+'>'+
+  '<label>Вид работ из каталога (не описание)<select data-full-worklog-tax-action'+(selectedCategory?'':' disabled')+'>'+
    fullWorkLogOptions(fullWorkLogTaxActions(references,selectedCategory),selectedAction,
     selectedCategory?'Выбери вид работ':'Сначала выбери категорию')+
   '</select></label>'+
   select('serviceId','Услуга',fullWorkLogTaxServices(references,selectedCategory,selectedAction,value('service_id')),false)+
-  editText('location','Зона / помещение',value('location'),'text','required maxlength="300" placeholder="Кухня, подвал, ванная…"')+
-  editText('workType','Фактическая работа',value('work_type',record?.title||''),'text','required maxlength="180" placeholder="Что сделал: монтаж труб, замена стояка…"')+
+  editText('location','Зона / помещение *',value('location'),'text','required maxlength="300" placeholder="Кухня, подвал, ванная…"')+
+  '<p class="muted small" data-full-worklog-detail-help>Напиши, что именно сделал, например: «Смонтировал трубы водоснабжения в туалете». Выбор «Монтаж» выше сам по себе не записывает выполненное действие.</p>'+
+  editText('workType','Фактическая работа *',value('work_type',record?.title||''),'text','required maxlength="180" placeholder="Что сделал: монтаж труб, замена стояка…"')+
   editText('quantity','Результат: количество',record?.quantity??'','number','min="0" step="0.001" inputmode="decimal"')+
   select('unit','Единица',fullWorkLogOptions([
    ['','Не выбрано'],['шт','шт'],['точки','точки'],['м','м'],['м²','м²'],

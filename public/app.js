@@ -3032,6 +3032,18 @@ $('#content').addEventListener('submit',async e=>{
  const f=e.target;
  if(f.matches('[data-workflow-day-start]')){await workFlowModalSubmitDay(f,'start');return;}
  if(f.matches('[data-workflow-day-finish]')){await workFlowModalSubmitDay(f,'finish');return;}
+ if(f.matches('[data-workflow-finish-presence-stop]')){
+  const visit=myWork.snapshot?.currentPresence;
+  if(!visit||visit.id!==f.elements.namedItem('id')?.value||visit.day_date!==myWork.snapshot.today){
+   message('Присутствие изменилось. Обнови день.',true);return;
+  }
+  const payload=Object.fromEntries(new FormData(f));
+  workFlowModalClose({force:true});
+  await sendAction('presence_stop',payload,f);
+  if(tab==='myWork'&&myWork.snapshot?.day?.status==='open'&&!myWork.snapshot?.currentPresence)
+   workFlowModalOpen('finish');
+  return;
+ }
  if(tab==='schedule'&&f.id==='capacitySearch'){
   const v=Object.fromEntries(new FormData(f));
   const duration=Number(v.durationWorkingDays);
@@ -3202,6 +3214,18 @@ $('#content').addEventListener('click',async e=>{
   if(!item||!item.detail){message('Подробная работа не найдена в истории. Обнови список.',true);return;}
   if(tab!=='myWork'){tab='myWork';render();await loadMyWork();}
   workFlowModalOpen('log',{item,orderId:item.order_id,trigger:editLog});return;
+ }
+ const stopForFinish=e.target.closest('button[data-workflow-finish-stop-session]');
+ if(stopForFinish){
+  const live=myWork.snapshot?.currentSession;
+  if(!live||live.id!==stopForFinish.dataset.id||live.day_date!==myWork.snapshot?.today){
+   message('Интервал изменился. Обнови экран.',true);return;
+  }
+  workFlowModalClose({force:true});
+  await sendAction('session_stop',{id:live.id},stopForFinish);
+  if(tab==='myWork'&&myWork.snapshot?.day?.status==='open'&&!myWork.snapshot?.currentSession)
+   workFlowModalOpen('finish');
+  return;
  }
  const keepDay=e.target.closest('button[data-workflow-day-continues]');
  if(keepDay){
@@ -4117,6 +4141,13 @@ $('#content').addEventListener('click',async e=>{
  if(type==='day_open'||type==='day_close'){
   tab='myWork';render();await loadMyWork();
   workFlowModalOpen(type==='day_open'?'start':'finish');return;
+ }
+ if(type==='work_start_order'&&b.dataset.myWorkQuickStart==='1'){
+  const order=myWork.snapshot?.contextOrder;
+  if(!order||order.id!==b.dataset.orderId||myWork.snapshot?.day){
+   message('Заказ или рабочий день изменился. Обнови экран.',true);return;
+  }
+  if(!confirm('Открыть рабочий день и начать интервал по заказу «'+order.title+'»? Приход на объект отмечается отдельно.'))return;
  }
  const payload={id:b.dataset.id,orderId:b.dataset.orderId,workerId:b.dataset.workerId,revision:b.dataset.revision,status:b.dataset.status,date:b.dataset.date};
  if(type==='day_close'&&!confirm('Завершить сегодняшний рабочий день?'))return;

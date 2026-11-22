@@ -131,6 +131,16 @@ test('UI behavior: invalid fields retain data; only acknowledged save clears ent
  assert.equal(vals.location.focusCount,1);
  assert.equal(form.resetCalls,0);
  vals.location.valid=true;
+ vals.workType.valid=false;
+ result=vm.runInContext('fullWorkLogValidate(testForm)',vmContext);
+ assert.equal(result.ok,false);
+ assert.match(status.textContent,/напиши, что именно сделал/);
+ assert.match(status.textContent,/Вид работ из каталога не заменяет описание/);
+ assert.equal(vals.workType.focusCount,1);
+ assert.equal(vals.workType.reportCount,1);
+ assert.equal(vals.workType.value,'Монтаж трубы');
+ assert.equal(form.resetCalls,0);
+ vals.workType.valid=true;
  result=vm.runInContext('fullWorkLogValidate(testForm)',vmContext);
  assert.equal(result.ok,true);
  vm.runInContext('fullWorkLogSavePending(testForm,true)',vmContext);
@@ -157,6 +167,10 @@ test('WorkLog legacy taxonomy Category → Action → Service preserves canonica
  assert.match(ui,/data-full-worklog-tax-category/);
  assert.match(ui,/data-full-worklog-tax-action/);
  assert.match(ui,/Фактическая работа/);
+ assert.match(ui,/data-full-worklog-required-help/);
+ assert.match(ui,/data-full-worklog-detail-help/);
+ assert.match(ui,/Вид работ из каталога/);
+ assert.match(ui,/Фактическая работа \*/);
  assert.match(ui,/fullWorkLogTaxSync\(form,'service'\)/);
  const context=vm.createContext({data:{workLogServiceReferences:[
   {service_id:'s1',service_name:'Трубы',category:'Сантехника',action_code:'MOUNT',status:'active'},
@@ -467,7 +481,8 @@ test('Presence history-only mode keeps history and removes duplicate check-in wr
 
 test('WorkDay start from My Work does not require daily A1 or write to its record',async()=>{
  const source=get('public/workday-legacy-ui.js');
- assert.match(mywork,/data-workflow-open="start">Начать рабочий день/);
+ assert.match(mywork,/data-workflow-open="start">Открыть день без заказа/);
+ assert.match(mywork,/data-act="work_start_order" data-my-work-quick-start="1"/);
  assert.match(mywork,/a1Card\(\)/,'Existing separate A1 editor must remain');
  assert.match(source,/type:'a1_complete'/,'Unrelated day-finish behavior must remain untouched');
  for(const item of [null,{id:'DA1-2026-11-19',goal:'Сохранённая цель',reason:'Отдельная запись'}]){
@@ -492,7 +507,7 @@ test('WorkDay start from My Work does not require daily A1 or write to its recor
   assert.match(markup,/A1 не создаётся и не изменяется/);
   assert.doesNotMatch(markup,/name="(?:goal|reason|notes)"/,'Opening WorkDay must not require A1 fields');
   assert.equal(markup.includes('<strong>A1:'),Boolean(item),'Existing A1 remains read-only on start');
-  const feedback={textContent:''},button={textContent:'Начать день',disabled:false,isConnected:true};
+  const feedback={textContent:''},button={textContent:'Открыть день',disabled:false,isConnected:true};
   sandbox.testForm={dataset:{},elements:[],querySelector:selector=>
    selector==='[data-workflow-feedback]'?feedback:
    selector==='button[type="submit"]'?button:null};

@@ -17,11 +17,18 @@ function myWorkView(){
   '<div class="summary"><div class="card"><span>Рабочий день</span><strong>'+esc(day?(label[day.status]||day.status):'Не открыт')+'</strong></div>'+
   '<div class="card"><span>Интервал</span><strong>'+esc(live?'Идёт':'Нет активного')+'</strong></div>'+
   '<div class="card"><span>Присутствие</span><strong>'+esc(visit?'На объекте':'Не отмечено')+'</strong></div></div>';
- if(!day)s+='<button type="button" class="primary wide-button" data-workflow-open="start">Начать рабочий день</button>';
- else if(day.status==='open'&&!live&&!visit)
-  s+='<button type="button" class="primary wide-button" data-workflow-open="finish">Я закончил работу</button>';
- else if(day.status==='open'&&(live||visit))
-  s+='<p class="muted small">Чтобы закрыть день, сначала заверши интервал и отметь уход с объекта.</p>';
+ if(!day){
+  if(live||visit)s+='<p role="alert" class="muted">Открыт интервал или присутствие другого дня. Сначала исправь запись.</p>';
+  else{
+   if(order&&['open','active'].includes(order.status))
+    s+='<button type="button" class="primary wide-button" data-act="work_start_order" data-my-work-quick-start="1" data-order-id="'+esc(order.id)+'">Начать день и работу по заказу «'+esc(order.title)+'»</button>'+
+     '<p class="muted small">Открывает день и интервал. Присутствие и A1 отмечаются отдельно.</p>';
+   s+='<button type="button" class="wide-button" data-workflow-open="start">Открыть день без заказа</button>';
+  }
+ }else if(day.status==='open'){
+  s+='<button type="button" class="primary wide-button" data-workflow-open="finish">Завершить день</button>';
+  if(live||visit)s+='<p class="muted small">Нажми «Завершить день», чтобы увидеть оставшиеся шаги. Записи не закроются автоматически.</p>';
+ }
  s+='<label>Текущий заказ<select id="myWorkOrderSelect"><option value="">Выбери заказ</option>'+
   [...choices.values()].map(o=>'<option value="'+esc(o.id)+'"'+(selected===o.id?' selected':'')+'>'+
    esc(o.title+' · '+(o.object_name||data.objects?.find(x=>x.id===o.object_id)?.name||'Объект')+
