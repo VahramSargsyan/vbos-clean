@@ -2,12 +2,9 @@
 # Works only with already-configured GitHub secret RENDER_API_KEY.
 # NEVER deploys latest main or changes any database/financial authority.
 name: VBOS Clean Finance B19 exact Render TEST 20261122
+# Disabled after missing GitHub Render secret. Requires a new exact authorization and guard review to reenable.
 on:
-  push:
-    branches:
-      - integration/finance-b19-on-render-d46f-20261122
-    paths:
-      - .github/workflows/vbos-clean-finance-b19-exact-render-test-20261122.yml
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -15,7 +12,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   guarded-release:
-    if: github.event_name == 'push'
+    if: false # deliberately disabled after BLOCKED_NO_GITHUB_RENDER_API_KEY_SECRET
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
