@@ -112,10 +112,11 @@ test('Finance B21 source-verified post-fence attestation is separate from histor
   await t.test('hosted B17 readiness requires this signed receipt and original opening; still no writes',async()=>{
    // Exact archived values are synthetic test fixtures here; no Neon access.
    await q('CREATE TABLE mvp_finance_native.opening_snapshot('+
-    'as_of_date date,opening_cash_base numeric(24,6),opening_profit_base numeric(24,6),'+
+    'id smallint PRIMARY KEY DEFAULT 1,as_of_date date,'+
+    'opening_cash_base numeric(24,6),opening_profit_base numeric(24,6),'+
     'opening_worker_payable_base numeric(24,6))');
    await q("INSERT INTO mvp_finance_native.opening_snapshot VALUES("+
-    "'2026-09-30',203000.000000,588000.000000,0.000000)");
+    "1,'2026-09-30',203000.000000,588000.000000,0.000000)");
    await q('CREATE TABLE mvp_finance_native.fund_openings(opening_balance_base numeric(24,6))');
    await q("INSERT INTO mvp_finance_native.fund_openings SELECT 1250.000000 FROM generate_series(1,8)");
    const receipt=await buildReceipt();
