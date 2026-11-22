@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   exact-source-full-verify:
-    if: "${{ github.event.head_commit.message == 'ci(pr21): final exact native and PostgreSQL verification' }}"
+    if: "${{ github.event.head_commit.message == 'ci(pr21): Android WorkLog required field regression and E2E' }}"
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
@@ -33,13 +33,13 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      EXPECTED_SOURCE_SHA: d46f5b016480a4a5c51b079b179677039564504a
+      EXPECTED_SOURCE_SHA: 52a85a52a7e42ada20ace6c199ab14d861d268cf
       TEST_DATABASE_URL: postgresql://ci:pr21_local_synthetic@127.0.0.1:5432/vbos_mvp_ci
     steps:
       - name: Checkout exact PR21 candidate, never the workflow registration commit
         uses: actions/checkout@v4
         with:
-          ref: d46f5b016480a4a5c51b079b179677039564504a
+          ref: 52a85a52a7e42ada20ace6c199ab14d861d268cf
           persist-credentials: false
       - name: Strict identity, temporary Postgres target and branch gate
         shell: bash
