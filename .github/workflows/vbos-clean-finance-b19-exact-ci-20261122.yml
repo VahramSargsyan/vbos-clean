@@ -1,0 +1,60 @@
+# Single finance verification run on first introduction in this dedicated branch.
+# Source pin is the pre-workflow integration candidate: no Neon, Render, Google or user secrets.
+name: VBOS Clean Finance B19 exact source, isolated PG CI 20261122
+on:
+  push:
+    branches:
+      - integration/finance-b19-on-render-d46f-20261122
+    paths:
+      - .github/workflows/vbos-clean-finance-b19-exact-ci-20261122.yml
+permissions:
+  contents: read
+concurrency:
+  group: vbos-clean-finance-b19-one-shot-20261122
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/integration/finance-b19-on-render-d46f-20261122'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: vbos_mvp_ci
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: finance_b19_synthetic_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d vbos_mvp_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      EXACT_FINANCE_SHA: 439296d3f431f518820a362d2c4749d70b519e9e
+      TEST_DATABASE_URL: postgresql://ci:finance_b19_synthetic_only@127.0.0.1:5432/vbos_mvp_ci
+    steps:
+      - name: Checkout exactly the source to be tested
+        uses: actions/checkout@v4
+        with:
+          ref: 439296d3f431f518820a362d2c4749d70b519e9e
+          persist-credentials: false
+      - name: Enforce pinned git and disposable PostgreSQL only
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXACT_FINANCE_SHA"
+          test "$TEST_DATABASE_URL" = 'postgresql://ci:finance_b19_synthetic_only@127.0.0.1:5432/vbos_mvp_ci'
+          echo "Source lock and disposable PostgreSQL target: PASS"
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install existing dependencies (no lifecycle scripts)
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Exact source validation
+        run: npm run verify:source
+      - name: Full Node.js regression suite
+        run: npm test
+      - name: Disposable PostgreSQL E2E
+        run: npm run test:e2e
