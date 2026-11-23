@@ -98,6 +98,14 @@ test('zero linked records are distinguishable from a populated zero-balance resu
  assert.equal(res.totalCount,0);assert.equal(res.items.length,0);
  assert.equal(res.metrics.cashBalanceBase,'0.000000');
 });
+test('numeric zero from PostgreSQL empty SUM is normalized to six-decimal AMD',async()=>{
+ const fixture=setup({history:[],summary:{...zero,total_count:0,active_count:0,
+  advance_base:'0',received_base:'0',cash_balance_base:'0'}});
+ const output=await readOrderFinancialResult(fixture.pool,order,{authorizeOwner:()=>true});
+ assert.equal(output.metrics.advanceBase,'0.000000');
+ assert.equal(output.metrics.receivedBase,'0.000000');
+ assert.equal(output.metrics.cashBalanceBase,'0.000000');
+});
 test('Order card retains original work/contact/status actions and adds read-only finance',()=>{
  const app=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
  const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
