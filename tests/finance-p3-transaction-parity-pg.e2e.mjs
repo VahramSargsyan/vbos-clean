@@ -41,7 +41,10 @@ test('Finance P3 actual disposable PG17 detail + B14 edit/cancel/restore parity'
    DATABASE_URL:uri,FINANCE_B10_SYNTHETIC_ONLY:'1'
   });
   const original=(await pool.query("SELECT finance_transaction_id::text id,revision FROM mvp_finance_native.transactions "+
-   "WHERE operation_type='INCOME' AND status='active' AND normalized->>'category'='current_work' ORDER BY finance_transaction_id LIMIT 1")).rows[0];
+   "WHERE operation_type='INCOME' AND status='active' AND normalized->>'category'='current_work' " +
+   "AND NOT EXISTS(SELECT 1 FROM mvp_finance_native.fincap_batches b " +
+   "WHERE b.finance_transaction_id=mvp_finance_native.transactions.finance_transaction_id) " +
+   "ORDER BY finance_transaction_id LIMIT 1")).rows[0];
   assert.ok(original?.id,'requires P1 native synthetic income fixture');
   await t.test('signed owner native detail and canonical relations are ready',async()=>{
    const d=await read(original.id);
