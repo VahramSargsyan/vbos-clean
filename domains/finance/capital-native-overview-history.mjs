@@ -99,7 +99,7 @@ function fundRow(r,motion){
   reversalNetBase:fixed(byType.reversalNet),
   targetReached:target>0n&&current>=target,
   targetProgressPct:target>0n?
-   String(Number((current*10000n)/target)/100):null
+   String(Number(((current<target?current:target)*10000n)/target)/100):null
  });
 }
 export async function readNativeCapitalOverview(pool,params,{authorizeOwner}={}){
