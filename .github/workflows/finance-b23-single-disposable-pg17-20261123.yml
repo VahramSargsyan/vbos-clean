@@ -1,0 +1,90 @@
+# One owner-approved Finance B23 source-pinned PG17 workflow, disposable localhost only.
+# B23 focused repair 1: local B14 PAUSED gate is reactivated only on disposable PG17 and restored.
+# B23 focused repair 2: fixed-precision zeros from PostgreSQL aggregate text.
+# Only changes to this workflow on this branch can trigger this job.
+name: VBOS Clean Finance B23 one-shot exact Node and disposable PG17 qualification
+on:
+  push:
+    branches:
+      - feature/finance-b23-order-result-20261123
+    paths:
+      - .github/workflows/finance-b23-single-disposable-pg17-20261123.yml
+permissions:
+  contents: read
+concurrency:
+  group: finance-b23-single-disposable-pg17-20261123
+  cancel-in-progress: false
+jobs:
+  finance-b23:
+    if: "github.event.head_commit.message == 'ci(finance): one-shot B23 PG17 qualification'"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test_only_password
+          POSTGRES_DB: vbos_mvp_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vbos_mvp_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:test_only_password@127.0.0.1:5432/vbos_mvp_ci
+      CI: 'true'
+    steps:
+      - name: Checkout exact B23 triggered candidate SHA
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies without package scripts
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund
+      - name: Source SHA, repository layout and syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          npm run verify:source
+          node --check domains/finance/finance-native-order-result.mjs
+          node --check tests/finance-b23-order-result.test.mjs
+          node --check tests/finance-b23-order-result-pg.e2e.mjs
+          node --check server.mjs
+          node --check public/app.js
+          echo "FINANCE_B23_EXACT_SOURCE_SYNTAX_PASS=$GITHUB_SHA"
+      - name: Finance B23 focused exact-order owner/cursor/UI unit tests
+        run: node --test tests/finance-b23-order-result.test.mjs
+      - name: Reused Finance B19, B21, B22 negative and mobile regression
+        run: node --test tests/finance-b18-workspace.test.mjs tests/finance-b20-hosted-route.test.mjs tests/finance-b21-postfence-contract.test.mjs domains/finance/tests/finance-capital-view.test.mjs
+      - name: Complete Node UI and API regression
+        run: npm test
+      - name: Complete existing disposable PG17 E2E including B23 real DB test
+        run: npm run test:e2e
+      - name: Reset only disposable Finance schemas for standalone B21 PG17
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import pg from 'pg';
+          const uri=process.env.TEST_DATABASE_URL||'';
+          const u=new URL(uri);
+          if(!['localhost','127.0.0.1'].includes(u.hostname)||u.pathname!=='/vbos_mvp_ci')
+            throw new Error('B23_EPHEMERAL_FINANCE_RESET_ONLY');
+          const client=new pg.Client({connectionString:uri,ssl:false});
+          await client.connect();
+          try {
+            for(const schema of ['mvp_finance_native','mvp_finance_stage','mvp_history'])
+              await client.query('DROP SCHEMA IF EXISTS '+schema+' CASCADE');
+          } finally { await client.end(); }
+          console.log('B23_EPHEMERAL_FINANCE_SCHEMAS_CLEAN');
+          NODE
+      - name: Additional B21 isolated signed-fence PostgreSQL E2E
+        run: node --test tests/finance-b21-postfence-attestation-pg.e2e.mjs
+      - name: B23 source-pinned one-shot receipt
+        run: |
+          echo "FINANCE_B23_DISPOSABLE_PG17_FULL_E2E_PASS_SOURCE=$GITHUB_SHA"
+          echo "FINANCE_B23_NO_SHARED_NEON_GOOGLE_RENDER_PROD_DATA_WRITES"
