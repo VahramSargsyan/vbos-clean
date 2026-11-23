@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseNativeFinanceHistoryFilters,readNativeFinanceHistory,NativeFinanceHistoryError}
  from '../domains/finance/finance-native-summary-history.mjs';
-import {nativeFinanceParityHtml} from '../domains/finance/finance-native-summary-view.mjs';
+import {nativeFinanceParityHtml,mountNativeFinanceParity} from '../domains/finance/finance-native-summary-view.mjs';
 
 const UUID_A='11111111-1111-4111-8111-111111111111';
 const UUID_B='22222222-2222-4222-8222-222222222222';
@@ -100,4 +100,24 @@ test('P1 rows escape untrusted notes and keep cancelled operations visibly archi
  assert.ok(!html.includes('<script>'));
  assert.ok(!html.includes('<img'));
  assert.ok(html.includes('&lt;img'));
+});
+
+test('P1 confirmed write during an in-flight read queues a fresh ledger readback',async()=>{
+ const pending=[];
+ const root={innerHTML:'',addEventListener(){},removeEventListener(){},querySelector(){return null;}};
+ const panel=mountNativeFinanceParity(root,{
+  fetchPage:()=>new Promise(resolve=>pending.push(resolve)),
+  onQuickAction:()=>true
+ });
+ assert.equal(pending.length,1);
+ await panel.load();
+ assert.equal(pending.length,1,'a second concurrent GET must not start');
+ pending.shift()(source());
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(pending.length,1,'refresh must be queued and retried after the first GET');
+ const fresh=source();fresh.ledger.currentCashBase='224000.000000';
+ pending.shift()(fresh);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.match(root.innerHTML,/224\s?000/);
+ panel.unmount();
 });
