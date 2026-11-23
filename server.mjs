@@ -48,6 +48,7 @@ import {workerBenchmarksRead} from './worker-benchmarks.mjs';
 import {benchmarkProposalsRead,benchmarkApprovalAction} from './benchmark-approvals.mjs';
 import {historicalOrdersPage,historicalOrderAssessment,historicalFinanceTransactionsPage,historicalFinanceFilterOptions,HistoryOrdersAccessError} from './domains/finance/history-orders-api.mjs';
 import {financeOrderResultRead,FinanceOrderResultError} from './domains/finance/finance-order-result.mjs';
+import {readNativeFinanceHistory,NativeFinanceHistoryError} from './domains/finance/finance-native-summary-history.mjs';
 import {financeWorkerOptionsRead,financeWorkerHistoryRead,FinanceWorkerHistoryError} from './domains/finance/finance-worker-history.mjs';
 import {financeLegacyWorkersPage,FinanceLegacyReferenceError} from './domains/finance/finance-legacy-reference-search.mjs';
 import {financeObjectOptionsRead,financeObjectResultRead,FinanceObjectResultError} from './domains/finance/finance-object-result.mjs';
@@ -117,6 +118,8 @@ const files = {
  '/finance-capital-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-capital-view.mjs',import.meta.url))],
  '/finance-opening-preview-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-opening-preview-view.mjs',import.meta.url))],
  '/finance-native-workspace-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-native-workspace-view.mjs',import.meta.url))],
+ '/finance-native-summary-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-native-summary-view.mjs',import.meta.url))],
+ '/finance-native-summary.css': ['text/css; charset=utf-8',readFileSync(new URL('./public/finance-native-summary.css',import.meta.url))],
  '/finance-order-result-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-order-result-view.mjs',import.meta.url))],
  '/finance-worker-history-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-worker-history-view.mjs',import.meta.url))],
  '/finance-object-result-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-object-result-view.mjs',import.meta.url))],
@@ -570,6 +573,22 @@ async function handler(req,res){
      if(error instanceof OrderFinanceResultError)throw new AppError(error.status,error.code);
      if(['42P01','3F000','42501'].includes(error?.code))
       throw new AppError(503,'Нативный финансовый реестр заказов недоступен.');
+     throw error;
+    }
+   }
+   // Finance P1: owner-authenticated native-only cumulative totals and filtered history.
+   // Dates/type/search apply to rows, never to the accumulated scope totals.
+   if(pathname==='/api/finance/native-summary-history'&&req.method==='GET'){
+    try{
+     return json(res,200,await readNativeFinanceHistory(pool,
+      new URL(req.url,'http://localhost').searchParams,{authorizeOwner:()=>sessionValid(req)}));
+    }catch(error){
+     if(error instanceof NativeFinanceHistoryError)
+      throw new AppError(error.status,error.code);
+     if(error instanceof NativeFinanceWorkspaceError)
+      throw new AppError(error.status,error.status===503?'FINANCE_P1_ATTESTED_SOURCE_UNAVAILABLE':error.code);
+     if(['42P01','3F000','42501'].includes(error?.code))
+      throw new AppError(503,'Нативный финансовый источник недоступен.');
      throw error;
     }
    }
