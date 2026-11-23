@@ -1,4 +1,5 @@
 # One-shot owner-authorized CRM H27 qualification on source-only candidate.
+# Focused retry: corrected test harness pool wrapper and actual panel cleanup name.
 # No Google/Neon/Render/PROD credentials or writes. Disposable localhost PG17.
 name: VBOS Clean CRM H27 historical read-only UX and PG17 qualification
 on:
