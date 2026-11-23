@@ -1,5 +1,6 @@
 # One owner-approved Finance B23 source-pinned PG17 workflow, disposable localhost only.
 # B23 focused repair 1: local B14 PAUSED gate is reactivated only on disposable PG17 and restored.
+# B23 focused repair 2: fixed-precision zeros from PostgreSQL aggregate text.
 # Only changes to this workflow on this branch can trigger this job.
 name: VBOS Clean Finance B23 one-shot exact Node and disposable PG17 qualification
 on:
