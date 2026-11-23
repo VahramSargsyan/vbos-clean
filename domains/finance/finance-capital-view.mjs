@@ -87,7 +87,7 @@ export function financeLegacySearchResult(kind,response,term){
 }
 
 /** Renders the same conditional fields as legacy Scripts.html, never a financial writer. */
-export function financeLegacyFormHtml(action,{today='2026-11-13',refs={}}={}){
+export function financeLegacyFormHtml(action,{today='2026-11-13',refs={},liveEnabled=false}={}){
  if(!LEGACY_FORMS.includes(action))throw Error('FINANCE_LEGACY_ACTION_INVALID');
  const date=legacyDay(today)?today:'2026-11-13';
  const orders=legacyReferences(refs,'orders');
@@ -108,7 +108,7 @@ export function financeLegacyFormHtml(action,{today='2026-11-13',refs={}}={}){
   '</select></label>';
  if(owner)special=action==='INVEST'?
   '<input type="hidden" name="ownerDirection" value="investments">'+
-  '<p class="small muted">В старом VBOS инвестиция автоматически распределялась в фонды по политике 15% / 15% / 70%. Здесь движение денег и распределение не выполняются.</p>':
+  '<p class="small muted">Инвестирование списывает сумму и распределяет её по восьми фондам по действующей политике. Операция необратима через обычную кнопку отмены.</p>':
   '<label>Куда выведены деньги<select name="ownerDirection" required>'+
   legacyOptions(LEGACY_OWNER,'home')+'</select></label>';
  const search=owner?'':'<div class="finance-legacy-reference-search" data-finance-legacy-reference-search>'+
@@ -130,7 +130,8 @@ export function financeLegacyFormHtml(action,{today='2026-11-13',refs={}}={}){
   '<div class="finance-legacy-head"><h2 id="financeLegacyFormHeading">'+esc(LEGACY_TITLES[action])+
   ' · форма старого VBOS</h2><button type="button" data-finance-legacy-close aria-label="Закрыть">✕</button></div>'+
   '<div class="finance-legacy-body">'+
-  '<p class="finance-legacy-warning" role="status"><strong>ТОЛЬКО ПРОВЕРКА ФОРМЫ.</strong> Финансовый источник записи ещё не переключён. Ни одна сумма не сохраняется.</p>'+
+  (liveEnabled?'<p class="finance-legacy-warning" role="status"><strong>PostgreSQL TEST.</strong> Эта операция создаст настоящую запись в новой базе. Архив старого VBOS не меняется.</p>':
+   '<p class="finance-legacy-warning" role="status"><strong>ТОЛЬКО ПРОВЕРКА ФОРМЫ.</strong> Ни одна сумма не сохраняется.</p>')+
   '<form data-finance-legacy-form autocomplete="off">'+
   '<input type="hidden" name="legacyAction" value="'+esc(action)+'">'+
   (worker?'':'<input type="hidden" name="operationType" value="'+esc(owner?'OWNER_TRANSFER':action)+'">')+
@@ -143,10 +144,11 @@ export function financeLegacyFormHtml(action,{today='2026-11-13',refs={}}={}){
   '<label>Комиссия в исходной валюте<input type="number" name="commissionOriginal" min="0" step="0.01" value="0"></label>'+
   '<label>Контрагент<input type="text" name="counterparty" maxlength="300"></label>'+
   '<label>Комментарий<textarea name="notes" maxlength="5000"></textarea></label>'+
-  '<p class="small muted">Начисление рабочему и выплата — разные операции. Никакие финансовые эффекты в этом макете не рассчитываются.</p>'+
+  (liveEnabled?'<p class="small muted">Начисление и выплата учитываются отдельно. Все эффекты рассчитывает PostgreSQL.</p>':
+  '<p class="small muted">Начисление рабочему и выплата — разные операции. Никакие финансовые эффекты в этом макете не рассчитываются.</p>')+
   '<div class="finance-legacy-form-actions">'+
-  '<button type="submit">Проверить заполнение</button>'+
-  '<button type="button" disabled>Сохранить · недоступно</button>'+
+  '<button type="submit"'+(liveEnabled?' class="primary"':'')+'>'+(liveEnabled?'Сохранить в PostgreSQL':'Проверить заполнение')+'</button>'+
+  (liveEnabled?'':'<button type="button" disabled>Сохранить · недоступно</button>')+
   '<button type="button" data-finance-legacy-close>Отмена</button>'+
   '</div><p role="status" aria-live="polite" data-finance-legacy-result></p></form>'+
   ((income||expense)?'<button type="button" class="compact" data-finance-legacy-server-preview="'+esc(action)+
@@ -215,12 +217,34 @@ export function validateFinanceLegacyPreview(raw,{refs={}}={}){
  });
 }
 
+/** Pure B22 adapter. Reuses the existing native FINANCE_CREATE writer; never maps historical Google IDs. */
+export function financeLegacyNativeCreateAction(raw,{refs={},today='2026-11-23'}={}){
+ const x=validateFinanceLegacyPreview(raw,{refs});
+ const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+ if(x.transactionDate<'2026-10-01'||x.transactionDate>today||!legacyDay(today))
+  throw Error('Дата вне нового финансового периода');
+ for(const field of ['workerId','workOrderId','objectId']){
+  if(x[field]&&!uuid.test(x[field]))throw Error('Только подтверждённые PostgreSQL UUID');
+ }
+ const payload={operationType:x.operationType,transactionDate:x.transactionDate,
+  amountOriginal:x.amountOriginal,currencyOriginal:x.currencyOriginal,
+  commissionOriginal:x.commissionOriginal,counterparty:x.counterparty,notes:x.notes};
+ if(x.currencyOriginal!=='AMD')payload.fxRate=x.fxRate;
+ if(x.operationType==='INCOME'){
+  payload.category=x.category;payload.incomeRecognition=x.incomeRecognition;
+ }else if(x.operationType==='EXPENSE')payload.category=x.category;
+ else if(x.operationType.startsWith('WORKER_'))payload.workerId=x.workerId;
+ else if(x.operationType==='OWNER_TRANSFER')payload.ownerDirection=x.ownerDirection;
+ if(x.workOrderId)payload.workOrderId=x.workOrderId;
+ if(x.objectId)payload.objectId=x.objectId;
+ return {action:'FINANCE_CREATE',payload};
+}
 export function financeCapitalArchiveHtml(data,mode){
  if(!data||data.source!=='VERIFIED_LEGACY_FINANCE_CAPITAL_CLEAN_TEST'||
   data.readonly!==true||data.financialWriter!=='GOOGLE'||data.currentOperationalFinance!==false)
   throw Error('Источник финансов не прошёл проверку');
  if(!['finance','capital'].includes(mode))throw Error('Неизвестный раздел');
- const header='<p class="muted"><strong>АРХИВ · только просмотр</strong>. Данные старого VBOS сохранены в Clean TEST. Это не текущий баланс новой системы. Запись финансов остаётся в Google; редактирование и архивация пока не включены.</p>'+
+ const header='<p class="muted"><strong>АРХИВ · только просмотр</strong>. Данные старого VBOS сохранены в Clean TEST. Это не текущий баланс новой системы. Новые операции ведутся отдельно в PostgreSQL. Исторические записи редактировать нельзя.</p>'+
   '<p class="small muted">Снимок Google: '+esc(String(data.sourceModifiedAt??'').slice(0,10))+
   '. Показатели разных типов не складываются между собой.</p>';
  if(mode==='finance'){
@@ -235,7 +259,7 @@ export function financeCapitalArchiveHtml(data,mode){
    '<button type="button" data-finance-legacy-draft="WORKER">+ Рабочий</button>'+
    '<button type="button" data-finance-legacy-draft="OWNER_TRANSFER">+ Вывод денег</button>'+
    '<button type="button" data-finance-legacy-draft="INVEST">+ Инвестировать</button></div>'+
-   '<p class="small muted">Все пять действий показывают форму старого VBOS, БЕЗ сохранения денег. Включение настоящих проводок отдельно защищено финансовым cutover.</p>'+
+   '<p class="small muted">Эти пять кнопок создают новые записи в PostgreSQL TEST, если финансовый writer разрешён. Архив ниже остаётся только для просмотра.</p>'+
    '<div data-finance-legacy-form-host></div>';
   const metrics='<h2>Итог по бизнесу · архив</h2><div class="summary">'+
    summaryCard('Заработано',f.earnedBase,'Доход, признанный работой')+
@@ -276,11 +300,11 @@ export function financeCapitalArchiveHtml(data,mode){
   (capital.movements||[]).map(x=>'<article class="record"><strong>'+esc(byId.get(x.toFundId)||x.toFundId)+
    '</strong><div>'+rubles(x.amountBase)+'</div><p class="small muted">'+esc(x.movementType)+' · '+esc(x.status||'')+'</p></article>').join('');
 }
-export function mountFinanceCapitalArchivePanel(root,{fetchPage,mode,onDraft,refs={},today='2026-11-13',fetchCurrentContext,fetchReferencePage}={}){
+export function mountFinanceCapitalArchivePanel(root,{fetchPage,mode,onDraft,refs={},today='2026-11-13',fetchCurrentContext,fetchReferencePage,fetchNativeState,postNativeAction,onNativeSaved}={}){
  if(!root||typeof root.addEventListener!=='function'||typeof fetchPage!=='function')
   throw Error('FINANCE_CAPITAL_VIEW_NOT_CONFIGURED');
  if(!['finance','capital'].includes(mode))throw Error('FINANCE_CAPITAL_MODE_INVALID');
- let active=true,seq=0,loading=false;
+ let active=true,seq=0,loading=false,posting=false,pendingPost=null;
  const liveRefs={
   orders:legacyReferences(refs,'orders'),objects:legacyReferences(refs,'objects'),
   workers:legacyReferences(refs,'workers')
@@ -389,14 +413,26 @@ export function mountFinanceCapitalArchivePanel(root,{fetchPage,mode,onDraft,ref
   const source=focusReturn;focusReturn=null;
   if(source&&typeof source.focus==='function'&&source.isConnected!==false)source.focus();
  }
- function showForm(action,trigger){
+ async function showForm(action,trigger){
   const host=formHost();
   if(!host||!LEGACY_FORMS.includes(action))return false;
   focusReturn=trigger;
   const request=++dialogSeq;searchSeq++;
+  if(typeof fetchNativeState!=='function'||typeof postNativeAction!=='function'){
+   host.textContent='Запись недоступна: PostgreSQL не подключён.';return false;
+  }
+  let gate;
+  try{gate=await fetchNativeState('/api/finance/native-workspace');}
+  catch{if(active&&dialogSeq===request)host.textContent='Невозможно проверить финансовый источник.';return false;}
+  if(!active||dialogSeq!==request)return false;
+  if(gate?.version!=='FINANCE_B18_NATIVE_WORKSPACE_V1'||gate?.source!=='CLEAN_NATIVE_POST_CUTOVER_ONLY'||
+     gate?.authority!=='POSTGRES'||gate?.phase!=='ACTIVE'||gate?.postingEnabled!==true){
+   host.textContent='Запись заблокирована. PostgreSQL не подтверждён как единственный финансовый writer.';
+   return false;
+  }
   userTouchedOrder=false;userTouchedObject=false;
   searchState={kind:'',term:'',cursor:null,hasMore:false};
-  host.innerHTML=financeLegacyFormHtml(action,{today,refs:liveRefs});
+  host.innerHTML=financeLegacyFormHtml(action,{today,refs:liveRefs,liveEnabled:true});
   const dialog=host.querySelector?.('[data-finance-legacy-dialog]');
   if(dialog){
    if(typeof dialog.showModal==='function')dialog.showModal();
@@ -407,16 +443,44 @@ export function mountFinanceCapitalArchivePanel(root,{fetchPage,mode,onDraft,ref
   if(!['OWNER_TRANSFER','INVEST'].includes(action))void prefillActiveOrder(request);
   return true;
  }
+ async function sendPending(){
+  if(!active||posting||!pendingPost||typeof postNativeAction!=='function')return;
+  posting=true;
+  const form=formHost()?.querySelector?.('[data-finance-legacy-form]');
+  const result=form?.querySelector?.('[data-finance-legacy-result]');
+  if(result)result.textContent='Проверка записи PostgreSQL…';
+  try{
+   const answer=await postNativeAction(pendingPost);
+   if(!answer||answer.synthetic!==false||typeof answer.sourceId!=='string'||!answer.sourceId||
+      ![true,false].includes(answer.replayed))throw Error('B22_UNVERIFIED_POSTGRES_RECEIPT');
+   pendingPost=null;
+   if(result)result.textContent='Сохранено в PostgreSQL. Запись подтверждена сервером.';
+   if(typeof onNativeSaved==='function')await onNativeSaved();
+   closeForm();
+  }catch(error){
+   const status=Number(error?.httpStatus);
+   if([400,403,409,503].includes(status)){
+    pendingPost=null;
+    if(result)result.textContent='Запись отклонена сервером: '+String(error?.message||status)+'. Исправь поля.';
+   }else if(result){
+    result.textContent='Ответ не подтверждён. Нельзя создавать вторую операцию — повтори тот же запрос.';
+    const retry=document.createElement('button');
+    retry.type='button';retry.dataset.financeNativeRetry='1';
+    retry.textContent='Повторить тот же запрос';
+    result.append(retry);
+   }
+  }finally{posting=false;}
+ }
  const onClick=e=>{
   const draft=e.target?.closest?.('[data-finance-legacy-draft]');
   if(mode==='finance'&&draft){
    const action=draft.getAttribute('data-finance-legacy-draft');
    if(!LEGACY_FORMS.includes(action))return;
-   if(!showForm(action,draft)&&['INCOME','EXPENSE'].includes(action)&&typeof onDraft==='function')
-    onDraft(action);
+   void showForm(action,draft);
    return;
   }
-  if(e.target?.closest?.('[data-finance-legacy-close]')){closeForm();return;}
+  if(e.target?.closest?.('[data-finance-legacy-close]')){if(!posting){pendingPost=null;closeForm();}return;}
+  if(e.target?.closest?.('[data-finance-native-retry]')){void sendPending();return;}
   if(e.target?.closest?.('[data-finance-legacy-search]')){void searchReference(false);return;}
   if(e.target?.closest?.('[data-finance-legacy-search-more]')){void searchReference(true);return;}
   const preview=e.target?.closest?.('[data-finance-legacy-server-preview]');
@@ -459,19 +523,28 @@ export function mountFinanceCapitalArchivePanel(root,{fetchPage,mode,onDraft,ref
   if(!e.target?.matches?.('[data-finance-legacy-form]'))return;
   e.preventDefault();
   const form=e.target,status=form.querySelector?.('[data-finance-legacy-result]');
-  if(!status)return;
+  if(!status||posting)return;
+  if(pendingPost){status.textContent='Сначала повтори прежний запрос с тем же номером.';return;}
   try{
    if(typeof form.reportValidity==='function'&&!form.reportValidity())return;
-   const result=validateFinanceLegacyPreview(Object.fromEntries(new FormData(form)),{refs:liveRefs});
-   status.textContent='Поля проверены ('+result.operationType+'). НИЧЕГО НЕ СОХРАНЕНО: финансовый writer закрыт.';
-  }catch(error){status.textContent=String(error?.message||'Не удалось проверить форму')+' · Ничего не сохранено.';}
+   const action=financeLegacyNativeCreateAction(Object.fromEntries(new FormData(form)),
+     {refs:liveRefs,today});
+   if(['OWNER_TRANSFER'].includes(action.payload.operationType)){
+    const isInvest=action.payload.ownerDirection==='investments';
+    if(!confirm(isInvest?'Инвестировать '+action.payload.amountOriginal+' '+action.payload.currencyOriginal+
+     ' с автоматическим распределением по фондам?':'Вывести '+action.payload.amountOriginal+
+     ' '+action.payload.currencyOriginal+'? Вернуть вывод одной кнопкой нельзя.'))return;
+   }
+   pendingPost={requestKey:crypto.randomUUID(),...action};
+   void sendPending();
+  }catch(error){status.textContent=String(error?.message||'Неверное заполнение')+' · Ничего не сохранено.';}
  };
  root.addEventListener('click',onClick);
  root.addEventListener('change',onChange);
  root.addEventListener('submit',onSubmit);
  void load();
  return {load,unmount(){
-  active=false;seq++;closeForm();
+  active=false;seq++;pendingPost=null;closeForm();
   root.removeEventListener('click',onClick);
   root.removeEventListener('change',onChange);
   root.removeEventListener('submit',onSubmit);
