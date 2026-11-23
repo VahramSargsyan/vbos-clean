@@ -71,6 +71,7 @@ let orderContactState={id:null,items:[],loading:false,loaded:false,error:'',hasM
 let orderLogs={id:null,items:[],loaded:false,loading:false,error:'',hasMore:false,nextCursor:null,context:null};
 let history={filters:{mode:'day',day:'',from:'',to:'',orderId:''},items:[],nextCursor:null,hasMore:false,loaded:false,loading:false};
 let historicalOrdersPanel=null,historicalOrdersModulePromise=null;
+let historicalCrmPanel=null,historicalCrmModulePromise=null;
 let financeHistoryPanel=null,financeHistoryModulePromise=null;
 let financeArchivePanel=null,financeArchiveModulePromise=null;
 let financeDraftIntent='';
@@ -2569,6 +2570,21 @@ async function mountServiceReference(){
    root.textContent='Экран справочника услуг пока недоступен.';
  }
 }
+function historyCrmView(){
+ return '<section class="card"><div id="historyCrmMount" role="region" aria-label="Историческая CRM"><p class="muted">Загрузка архива CRM…</p></div></section>';
+}
+async function mountHistoricalCrm(){
+ const root=$('#historyCrmMount');
+ if(!data||tab!=='historyCrm'||!root)return;
+ try{
+  const mod=await (historicalCrmModulePromise??=import('/crm-history-archive-view.mjs'));
+  if(!data||tab!=='historyCrm'||root!==$('#historyCrmMount'))return;
+  historicalCrmPanel=mod.mountHistoricalCrmPage(root,{fetchPage:path=>api(path)});
+ }catch{
+  if(data&&tab==='historyCrm'&&root===$('#historyCrmMount'))
+   root.textContent='Историческая CRM сейчас недоступна.';
+ }
+}
 function historyOrdersView(){
  return '<section class="card"><div id="historyOrdersMount" role="region" aria-label="Исторические заказы"><p class="muted">Загрузка исторических заказов…</p></div></section>';
 }
@@ -2830,13 +2846,14 @@ function render(){
  if(financeArchivePanel){financeArchivePanel.unmount();financeArchivePanel=null;}
  if(financeHistoryPanel){financeHistoryPanel.unmount();financeHistoryPanel=null;}
  if(historicalOrdersPanel){historicalOrdersPanel.unmount();historicalOrdersPanel=null;}
+ if(historicalCrmPanel){historicalCrmPanel.unmount();historicalCrmPanel=null;}
  if(referencePanel){referencePanel.unmount();referencePanel=null;}
  if(legacyTransfersPanel){legacyTransfersPanel.unmount();legacyTransfersPanel=null;}
  if(!data)return;
  if(tab!=='finance')financeDraftIntent='';
  if(tab!=='crm'){estimateWorkspaceOpen=false;if(crmDetailId){crmDetailId=null;crmReminderEditorLeadId=null;}}
  $('#tabs').querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
- $('#content').innerHTML=tab==='today'?todayView():tab==='myWork'?myWorkView():tab==='schedule'?scheduleView():tab==='crm'?crmView():tab==='estimator'?estimatorView():tab==='clients'?clientsView():tab==='objects'?objectsView():tab==='orders'?ordersView():tab==='workers'?workersView():tab==='serviceReference'?serviceReferenceView():tab==='historyOrders'?historyOrdersView():tab==='history'?historyView():tab==='catalog'?catalogView():tab==='engineering'?engineeringView():tab==='finance'||tab==='capital'?financeCapitalView(tab):reportView();
+ $('#content').innerHTML=tab==='today'?todayView():tab==='myWork'?myWorkView():tab==='schedule'?scheduleView():tab==='crm'?crmView():tab==='estimator'?estimatorView():tab==='clients'?clientsView():tab==='objects'?objectsView():tab==='orders'?ordersView():tab==='workers'?workersView():tab==='serviceReference'?serviceReferenceView():tab==='historyOrders'?historyOrdersView():tab==='historyCrm'?historyCrmView():tab==='history'?historyView():tab==='catalog'?catalogView():tab==='engineering'?engineeringView():tab==='finance'||tab==='capital'?financeCapitalView(tab):reportView();
  if(tab==='myWork'&&workFlowModalState.kind){
   // render() replaces #content; a recreated WorkLog must be owner-scoped again.
   // Never silently apply a saved draft: offer explicit recovery before input or replay.
@@ -2851,6 +2868,7 @@ function render(){
  }
  if(tab==='crm'&&!crmDetailId&&!estimateWorkspaceOpen)void mountLegacyTransfers();
  if(tab==='historyOrders')void mountHistoricalOrders();
+ if(tab==='historyCrm')void mountHistoricalCrm();
  if(tab==='report'||tab==='finance')void mountFinanceHistory();
  if(tab==='finance')void mountFinanceOrderResult();
  if(tab==='finance')void mountFinanceWorkerHistory();

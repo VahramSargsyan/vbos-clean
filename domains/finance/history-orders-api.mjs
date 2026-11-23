@@ -256,3 +256,6 @@ export async function historicalFinanceTransactionsPage(db,url,{authorizeOwner,b
     meaning:'AMOUNTS_ARE_HISTORICAL_SOURCE_FIELDS_NOT_LIVE_BALANCES_OR_POSTINGS'
   });
 }
+
+/** Shared immutable history source attestation, reused by CRM archive readers. */
+export const verifyHistoricalArchiveBatch = gate;
