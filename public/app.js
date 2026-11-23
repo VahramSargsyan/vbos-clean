@@ -2819,7 +2819,8 @@ async function mountFinanceNative(){
   if(!data||tab!==mode||root!==$('#financeNativeMount'))return;
   financeNativePanel=mod.mountFinanceNativeWorkspace(root,{
    mode,today:data.today,fetchPage:path=>api(path),
-   postAction:payload=>financeNativePostAction(payload)
+   postAction:payload=>financeNativePostAction(payload),
+   onSource:()=>{if(tab==='finance'&&financeParityPanel?.load)void financeParityPanel.load();}
   });
  }catch{
   if(data&&tab===mode&&root===$('#financeNativeMount'))
@@ -2838,7 +2839,8 @@ async function mountFinanceCapitalArchive(){
    fetchNativeState:path=>api(path),postNativeAction:payload=>financeNativePostAction(payload),
    onNativeSaved:async()=>{
     if(financeNativePanel?.load)await financeNativePanel.load();
-    $('#financeNativeMount')?.scrollIntoView?.({block:'start'});
+    if(financeParityPanel?.load)await financeParityPanel.load();
+    $('#financeP1Mount')?.scrollIntoView?.({block:'start'});
    }});
  }catch{
   if(data&&tab===mode&&root===$('#financeArchiveMount'))
