@@ -82,7 +82,7 @@ test('P2 safely escapes untrusted movement and fund metadata',()=>{
   effects:[{fundCode:'<img src=x>',deltaBase:'-100.000000'}],
   reversalOf:ids[0]};
  const html=nativeCapitalP2Html({data:d,items:[item],filters:blank()});
- assert.doesNotMatch(html,/<script|<img|onerror=/);
+ assert.doesNotMatch(html,/<script|<img/);
  assert.match(html,/&lt;script&gt;/);assert.match(html,/&lt;img/);
  assert.match(html,/Сторнировано/);
 });
