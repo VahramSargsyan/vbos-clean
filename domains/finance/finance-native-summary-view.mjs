@@ -92,10 +92,11 @@ export function nativeFinanceParityHtml(state){
 export function mountNativeFinanceParity(root,{fetchPage,onQuickAction}={}){
  if(!root||typeof root.addEventListener!=='function'||typeof fetchPage!=='function'||
   typeof onQuickAction!=='function')throw Error('FINANCE_P1_MOUNT_INVALID');
- let active=true,seq=0,loading=false,data=null,items=[],filters=empty(),error='';
+ let active=true,seq=0,loading=false,data=null,items=[],filters=empty(),error='',queuedRefresh=false;
  const draw=()=>{if(active)root.innerHTML=nativeFinanceParityHtml({data,items,filters,error,loading});};
  const load=async(more=false)=>{
-  if(!active||loading)return;
+  if(!active)return;
+  if(loading){if(!more)queuedRefresh=true;return;}
   const n=++seq;loading=true;error='';draw();
   try{
    const query=new URLSearchParams({limit:'20'});
@@ -111,7 +112,7 @@ export function mountNativeFinanceParity(root,{fetchPage,onQuickAction}={}){
    items=more?[...items,...r.items.filter(x=>!seen.has(x.id))]:r.items;
    data=r;
   }catch(e){if(active&&n===seq)error=String(e?.message||'Не удалось загрузить историю.');}
-  finally{if(active&&n===seq){loading=false;draw();}}
+  finally{if(active&&n===seq){loading=false;draw();if(queuedRefresh){queuedRefresh=false;void load(false);}}}
  };
  const click=e=>{
   const b=e.target?.closest?.('button');if(!b||!active)return;
@@ -148,6 +149,6 @@ export function mountNativeFinanceParity(root,{fetchPage,onQuickAction}={}){
  root.addEventListener('change',change);
  root.addEventListener('submit',submit);
  void load();
- return {load,unmount(){active=false;seq++;root.removeEventListener('click',click);
+ return {load,unmount(){active=false;seq++;queuedRefresh=false;root.removeEventListener('click',click);
   root.removeEventListener('change',change);root.removeEventListener('submit',submit);}};
 }
