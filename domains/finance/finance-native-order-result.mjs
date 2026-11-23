@@ -25,7 +25,11 @@ function pageCursor(raw,orderId){
 function amount(value,field){
  const s=String(value??'');
  if(!MONEY.test(s))fail(503,'B23_INVALID_LEDGER_AMOUNT_'+field);
- return s;
+ // PostgreSQL SUM(...,0)::text returns '0' for an empty subtotal.
+ // Keep the same exact six-decimal AMD contract as nonzero native NUMERIC rows.
+ const neg=s.startsWith('-'),[whole,frac='']=(neg?s.slice(1):s).split('.');
+ const digits=frac.padEnd(6,'0');
+ return (neg&&(whole!=='0'||/[1-9]/.test(digits))?'-':'')+whole+'.'+digits;
 }
 const summarySQL=[
  'SELECT count(*)::int AS total_count,',
