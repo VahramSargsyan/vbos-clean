@@ -188,6 +188,68 @@ test('five quick buttons open real native forms, never post before submit',async
  assert.equal(posts,0);
  panel.unmount();
 });
+
+test('B22 ambiguous network outcome cannot create a second request; retry reuses exactly the same key',async()=>{
+ const oldFormData=globalThis.FormData,oldDocument=globalThis.document;
+ globalThis.FormData=class {constructor(form){
+  return {[Symbol.iterator]:function*(){yield* Object.entries(form.fields);}};
+ }};
+ globalThis.document={createElement:()=>({type:'',dataset:{},textContent:''})};
+ const handlers={},result={textContent:'',buttons:[],append(button){this.buttons.push(button);}};
+ const form={fields:{legacyAction:'EXPENSE',operationType:'EXPENSE',category:'materials',
+  transactionDate:'2026-11-23',amountOriginal:'1500',currencyOriginal:'AMD',
+  commissionOriginal:'0',notes:'Проверка повторного запроса'},
+  matches:selector=>selector==='[data-finance-legacy-form]',reportValidity:()=>true,
+  querySelector:selector=>selector==='[data-finance-legacy-result]'?result:null};
+ const host={innerHTML:'',querySelector(selector){
+  if(selector==='[data-finance-legacy-dialog]')return {showModal(){},close(){},open:true};
+  if(selector==='[data-finance-legacy-form]')return form;
+  if(selector==='[name="amountOriginal"]')return {focus(){}};
+  return null;
+ }};
+ const root={innerHTML:'',addEventListener(name,cb){handlers[name]=cb;},
+  removeEventListener(name){delete handlers[name];},
+  querySelector:selector=>selector==='[data-finance-legacy-form-host]'?host:null};
+ let attempts=[],refreshes=0,panel;
+ const tick=async()=>{await Promise.resolve();await Promise.resolve();await Promise.resolve();};
+ try{
+  panel=mountFinanceCapitalArchivePanel(root,{mode:'finance',today:'2026-11-23',
+   fetchPage:async()=>data,refs,
+   fetchNativeState:async()=>({version:'FINANCE_B18_NATIVE_WORKSPACE_V1',
+    source:'CLEAN_NATIVE_POST_CUTOVER_ONLY',postingEnabled:true,authority:'POSTGRES',
+    phase:'ACTIVE',historicalArchiveImmutable:true,asOfOpening:'2026-09-30',
+    ledger:{isCurrentFinanceBalance:true}}),
+   postNativeAction:async request=>{
+    attempts.push(request);
+    if(attempts.length===1)throw Error('network unknown outcome');
+    return {synthetic:false,replayed:true,sourceId:'00000000-0000-4000-8000-000000000077'};
+   },
+   onNativeSaved:async()=>{refreshes++;}
+  });
+  await tick();
+  handlers.click({target:{closest:key=>key==='[data-finance-legacy-draft]'?
+   {getAttribute:()=> 'EXPENSE'}:null}});
+  await tick();
+  assert.match(host.innerHTML,/Сохранить в PostgreSQL/);
+  const submit=()=>handlers.submit({target:form,preventDefault(){}});
+  submit();await tick();
+  assert.equal(attempts.length,1);
+  assert.ok(result.buttons.some(b=>b.dataset.financeNativeRetry==='1'));
+  submit();await tick();
+  assert.equal(attempts.length,1,'unconfirmed save must prevent new operation');
+  handlers.click({target:{closest:key=>key==='[data-finance-native-retry]'?{}:null}});
+  await tick();
+  assert.equal(attempts.length,2);
+  assert.equal(attempts[0].requestKey,attempts[1].requestKey);
+  assert.equal(attempts[1].payload.operationType,'EXPENSE');
+  assert.equal(refreshes,1);
+ }finally{
+  panel?.unmount();
+  globalThis.FormData=oldFormData;
+  if(oldDocument===undefined)delete globalThis.document;
+  else globalThis.document=oldDocument;
+ }
+});
 test('verified active session preselects only its exact order and object; inactive/stale do not',()=>{
  const state={
   currentSession:{order_id:'ord-current',day_date:'2026-11-13',ended_at:null},
