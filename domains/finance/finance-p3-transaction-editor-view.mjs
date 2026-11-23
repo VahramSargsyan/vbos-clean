@@ -155,7 +155,8 @@ export function mountFinanceP3Editor(root,{fetchPage,postAction,onSaved,today}={
  let live=true,seq=0,detail=null,busy=false,pending=null,feedback='',failed=false;
  function render(){
   if(!live)return;
-  root.innerHTML=detail?financeP3EditorHtml(detail,{busy,status:feedback,error:failed,today}):'';
+  root.innerHTML=detail?financeP3EditorHtml(detail,{busy,status:feedback,error:failed,today}):
+   feedback?'<p role="'+(failed?'alert':'status')+'">'+esc(feedback)+'</p>':'';
   if(pending&&!busy){
    const retry=root.querySelector('[data-finance-p3-retry]');
    if(retry)retry.hidden=false;
@@ -175,7 +176,8 @@ export function mountFinanceP3Editor(root,{fetchPage,postAction,onSaved,today}={
    root.scrollIntoView?.({behavior:'smooth',block:'start'});
    return true;
   }catch(e){
-   if(live&&n===seq){root.innerHTML='<p role="alert">Не удалось открыть редактор нативной операции. Старый архив не редактируется.</p>';}
+   if(live&&n===seq){feedback='Не удалось открыть нативную операцию. Старый архив не редактируется.';
+    failed=true;render();}
    return false;
   }
  };
@@ -194,9 +196,14 @@ export function mountFinanceP3Editor(root,{fetchPage,postAction,onSaved,today}={
     throw Error('FINANCE_P3_UNVERIFIED_WRITE_RECEIPT');
    const id=r.id;
    pending=null;busy=false;
-   await open(id);
-   if(live){feedback='Сохранено в PostgreSQL. Версия и эффект перечитаны с сервера.';failed=false;render();}
-   await onSaved();
+   const reread=await open(id);
+   if(live){feedback=reread?'Сохранено в PostgreSQL. Версия перечитана с сервера.':
+    'Запись подтверждена PostgreSQL, но повторное чтение недоступно. Обнови страницу.';
+    failed=!reread;render();}
+   try{await onSaved();}catch{
+    if(live){feedback='Запись подтверждена PostgreSQL. Сводка пока не обновилась; перезагрузи страницу.';
+     failed=true;render();}
+   }
   }catch(e){
    if(!live)return;
    const code=String(e?.message||'');
