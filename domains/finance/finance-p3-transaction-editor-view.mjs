@@ -126,8 +126,8 @@ export function financeP3EditorHtml(detail,{busy=false,status='',error=false,tod
   lbl('Сумма в исходной валюте','amountOriginal',r.amountOriginal,'text','inputmode="decimal" required')+
   choice('Валюта','currencyOriginal',currencies,r.currencyOriginal)+
   '<div data-finance-p3-fx'+(r.currencyOriginal==='AMD'?' hidden':'')+'>'+
-  lbl('Курс к AMD','fxRate',r.fxRate,'text','inputmode="decimal"')+
-  lbl('Дата курса','fxRateDate',r.fxRateDate,'date','min="2026-10-01" max="'+esc(today)+'"')+'</div>'+
+  lbl('Курс к AMD','fxRate',r.fxRate,'text','inputmode="decimal"'+(r.currencyOriginal==='AMD'?'':' required'))+
+  lbl('Дата курса','fxRateDate',r.fxRateDate,'date','min="2026-10-01" max="'+esc(today)+'"'+(r.currencyOriginal==='AMD'?'':' required'))+'</div>'+
   lbl('Комиссия в исходной валюте','commissionOriginal',r.commissionOriginal,'text','inputmode="decimal" required')+
   lbl('Контрагент','counterparty',r.counterparty,'text','maxlength="300"')+
   '<label>Комментарий<textarea name="notes" maxlength="5000" rows="3">'+esc(r.notes)+'</textarea></label>'+
