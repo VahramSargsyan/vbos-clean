@@ -16,7 +16,7 @@ const zero={
 const receipt={id:tx,date:'2026-11-23',type:'INCOME',category:'advance',
  income_recognition:'RECEIVED_ONLY',status:'active',revision:1,
  amount_base:'10000.000000',cash_effect_base:'10000.000000',
- created_at:new Date('2026-11-23T10:00:00.000Z')};
+ created_at:'2026-11-23 10:00:00.123456+00'};
 function setup({found=true,history=[receipt],summary=null}={}){
  const calls=[];let released=false;
  const pool={async connect(){return {async query(sql,params=[]){
@@ -75,7 +75,7 @@ test('scope uses stored Order FK and native writer source, not names or legacy r
  assert.match(x.calls[0].sql,/REPEATABLE READ READ ONLY/);
 });
 test('history pagination never truncates aggregate totals and cursor is order-bound',async()=>{
- const rows=[receipt,{...receipt,id:other,created_at:new Date('2026-11-22T10:00:00.000Z')}];
+ const rows=[receipt,{...receipt,id:other,created_at:'2026-11-22 10:00:00.123455+00'}];
  const x=setup({history:rows,summary:{...zero,total_count:210,active_count:205,
   received_base:'123000.000000'}});
  const a=await readOrderFinancialResult(x.pool,order,{authorizeOwner:()=>true,limit:1});
@@ -88,6 +88,7 @@ test('history pagination never truncates aggregate totals and cursor is order-bo
  const historyCall=x.calls.filter(v=>v.sql.includes('finance_transaction_id::text AS id')).pop();
  assert.equal(historyCall.params[0],order);assert.equal(historyCall.params[3],2);
  assert.equal(historyCall.params[2],tx);
+ assert.equal(historyCall.params[1],'2026-11-23 10:00:00.123456+00');
 });
 test('zero linked records are distinguishable from a populated zero-balance result',async()=>{
  const x=setup({history:[],summary:{...zero,total_count:0,active_count:0}});
