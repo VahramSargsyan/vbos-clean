@@ -179,7 +179,7 @@ test('Finance P1 actual PostgreSQL 17: signed synthetic source, exact metrics, U
    assert.equal(p.items.length,0);
    assert.equal(p.totalCount,8);
    assert.equal(p.summary.profitBase,'154.000000');
-   const q=await run({workOrderId:one,operationType:'EXPENSE',q:'materials'});
+   const q=await run({workOrderId:one,operationType:'EXPENSE',q:'material'});
    assert.equal(q.items.length,2); // ordinary + client-paid materials
    assert.equal(q.summary.profitBase,'154.000000');
    const names=await run({workOrderId:one,q:'P1_SYNTHETIC_ORDER_A',limit:'10'});
