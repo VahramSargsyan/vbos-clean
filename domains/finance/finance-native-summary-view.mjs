@@ -71,7 +71,10 @@ export function nativeFinanceParityHtml(state){
    ' · '+esc(row.category||'Без категории')+(row.currency!=='AMD'?' · '+esc(row.currency):'')+'</p>'+
    (context?'<p class="small">'+esc(context)+'</p>':'')+
    (row.notes?'<p class="small muted">'+esc(row.notes)+'</p>':'')+
-   '<small class="muted">Финансовая операция PostgreSQL, версия '+esc(row.revision)+'</small></article>';
+   '<small class="muted">Финансовая операция PostgreSQL, версия '+esc(row.revision)+'</small>'+ 
+   '<div class="finance-p1-row-actions"><button type="button" data-finance-p1-open-edit="'+esc(row.id)+'">'+
+   (row.status==='archived'?'Просмотр / восстановить':'Изменить / отменить')+
+   '</button></div></article>';
  }).join(''):data&&!loading?'<p class="muted">По заданным фильтрам новых финансовых операций нет.</p>':'';
  return '<section class="finance-p1-root">'+
   '<h2>Текущие финансы · PostgreSQL</h2>'+
@@ -89,7 +92,7 @@ export function nativeFinanceParityHtml(state){
    '>Показать ещё</button>':'')+'</details>'+
   '<p class="small muted" data-finance-p1-status role="status"></p></section>';
 }
-export function mountNativeFinanceParity(root,{fetchPage,onQuickAction}={}){
+export function mountNativeFinanceParity(root,{fetchPage,onQuickAction,onEditTransaction}={}){
  if(!root||typeof root.addEventListener!=='function'||typeof fetchPage!=='function'||
   typeof onQuickAction!=='function')throw Error('FINANCE_P1_MOUNT_INVALID');
  let active=true,seq=0,loading=false,data=null,items=[],filters=empty(),error='',queuedRefresh=false;
@@ -121,6 +124,15 @@ export function mountNativeFinanceParity(root,{fetchPage,onQuickAction}={}){
    if(!onQuickAction(action)){
     const host=root.querySelector('[data-finance-p1-status]');
     if(host)host.textContent='Форма пока недоступна: проверь загрузку Finance и PostgreSQL.';
+   }
+   return;
+  }
+  const editId=b.getAttribute('data-finance-p1-open-edit');
+  if(editId){
+   const row=items.find(x=>x.id===editId);
+   if(!row||typeof onEditTransaction!=='function'||!onEditTransaction(row.id)){
+    const host=root.querySelector('[data-finance-p1-status]');
+    if(host)host.textContent='Редактор PostgreSQL пока недоступен.';
    }
    return;
   }
