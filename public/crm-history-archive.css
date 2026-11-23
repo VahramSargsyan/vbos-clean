@@ -1,0 +1,43 @@
+/* Source-matched legacy CRM list grammar (Leads / Clients / Objects), scoped to archive.
+   Uses existing Clean semantic tokens for the app's selected theme. No global overrides. */
+.crm-archive{width:100%;max-width:980px;margin:0 auto;color:var(--ink,#24282b)}
+.crm-archive-header{display:flex;align-items:start;justify-content:space-between;gap:14px;margin-bottom:18px}
+.crm-archive-header h1{margin:0 0 6px;font-size:1.65rem}
+.crm-archive-header p,.crm-archive-screen-heading p{margin:0;color:var(--mute,#64748b);font-size:.875rem;line-height:1.5}
+.crm-archive-label{border-radius:999px;border:1px solid var(--hairline,#e2e8f0);padding:7px 12px;color:var(--mute,#64748b);background:var(--s2,#f1f5f9);font-size:.82rem}
+.crm-archive-types{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 20px}
+.crm-archive-types button{min-height:44px;border:1px solid var(--hairline,#e2e8f0);background:var(--s1,#fff);color:var(--ink,#24282b);padding:9px 13px;border-radius:10px;font-weight:600}
+.crm-archive-types button.is-active{background:var(--accent,#1557b0);color:var(--on-accent,#fff);border-color:var(--accent,#1557b0)}
+.crm-archive-screen-heading{margin-bottom:13px}
+.crm-archive-screen-heading h2{margin:0 0 6px;font-size:1.125rem}
+.crm-archive-filter{display:grid;grid-template-columns:minmax(180px,1fr) minmax(130px,180px) auto auto;gap:9px;align-items:end;margin:0 0 16px}
+.crm-archive-filter label{margin:0;min-width:0}
+.crm-archive-filter input,.crm-archive-filter select{width:100%;min-height:44px;margin:0;border-radius:10px;background:var(--s1,#fff);color:var(--ink,#24282b);border:1px solid var(--hairline-strong,#cbd5e1)}
+.crm-archive-filter button{min-height:44px;border-radius:10px;font-weight:600}
+.crm-archive-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.crm-archive-record{min-width:0;border:1px solid var(--hairline,#e2e8f0);border-radius:14px;background:var(--s1,#fff);padding:16px;box-shadow:0 2px 5px #0e204010;overflow-wrap:anywhere}
+.crm-archive-top{display:flex;align-items:start;gap:10px;justify-content:space-between}
+.crm-archive-top h3{font-size:1.02rem;line-height:1.4;margin:0}
+.crm-archive-status{border-radius:999px;background:var(--s2,#f1f5f9);padding:4px 8px;font-size:.76rem;flex-shrink:0}
+.crm-archive-meta{font-size:.85rem;color:var(--mute,#64748b);margin:8px 0}
+.crm-archive-tags{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0;font-size:.75rem;color:var(--mute,#64748b)}
+.crm-archive-tags span{border-radius:999px;border:1px solid var(--hairline,#e2e8f0);padding:4px 8px}
+.crm-archive-record details{margin-top:8px;border-top:1px solid var(--hairline,#e2e8f0);padding-top:7px}
+.crm-archive-record summary{min-height:44px;display:flex;align-items:center;color:var(--accent,#1557b0);cursor:pointer;list-style-position:inside}
+.crm-archive-detail{margin:0;display:grid;gap:7px}
+.crm-archive-row{display:grid;grid-template-columns:minmax(100px,145px) 1fr;gap:8px;padding:5px 0;border-bottom:1px solid var(--hairline,#e2e8f0);font-size:.84rem}
+.crm-archive-row dt{color:var(--mute,#64748b)}
+.crm-archive-row dd{margin:0;overflow-wrap:anywhere;white-space:pre-wrap}
+.crm-archive-empty,.crm-archive [role="status"],.crm-archive [role="alert"]{padding:20px;border:1px dashed var(--hairline,#e2e8f0);border-radius:12px;background:var(--s1,#fff)}
+.crm-archive [role="alert"]{color:var(--danger,#b42318)}
+.crm-archive [data-crm-archive-more]{min-height:48px;width:100%;margin:15px 0;font-weight:600}
+.crm-archive-footer{font-size:.75rem;color:var(--mute,#64748b);margin:17px 0 0;line-height:1.45}
+.crm-archive :is(button,input,select,summary):focus-visible{outline:3px solid var(--info,#60a5fa);outline-offset:2px}
+@media(max-width:650px){
+ .crm-archive-cards{grid-template-columns:1fr}
+ .crm-archive-filter{grid-template-columns:1fr 1fr}
+ .crm-archive-filter label:first-child{grid-column:1/-1}
+ .crm-archive-header h1{font-size:1.4rem}
+ .crm-archive-row{grid-template-columns:105px 1fr}
+}
+@media(max-width:360px){.crm-archive-filter{grid-template-columns:1fr}.crm-archive-filter label:first-child{grid-column:auto}.crm-archive-label{display:none}}
