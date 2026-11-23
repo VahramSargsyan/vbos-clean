@@ -46,6 +46,11 @@ async function insertFixture(){
  const classes=await pool.query("SELECT to_regclass('public.mvp_orders') IS NOT NULL AS orders,"+
  "to_regclass('mvp_finance_native.transactions') IS NOT NULL AS finance");
  assert.equal(classes.rows[0].orders,true);assert.equal(classes.rows[0].finance,true);
+ // The prior B14 test intentionally leaves ONLY this disposable finance schema PAUSED.
+ // Reopen the already synthetic, fully reconciled local source gate; NEVER do this on Neon.
+ const gate=await pool.query("UPDATE mvp_finance_native.cutover_control SET phase='ACTIVE' "+
+  "WHERE id=1 AND phase='PAUSED' AND financial_write_authority='POSTGRES' RETURNING id");
+ assert.equal(gate.rowCount,1,'B23_DISPOSABLE_REHEARSAL_REQUIRES_B14_PAUSED_GATE');
  await pool.query('INSERT INTO public.mvp_clients(id,request_key,name) VALUES($1,$2,$3)',
   [clientId,uid(),'B23_SYNTHETIC_CLIENT']);
  await pool.query('INSERT INTO public.mvp_objects(id,request_key,client_id,name) VALUES($1,$2,$3,$4)',
@@ -83,6 +88,10 @@ async function cleanup(){
  await pool.query('DELETE FROM public.mvp_orders WHERE id=ANY($1::uuid[])',[[a,b]]);
  await pool.query('DELETE FROM public.mvp_objects WHERE id=$1',[objectId]);
  await pool.query('DELETE FROM public.mvp_clients WHERE id=$1',[clientId]);
+ // Restore the earlier B14 PAUSED authority state in the local disposable database.
+ const gate=await pool.query("UPDATE mvp_finance_native.cutover_control SET phase='PAUSED' "+
+  "WHERE id=1 AND phase='ACTIVE' RETURNING id");
+ assert.equal(gate.rowCount,1,'B23_DISPOSABLE_FINANCE_PAUSE_RESTORE_REQUIRED');
 }
 test('Finance B23 actual isolated PostgreSQL: exact scoped sums, archived, owner gate and pagination',async t=>{
  try{
