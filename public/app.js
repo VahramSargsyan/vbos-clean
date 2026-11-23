@@ -276,37 +276,43 @@ function crmWonOrderModalHtml(leadId){
  const duplicates=(data.orders||[]).filter(o=>o.lead_id===leadId);
  return '<div id="crmWonOrderModal" class="work-flow-backdrop" data-crm-won-order-backdrop>'+
   '<section class="work-flow-dialog" role="dialog" aria-modal="true" aria-label="Новый заказ после договорённости">'+
-  '<header class="work-flow-dialog-head"><h2>Договорились → новый заказ</h2>'+
+  '<header class="work-flow-dialog-head"><h2 tabindex="-1">Договорились → новый заказ</h2>'+
   '<button type="button" data-crm-won-order-close aria-label="Закрыть">✕</button></header>'+
-  '<div class="work-flow-dialog-body">'+
+  '<form data-act="crm_won_order_create" class="crm-won-order-form" data-crm-won-order-form>'+
+  '<div class="work-flow-dialog-body crm-won-order-fields">'+
   '<p class="muted">Клиент: <strong>'+esc(client?.name||link.client_id)+'</strong>. Обращение: '+esc(lead.title)+'</p>'+
   (duplicates.length?'<p class="muted small">По этому лиду уже есть '+duplicates.length+
     ' заказ(ов). Не создавай второй заказ на ту же работу случайно.</p>':'')+
-  '<form data-act="crm_won_order_create" class="grid" data-crm-won-order-form>'+
   '<input type="hidden" name="leadId" value="'+esc(lead.id)+'">'+
   '<fieldset class="crm-won-order-object-choice"><legend>Объект заказа</legend>'+
-  (allowed.length?'<label><input type="radio" name="objectMode" value="existing"'+(mode==='existing'?' checked':'')+'> Выбрать существующий</label>':'')+
-  (canNew?'<label><input type="radio" name="objectMode" value="new"'+(mode==='new'?' checked':'')+'> + Создать новый объект</label>':
+  (allowed.length?'<label class="crm-won-order-mode-option"><input type="radio" name="objectMode" value="existing"'+(mode==='existing'?' checked':'')+'><span>Выбрать существующий</span></label>':'')+
+  (canNew?'<label class="crm-won-order-mode-option"><input type="radio" name="objectMode" value="new"'+(mode==='new'?' checked':'')+'><span>+ Создать новый объект</span></label>':
     '<p class="muted small">Объект уже привязан к этому лиду. Для заказа по другому объекту нужно новое обращение.</p>')+
   '</fieldset>'+
   '<div data-crm-won-existing'+(mode==='new'?' hidden':'')+'>'+
-   '<label>Объект клиента<select name="objectId"'+(mode==='existing'?' required':' disabled')+'>'+options+'</select></label>'+
+   '<label>Объект клиента *<select name="objectId"'+(mode==='existing'?' required':' disabled')+'>'+options+'</select></label>'+
   '</div>'+
   (canNew?'<div data-crm-won-new'+(mode==='existing'?' hidden':'')+'>'+
     '<label>Название нового объекта *<input name="objectName" maxlength="160" placeholder="Квартира, дом, магазин…"'+(mode==='new'?' required':' disabled')+'></label>'+
-    '<label>Адрес объекта<input name="objectAddress" maxlength="300"'+(mode==='existing'?' disabled':'')+'></label>'+
-    '<label>Тип объекта<input name="objectType" maxlength="100"'+(mode==='existing'?' disabled':'')+'></label>'+
    '</div>':'')+
   '<label>Название заказа *<input name="title" maxlength="180" value="'+esc(lead.title)+'" required></label>'+
-  '<label>Плановая дата (если есть)<input name="plannedOn" type="date"></label>'+
-  '<label>Примечание к заказу<textarea name="notes" maxlength="5000"></textarea></label>'+
-  '<button type="submit" class="primary wide">Создать заказ</button>'+
-  '<p role="status" data-crm-won-feedback class="muted small" aria-live="polite"></p>'+
-  '</form></div></section></div>';
+  (canNew?'<p class="crm-won-order-tip">Для нового объекта достаточно названия. Остальные поля можно заполнить позже.</p>':'')+
+  '<details class="crm-won-order-extra"><summary>Дополнительно · адрес, тип, дата, примечание</summary>'+
+   (canNew?'<div data-crm-won-new-details'+(mode==='existing'?' hidden':'')+'>'+
+     '<label>Адрес объекта<input name="objectAddress" maxlength="300"'+(mode==='existing'?' disabled':'')+'></label>'+
+     '<label>Тип объекта<input name="objectType" maxlength="100"'+(mode==='existing'?' disabled':'')+'></label>'+
+    '</div>':'')+
+   '<label>Плановая дата (если есть)<input name="plannedOn" type="date"></label>'+
+   '<label>Примечание к заказу<textarea name="notes" maxlength="5000"></textarea></label>'+
+  '</details>'+
+  '</div><div class="crm-won-order-actions">'+
+   '<button type="submit" class="primary wide">Создать заказ</button>'+
+   '<p role="status" data-crm-won-feedback class="muted small" aria-live="polite"></p>'+
+  '</div></form></section></div>';
 }
 function crmWonOrderToggle(form){
  const mode=form?.querySelector('input[name="objectMode"]:checked')?.value||'';
- for(const [part,enabled] of [['[data-crm-won-existing]',mode==='existing'],['[data-crm-won-new]',mode==='new']]){
+ for(const [part,enabled] of [['[data-crm-won-existing]',mode==='existing'],['[data-crm-won-new]',mode==='new'],['[data-crm-won-new-details]',mode==='new']]){
   const block=form.querySelector(part);
   if(!block)continue;
   block.hidden=!enabled;
@@ -343,8 +349,22 @@ function crmWonOrderOpen(leadId,trigger=null){
   if(e.target.closest('[data-crm-won-order-close]')||e.target===root)crmWonOrderClose();
  });
  root.addEventListener('change',e=>{
-  if(e.target.name==='objectMode')crmWonOrderToggle(root.querySelector('form'));
+  if(e.target.name==='objectMode'){
+   const form=root.querySelector('form');
+   crmWonOrderToggle(form);
+   if(form)form.dataset.dirty='1';
+  }
  });
+ root.addEventListener('invalid',e=>{
+  const field=e.target;
+  if(!field?.closest?.('[data-crm-won-order-form]'))return;
+  const extra=field.closest('details');
+  if(extra)extra.open=true;
+  const hint=field.name==='objectName'?'Укажи название нового объекта.':
+   field.name==='objectId'?'Выбери объект клиента.':
+   field.name==='title'?'Укажи название заказа.':'Проверь обязательное поле.';
+  crmWonOrderFeedback(hint,true);
+ },true);
  root.addEventListener('input',()=>{const form=root.querySelector('form');if(form)form.dataset.dirty='1';});
  root.addEventListener('submit',async e=>{
   e.preventDefault();
@@ -362,7 +382,7 @@ function crmWonOrderOpen(leadId,trigger=null){
   }
  });
  document.body.classList.add('work-flow-modal-open');
- root.querySelector('input[name="title"]')?.focus?.({preventScroll:true});
+ root.querySelector('.work-flow-dialog-head h2')?.focus?.({preventScroll:true});
 }
 function leadEdit(x){
  return editRecord('lead_update',x,
@@ -2695,7 +2715,12 @@ async function mountFinanceCapitalArchive(){
   if(!data||tab!==mode||root!==$('#financeArchiveMount'))return;
   financeArchivePanel=source.mountFinanceCapitalArchivePanel(root,{mode,fetchPage:path=>api(path),onDraft:openLegacyFinanceDraft,
    today:data.today,refs:{orders:data.orders||[],objects:data.objects||[],workers:data.workers||[]},
-   fetchCurrentContext:()=>api('/api/my-work'),fetchReferencePage:path=>api(path)});
+   fetchCurrentContext:()=>api('/api/my-work'),fetchReferencePage:path=>api(path),
+   fetchNativeState:path=>api(path),postNativeAction:payload=>financeNativePostAction(payload),
+   onNativeSaved:async()=>{
+    if(financeNativePanel?.load)await financeNativePanel.load();
+    $('#financeNativeMount')?.scrollIntoView?.({block:'start'});
+   }});
  }catch{
   if(data&&tab===mode&&root===$('#financeArchiveMount'))
    root.textContent='Не удалось загрузить сохранённый финансовый архив.';
@@ -3012,6 +3037,18 @@ $('#content').addEventListener('submit',async e=>{
  const f=e.target;
  if(f.matches('[data-workflow-day-start]')){await workFlowModalSubmitDay(f,'start');return;}
  if(f.matches('[data-workflow-day-finish]')){await workFlowModalSubmitDay(f,'finish');return;}
+ if(f.matches('[data-workflow-finish-presence-stop]')){
+  const visit=myWork.snapshot?.currentPresence;
+  if(!visit||visit.id!==f.elements.namedItem('id')?.value||visit.day_date!==myWork.snapshot.today){
+   message('Присутствие изменилось. Обнови день.',true);return;
+  }
+  const payload=Object.fromEntries(new FormData(f));
+  workFlowModalClose({force:true});
+  await sendAction('presence_stop',payload,f);
+  if(tab==='myWork'&&myWork.snapshot?.day?.status==='open'&&!myWork.snapshot?.currentPresence)
+   workFlowModalOpen('finish');
+  return;
+ }
  if(tab==='schedule'&&f.id==='capacitySearch'){
   const v=Object.fromEntries(new FormData(f));
   const duration=Number(v.durationWorkingDays);
@@ -3182,6 +3219,18 @@ $('#content').addEventListener('click',async e=>{
   if(!item||!item.detail){message('Подробная работа не найдена в истории. Обнови список.',true);return;}
   if(tab!=='myWork'){tab='myWork';render();await loadMyWork();}
   workFlowModalOpen('log',{item,orderId:item.order_id,trigger:editLog});return;
+ }
+ const stopForFinish=e.target.closest('button[data-workflow-finish-stop-session]');
+ if(stopForFinish){
+  const live=myWork.snapshot?.currentSession;
+  if(!live||live.id!==stopForFinish.dataset.id||live.day_date!==myWork.snapshot?.today){
+   message('Интервал изменился. Обнови экран.',true);return;
+  }
+  workFlowModalClose({force:true});
+  await sendAction('session_stop',{id:live.id},stopForFinish);
+  if(tab==='myWork'&&myWork.snapshot?.day?.status==='open'&&!myWork.snapshot?.currentSession)
+   workFlowModalOpen('finish');
+  return;
  }
  const keepDay=e.target.closest('button[data-workflow-day-continues]');
  if(keepDay){
@@ -4097,6 +4146,13 @@ $('#content').addEventListener('click',async e=>{
  if(type==='day_open'||type==='day_close'){
   tab='myWork';render();await loadMyWork();
   workFlowModalOpen(type==='day_open'?'start':'finish');return;
+ }
+ if(type==='work_start_order'&&b.dataset.myWorkQuickStart==='1'){
+  const order=myWork.snapshot?.contextOrder;
+  if(!order||order.id!==b.dataset.orderId||myWork.snapshot?.day){
+   message('Заказ или рабочий день изменился. Обнови экран.',true);return;
+  }
+  if(!confirm('Открыть рабочий день и начать интервал по заказу «'+order.title+'»? Приход на объект отмечается отдельно.'))return;
  }
  const payload={id:b.dataset.id,orderId:b.dataset.orderId,workerId:b.dataset.workerId,revision:b.dataset.revision,status:b.dataset.status,date:b.dataset.date};
  if(type==='day_close'&&!confirm('Завершить сегодняшний рабочий день?'))return;

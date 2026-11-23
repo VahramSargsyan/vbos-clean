@@ -183,17 +183,37 @@ async function assertHostedAuthority(c,g){
   fail('B17_OPENING_STOCK_DRIFT');
  // Fresh *separate* signed post-fence evidence. This must not change the
  // original opening snapshot ID/SHA, nor reclassify historic gains as income.
+ // The historical freeze manifest deliberately CHECKs GOOGLE and owner=false.
+ // Never loosen that archive: B21 uses a separate signed native receipt.
  const manifest=await c.query(
-  'SELECT snapshot_id,google_manifest_sha256,owner_identity_approved,'+
-  'google_modified_at,captured_at FROM mvp_finance_stage.freeze_manifests '+
-  'WHERE google_manifest_sha256=$1 AND snapshot_id<>$2',
-  [sourceSha,openingManifestId]);
- if(manifest.rows.length!==1||
-    manifest.rows[0].owner_identity_approved!==true||
-    !(new Date(manifest.rows[0].captured_at).getTime()>
+  'SELECT snapshot_id,original_snapshot_id,original_manifest_sha256,'+
+  'google_manifest_sha256,crm_bridge_sha256,owner_identity_approved,'+
+  'google_spreadsheet_id,source_copy_id,google_prod_version,'+
+  'source_record_count,expected_counts,legacy_link_policy,'+
+  'owner_attestation_ref,signed_at,google_modified_at,captured_at '+
+  'FROM mvp_finance_native.post_fence_attestations '+
+  'WHERE google_manifest_sha256=$1 AND original_snapshot_id=$2 '+
+  'AND crm_bridge_sha256=$3',
+  [sourceSha,openingManifestId,crmSha]);
+ const signed=manifest.rows[0];
+ if(manifest.rows.length!==1||signed.owner_identity_approved!==true||
+    signed.original_manifest_sha256!==openingManifestSha||
+    signed.google_prod_version<93||signed.source_record_count!==80||
+    signed.legacy_link_policy!=='ARCHIVE_ONLY_NO_UUID_BRIDGE'||
+    signed.google_spreadsheet_id!=='13LRWLgHJQb24WXOsPLCIP2W8ZIaSX9AI3sfXJgF2-y8'||
+    signed.source_copy_id!=='1jN8nuyFOCozJ3rEeOhIMOVLrbRhkfY8VGkPSiFsvhH0'||
+    typeof signed.owner_attestation_ref!=='string'||signed.owner_attestation_ref.length<24||
+    !(new Date(signed.captured_at).getTime()>
       Date.parse('2026-11-08T10:59:32.797Z'))||
-    new Date(manifest.rows[0].google_modified_at).getTime()>
-      new Date(manifest.rows[0].captured_at).getTime())
+    new Date(signed.google_modified_at).getTime()>
+      new Date(signed.captured_at).getTime()||
+    new Date(signed.signed_at).getTime()<new Date(signed.captured_at).getTime()||
+    ['FINANCE_TRANSACTION:24','FINANCE_BALANCE:30','BUSINESS_MONTHLY_GAIN:3',
+     'CAPITAL_FUND:8','CAPITAL_ALLOCATION_BATCH:1',
+     'CAPITAL_FUND_TRANSACTION:6','CAPITAL_FUND_BALANCE:8'].some(k=>{
+      const [kind,count]=k.split(':');
+      return signed.expected_counts?.[kind]!==Number(count);
+     }))
   fail('B17_POST_FENCE_SNAPSHOT_NOT_OWNER_ACCEPTED');
  const funds=await c.query(
   'SELECT count(*)::int AS n,sum(opening_balance_base)::text AS total '+

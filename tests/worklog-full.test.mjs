@@ -463,3 +463,48 @@ test('Presence history-only mode keeps history and removes duplicate check-in wr
  assert.match(regular,/data-act="presence_start"/);
  assert.match(regular,/История по объектам/);
 });
+
+
+test('WorkDay start from My Work does not require daily A1 or write to its record',async()=>{
+ const source=get('public/workday-legacy-ui.js');
+ assert.match(mywork,/data-workflow-open="start">Открыть день без заказа/);
+ assert.match(mywork,/data-act="work_start_order" data-my-work-quick-start="1"/);
+ assert.match(mywork,/a1Card\(\)/,'Existing separate A1 editor must remain');
+ assert.match(source,/type:'a1_complete'/,'Unrelated day-finish behavior must remain untouched');
+ for(const item of [null,{id:'DA1-2026-11-19',goal:'Сохранённая цель',reason:'Отдельная запись'}]){
+  const requests=[],notices=[],date='2026-11-19';
+  const sandbox=vm.createContext({
+   myWork:{snapshot:{today:date,contextOrder:null}},data:{today:date},dailyA1:{item},
+   ids:()=>null,esc:x=>String(x??''),editText:name=>'<input name="'+name+'">',
+   crypto:{randomUUID:()=> 'c33b5cdf-5000-4000-8000-000000000001'},
+   api:async(path,request)=>{
+    requests.push({path,request});
+    return {saved:true,item:{status:'open'}};
+   },
+   workFlowModalClose:()=>true,refresh:async()=>{},loadMyWork:async()=>{},
+   message:(...args)=>notices.push(args),tab:'myWork'
+  });
+  vm.runInContext(source,sandbox,{filename:'workday-legacy-ui.js'});
+  // The script declares this function, overwriting context mocks during evaluation.
+  sandbox.workFlowModalClose=()=>true;
+  vm.runInContext("workFlowModalState.kind='start'",sandbox);
+  const markup=vm.runInContext('workFlowModalHtml()',sandbox);
+  assert.match(markup,/data-workflow-day-start/);
+  assert.match(markup,/A1 не создаётся и не изменяется/);
+  assert.doesNotMatch(markup,/name="(?:goal|reason|notes)"/,'Opening WorkDay must not require A1 fields');
+  assert.equal(markup.includes('<strong>A1:'),Boolean(item),'Existing A1 remains read-only on start');
+  const feedback={textContent:''},button={textContent:'Открыть день',disabled:false,isConnected:true};
+  sandbox.testForm={dataset:{},elements:[],querySelector:selector=>
+   selector==='[data-workflow-feedback]'?feedback:
+   selector==='button[type="submit"]'?button:null};
+  await vm.runInContext("workFlowModalSubmitDay(testForm,'start')",sandbox);
+  assert.equal(requests.length,1,'Start must emit only one server action');
+  assert.equal(requests[0].path,'/api/action');
+  assert.equal(requests[0].request.type,'day_open');
+  assert.equal(requests[0].request.payload.requestKey,'c33b5cdf-5000-4000-8000-000000000001');
+  assert.equal(notices.length,1);
+  assert.match(notices[0][0],/Рабочий день открыт\. A1 не изменена/);
+  assert.equal(button.disabled,false);
+  assert.equal(sandbox.dailyA1.item,item,'Existing A1 is neither created nor overwritten');
+ }
+});

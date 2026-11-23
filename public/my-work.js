@@ -17,11 +17,18 @@ function myWorkView(){
   '<div class="summary"><div class="card"><span>Рабочий день</span><strong>'+esc(day?(label[day.status]||day.status):'Не открыт')+'</strong></div>'+
   '<div class="card"><span>Интервал</span><strong>'+esc(live?'Идёт':'Нет активного')+'</strong></div>'+
   '<div class="card"><span>Присутствие</span><strong>'+esc(visit?'На объекте':'Не отмечено')+'</strong></div></div>';
- if(!day)s+='<button type="button" class="primary wide-button" data-workflow-open="start">Начать день / задать A1</button>';
- else if(day.status==='open'&&!live&&!visit)
-  s+='<button type="button" class="primary wide-button" data-workflow-open="finish">Я закончил работу</button>';
- else if(day.status==='open'&&(live||visit))
-  s+='<p class="muted small">Чтобы закрыть день, сначала заверши интервал и отметь уход с объекта.</p>';
+ if(!day){
+  if(live||visit)s+='<p role="alert" class="muted">Открыт интервал или присутствие другого дня. Сначала исправь запись.</p>';
+  else{
+   if(order&&['open','active'].includes(order.status))
+    s+='<button type="button" class="primary wide-button" data-act="work_start_order" data-my-work-quick-start="1" data-order-id="'+esc(order.id)+'">Начать день и работу по заказу «'+esc(order.title)+'»</button>'+
+     '<p class="muted small">Открывает день и интервал. Присутствие и A1 отмечаются отдельно.</p>';
+   s+='<button type="button" class="wide-button" data-workflow-open="start">Открыть день без заказа</button>';
+  }
+ }else if(day.status==='open'){
+  s+='<button type="button" class="primary wide-button" data-workflow-open="finish">Завершить день</button>';
+  if(live||visit)s+='<p class="muted small">Нажми «Завершить день», чтобы увидеть оставшиеся шаги. Записи не закроются автоматически.</p>';
+ }
  s+='<label>Текущий заказ<select id="myWorkOrderSelect"><option value="">Выбери заказ</option>'+
   [...choices.values()].map(o=>'<option value="'+esc(o.id)+'"'+(selected===o.id?' selected':'')+'>'+
    esc(o.title+' · '+(o.object_name||data.objects?.find(x=>x.id===o.object_id)?.name||'Объект')+
@@ -43,14 +50,18 @@ function myWorkView(){
  if(workFlowLastNotice)s+='<p class="full-worklog-receipt" role="status">'+esc(workFlowLastNotice)+'</p>';
  s+='</section>';
  const hasOrderSession=Boolean(order&&(
-  live?.order_id===order.id||w.todaySessions?.some(item=>item.order_id===order.id)));
+  (live?.day_date===today&&live.order_id===order.id)||w.todaySessions?.some(item=>item.order_id===order.id)));
  s+='<section class="card" data-workflow-quick><h2>Текущий заказ и действия</h2>'+
   (order&&['open','active'].includes(order.status)&&day?.status==='open'?
    '<p class="muted">Объект: '+esc(order.object_name)+' · заказ: '+esc(order.title)+'</p>'+
    (!hasOrderSession?
-    '<p class="muted small">Сначала начни работу по выбранному заказу, затем добавляй результаты.</p>'+
-    '<form data-act="session_start" class="grid"><input type="hidden" name="orderId" value="'+esc(order.id)+'">'+
-    '<button type="submit" class="primary wide">Начать работу по заказу</button></form>':
+    (live?
+     '<p role="alert" class="muted">Уже открыт интервал по заказу «'+esc(live.order_title||'Другой заказ')+
+     '»'+(live.day_date!==today?' с '+esc(live.day_date):'')+
+     '. Чтобы начать работу по выбранному заказу и записывать действия, сначала заверши прежний интервал. Интервал не закроется автоматически.</p>':
+     '<p class="muted small">Сначала начни работу по выбранному заказу, затем добавляй результаты.</p>'+
+     '<form data-act="session_start" class="grid"><input type="hidden" name="orderId" value="'+esc(order.id)+'">'+
+     '<button type="submit" class="primary wide">Начать работу по заказу</button></form>'):
     '<button type="button" class="primary wide-button" data-workflow-open="log" data-order-id="'+esc(order.id)+'">+ Записать работу</button>'):
    '<p class="muted small">Для записи работы сначала открой день и выбери действующий заказ.</p>')+
   (live?'<button type="button" class="wide-button" data-act="session_stop" data-id="'+esc(live.id)+'">Завершить рабочий интервал</button>':'')+

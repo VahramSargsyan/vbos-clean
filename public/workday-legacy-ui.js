@@ -45,7 +45,8 @@ function workFlowModalOpen(kind,opts={}){
     fullWorkLogGapSchedule(form,true);
   }
  }
- const first=dialog?.querySelector('input:not([type="hidden"]),textarea,button[data-workflow-close]');
+ const first=kind==='log'?dialog?.querySelector('input:not([type="hidden"]),textarea,button[data-workflow-close]'):
+  dialog?.querySelector('.work-flow-dialog-head h2');
  first?.focus?.({preventScroll:true});
 }
 function workFlowContinuationPrompt({orderId='',orderTitle='',source='session_stop'}={}){
@@ -70,18 +71,14 @@ function workFlowModalHtml(){
    '</strong></p><p class="muted small">Выбери исполнителя; подробные показатели доступны в разделе «Дополнительно».</p>'+
    fullWorkLogForm(id,item?.day_date||date,item);
  }else if(kind==='start'){
-  heading='Начало рабочего дня / A1';
-  const already=Boolean(a1);
-  body='<p class="muted">A1 относится ко всему дню. Заказ можно выбрать или изменить отдельно.</p>'+
-    (already?'<div class="card"><strong>A1: '+esc(a1.goal)+'</strong><p class="muted">Почему: '+esc(a1.reason)+'</p></div>':'')+
-    '<form class="grid" data-workflow-day-start novalidate>'+
-    editText('date','Дата',date,'date','required readonly')+
-    (!already?editText('goal','A1 сегодня',undefined,'textarea','required maxlength="1000"')+
-      editText('reason','Почему именно это A1',undefined,'textarea','required maxlength="2000"')+
-      editText('notes','Заметки дня',undefined,'textarea','maxlength="5000"'):'')+
-    '<p class="muted small">Сначала сохраняется A1, затем открывается WorkDay. В случае ошибки оба результата будут показаны отдельно.</p>'+
-    '<button type="submit" class="primary wide">Начать день</button>'+
-    '<p role="status" data-workflow-feedback aria-live="polite"></p></form>';
+  heading='Открыть рабочий день';
+  body='<p>Сегодня: <strong>'+esc(date)+'</strong></p>'+
+   '<p class="muted">Рабочий день можно открыть без A1 и без заказа. После выбора заказа отдельно начни интервал.</p>'+
+   '<form class="grid" data-workflow-day-start novalidate>'+
+   '<p class="muted small">Создаётся только WorkDay. A1 не создаётся и не изменяется; присутствие и WorkLog тоже не создаются.</p>'+
+   (a1?'<div class="card"><strong>A1: '+esc(a1.goal)+'</strong></div>':'')+
+   '<button type="submit" class="primary wide">Открыть день</button>'+
+   '<p role="status" data-workflow-feedback aria-live="polite"></p></form>';
  }else if(kind==='continue'){
   heading='Рабочий день продолжается?';
   const orderTitle=order?.title||workFlowModalState.item?.orderTitle||'Текущий заказ';
@@ -96,29 +93,44 @@ function workFlowModalHtml(){
    '<p class="muted small">Завершение интервала не закрывает заказ или рабочий день. A1 остаётся общей целью дня. Выбор «Да» ничего не изменяет в сохранённых данных.</p>';
  }else{
   heading='Завершить рабочий день';
-  const total=w.todayTotals||{},n=Number(total.logCount||0);
-  const blocked=Boolean(w.currentSession||w.currentPresence);
-  const workSummary='<div class="card"><strong>Что сделано сегодня</strong>'+
-   '<p>'+n+' записей WorkLog · '+Number(total.workMinutes||0)+' минут</p>'+
-   (Array.isArray(w.todayLogs)?w.todayLogs.slice(0,6).map(x=>
-     '<p class="muted small">'+esc(x.title||'Работа')+' · '+esc(x.minutes||0)+' мин</p>').join(''):'')+'</div>';
-  body='<p class="muted">Проверь фактические работы и результат дня перед завершением.</p>'+
-    workSummary+(blocked?'<p role="alert">Сначала заверши рабочий интервал и отметь уход с объекта. Данные не будут закрыты принудительно.</p>':'')+
+  const n=Number(w.todayTotals?.logCount||0),min=Number(w.todayTotals?.workMinutes||0);
+  const live=w.currentSession||null,visit=w.currentPresence||null;
+  let steps='';
+  if(live)steps+='<section class="card" role="alert"><strong>Шаг 1 · Заверши рабочий интервал</strong>'+
+   '<p>Сначала заверши рабочий интервал'+(live.order_title?' по заказу «'+esc(live.order_title)+'»':'')+'.</p>'+
+   (live.day_date===date?
+    '<button type="button" class="primary wide" data-workflow-finish-stop-session data-id="'+esc(live.id)+'">Завершить интервал</button>':
+    '<p class="muted">Интервал от '+esc(live.day_date)+'. Не завершай его текущим временем — нужна историческая корректировка.</p>')+'</section>';
+  if(visit)steps+='<section class="card"><strong>Шаг 2 · Отметь уход с объекта</strong><p>'+esc(visit.object_name||'Объект')+'</p>'+
+   (live?'<p class="muted small">Сначала заверши интервал, затем вернись к завершению дня.</p>':
+    visit.day_date===date?
+    '<form class="grid" data-workflow-finish-presence-stop>'+
+    '<input type="hidden" name="id" value="'+esc(visit.id)+'">'+
+    '<input type="hidden" name="date" value="'+esc(visit.day_date)+'">'+
+    '<input type="hidden" name="revision" value="'+esc(visit.revision)+'">'+
+    editText('departureTime','Фактическое время ухода',currentYerevanTime(),'time','required')+
+    '<button type="submit" class="primary wide">Отметить уход</button></form>':
+    '<p class="muted">Отметка от '+esc(visit.day_date)+'. Нужна историческая корректировка.</p>')+'</section>';
+  body='<p class="muted">Закрытие дня не удаляет записи работ и не закрывает заказ.</p>'+
+   '<div class="card"><strong>Итог дня</strong><p>'+n+' записей WorkLog · '+min+' минут</p>'+
+   (Array.isArray(w.todayLogs)?w.todayLogs.slice(0,4).map(x=>'<p class="muted small">'+esc(x.title||'Работа')+' · '+esc(x.minutes||0)+' мин</p>').join(''):'')+'</div>'+
+   (live||visit?'<p role="alert">Сначала заверши рабочий интервал и отметь уход с объекта. После этого закрой день.</p>'+steps:
     '<form class="grid" data-workflow-day-finish novalidate>'+
     (a1?.status==='open'?'<p class="muted"><strong>A1:</strong> '+esc(a1.goal)+'</p>'+
-     '<label>Результат A1<select name="outcome" required><option value="">Выбери результат</option>'+
+     '<label>Итог A1<select name="outcome" required><option value="">Выбери результат</option>'+
      '<option value="COMPLETED">Выполнено</option><option value="PARTIAL">Частично</option>'+
      '<option value="NOT_COMPLETED">Не выполнено</option></select></label>'+
      editText('outcomeNote','Комментарий к итогу',undefined,'textarea','maxlength="3000"'):
-     '<p class="muted small">A1: '+esc(a1?'завершена ранее':'не задана')+'.</p>')+
-    (n===0?'<label class="workflow-check"><input type="checkbox" name="confirmNoWork" required>Подтверждаю: фактических работ за этот день не записано.</label>':'')+
-    '<p class="muted small">Закрытие WorkDay и итог A1 — отдельные защищённые записи PostgreSQL. Статус каждой будет проверен.</p>'+
-    '<button type="submit" class="primary wide"'+(blocked?' disabled':'')+'>Я закончил работу</button>'+
-    '<p role="status" data-workflow-feedback aria-live="polite"></p></form>';
+     '<p class="muted small">A1 не задана или завершена — других полей нет.</p>')+
+    (n===0?'<label class="workflow-check"><input type="checkbox" name="confirmNoWork" required>'+
+     'Подтверждаю: за день нет записей работ. День закроется, но останется в истории.</label>':'')+
+    '<button type="submit" class="primary wide">'+(n===0?'Завершить без работ':'Завершить день')+'</button>'+
+    '<p role="status" data-workflow-feedback aria-live="polite"></p></form>');
+
  }
  return '<div id="workFlowBackdrop" class="work-flow-backdrop" data-workflow-backdrop>'+
   '<section class="work-flow-dialog" role="dialog" aria-modal="true" aria-label="'+esc(heading)+'">'+
-  '<header class="work-flow-dialog-head"><h2>'+esc(heading)+'</h2><button type="button" data-workflow-close aria-label="Закрыть">✕</button></header>'+
+  '<header class="work-flow-dialog-head"><h2 tabindex="-1">'+esc(heading)+'</h2><button type="button" data-workflow-close aria-label="Закрыть">✕</button></header>'+
   '<div class="work-flow-dialog-body">'+body+'</div></section></div>';
 }
 async function workFlowModalSubmitDay(form,kind){
@@ -131,25 +143,17 @@ async function workFlowModalSubmitDay(form,kind){
    (required.closest('label')?.textContent?.trim()||required.name)+'».';
   return;
  }
- const btn=form.querySelector('button[type="submit"]');form.dataset.saving='1';
+ const btn=form.querySelector('button[type="submit"]'),originalLabel=btn?.textContent;form.dataset.saving='1';
  if(btn){btn.disabled=true;btn.textContent=kind==='start'?'Открываю день…':'Закрываю день…';}
  if(status)status.textContent='Сохраняю в PostgreSQL…';
  try{
   const date=myWork.snapshot?.today||data.today,a1=dailyA1?.item;
   if(kind==='start'){
-   if(!a1){
-    const goal=form.elements.goal?.value||'',reason=form.elements.reason?.value||'';
-    const out=await api('/api/action',{type:'a1_save',payload:{
-     date,revision:0,goal,reason,notes:form.elements.notes?.value||'',
-     requestKey:form.dataset.a1RequestKey||(form.dataset.a1RequestKey=crypto.randomUUID())
-    }});
-    if(!out.saved)throw Error('A1 не подтвердил сохранение.');
-   }
    const day=await api('/api/action',{type:'day_open',payload:{
     requestKey:form.dataset.dayRequestKey||(form.dataset.dayRequestKey=crypto.randomUUID())
    }});
-   if(!day.saved||day.item?.status!=='open')throw Error('Рабочий день не открылся (возможно, уже закрыт). Проверь A1 и состояние дня.');
-   workFlowLastNotice='✓ Рабочий день открыт. '+(a1?'Существующая A1 сохранена.':'A1 задана.');
+   if(!day.saved||day.item?.status!=='open')throw Error('Рабочий день не открылся (возможно, уже закрыт). Проверь состояние дня.');
+   workFlowLastNotice='✓ Рабочий день открыт. A1 не изменена.';
   }else{
    const out=await api('/api/action',{type:'day_close',payload:{
     requestKey:form.dataset.dayRequestKey||(form.dataset.dayRequestKey=crypto.randomUUID())
@@ -180,6 +184,6 @@ async function workFlowModalSubmitDay(form,kind){
   message('Операция не завершена: '+err.message,true);
  }finally{
   form.dataset.saving='';
-  if(btn?.isConnected){btn.disabled=false;btn.textContent=kind==='start'?'Начать день':'Я закончил работу';}
+  if(btn?.isConnected){btn.disabled=false;btn.textContent=originalLabel;}
  }
 }
