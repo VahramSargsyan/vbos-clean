@@ -3,6 +3,7 @@ import {leadConversionAction} from './crm-lead-conversion.mjs';
 import {crmWonOrderCreate} from './crm-won-order-handoff.mjs';
 import {leadTransferAction} from './crm-lead-transfer.mjs';
 import {legacyLeadTransfersPage} from './crm-legacy-transfers.mjs';
+import {historicalCrmArchivePage,CrmHistoricalArchiveError} from './crm-historical-archive.mjs';
 import {mastersAction,mastersRead} from './crm-masters.mjs';
 import {guardedClientAction} from './crm-client-duplicates.mjs';
 import {leadVisitRecordAction} from './crm-visit-result.mjs';
@@ -127,6 +128,8 @@ const files = {
  '/history-orders-view.css': ['text/css; charset=utf-8',readFileSync(new URL('./domains/finance/history-orders-view.css',import.meta.url))],
  '/service-reference-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/service-reference-view.mjs',import.meta.url))],
  '/crm-legacy-transfers-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/crm-legacy-transfers-view.mjs',import.meta.url))],
+ '/crm-history-archive-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/crm-history-archive-view.mjs',import.meta.url))],
+ '/crm-history-archive.css': ['text/css; charset=utf-8',readFileSync(new URL('./public/crm-history-archive.css',import.meta.url))],
  '/service-reference.css': ['text/css; charset=utf-8',readFileSync(new URL('./public/service-reference.css',import.meta.url))],
  '/order-close-preview-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/order-close-preview-view.mjs',import.meta.url))],
  '/native-close-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/native-order-close-view.mjs',import.meta.url))],
@@ -679,6 +682,24 @@ async function handler(req,res){
          throw new AppError(503,'Исторические оценки ещё не загружены в эту TEST-базу.');
        throw error;
      }
+   }
+   // CRM historical list: exact reconciled source, owner session, GET only.
+   // Preserve original Google IDs; never turn archive into writable CRM or finance.
+   if(pathname==='/api/history/crm'&&req.method==='GET'){
+    try{
+     const page=await historicalCrmArchivePage(pool,new URL(req.url,'http://localhost'),{
+      authorizeOwner:()=>sessionValid(req),
+      batchId:'FINANCE_HIST_SOURCE_UNION_TEST_20261104_R1'
+     });
+     return json(res,200,page);
+    }catch(error){
+     if(error instanceof CrmHistoricalArchiveError||error instanceof HistoryOrdersAccessError)
+      throw new AppError(error.status,error.status===503?
+       'Историческая CRM не прошла проверку источника.':error.code);
+     if(['42P01','3F000','42501'].includes(error?.code))
+      throw new AppError(503,'Историческая CRM пока недоступна в TEST.');
+     throw error;
+    }
    }
    // Immutable old WorkOrder evidence; never mix with mutable WorkLog history or operational orders.
    if(pathname==='/api/history/orders'&&req.method==='GET'){
