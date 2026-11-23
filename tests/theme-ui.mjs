@@ -21,7 +21,7 @@ assert.ok(footer && !footer.includes('id="themeToggle"') && footer.includes('id=
 assert.equal((html.match(/id="themeToggle"/g)||[]).length,1);
 assert.equal(footer.match(/id="logout"/g)?.length,1);
 assert.equal((html.match(/id="logout"/g)||[]).length,1);
-assert.equal((nav.match(/data-tab="/g)||[]).length,17);
+assert.equal((nav.match(/data-tab="/g)||[]).length,18);
 assert.ok(nav.includes('data-tab="finance"'),'Finance archive must be visible in original Clean menu');
 assert.ok(nav.includes('data-tab="capital"'),'Capital fund archive must be visible in original Clean menu');
 assert.ok(nav.indexOf('data-tab="finance"')<nav.indexOf('data-tab="capital"'),'Finance should precede Capital');
@@ -29,6 +29,7 @@ assert.ok(nav.includes('data-tab="serviceReference"'),'Legacy source-only Servic
 assert.ok(nav.indexOf('data-tab="orders"')<nav.indexOf('data-tab="serviceReference"'),'Reference list appears after Orders without replacing Search');
 assert.ok(nav.includes('data-tab="history"'),'Existing WorkLog history menu entry must stay available');
 assert.ok(nav.includes('data-tab="historyOrders"'),'Source-gated old WorkOrder history must have a separate entry');
+assert.ok(nav.includes('data-tab="historyCrm"'),'Source-gated old CRM archive must have a separate entry');
 assert.ok(nav.includes('data-tab="engineering"'),'Read-only Engineering preview belongs in menu');
 assert.ok(nav.includes('data-tab="schedule"'),'Plan belongs in hidden menu');
 assert.ok(!nav.includes('data-tab="capacity"'),'Capacity must appear in Plan, never as separate menu route');
@@ -38,19 +39,19 @@ assert.ok(css.includes('min-height:0;overflow-y:auto'),'Drawer links must scroll
 assert.ok(css.includes('margin-top:auto;flex:0 0 auto'),'Drawer footer must stay at bottom');
 assert.ok(css.includes('html[data-theme] .card'),'Both themes must cover cards through shared tokens');
 assert.ok(css.includes('html[data-theme] input'),'Both themes must cover inputs through shared tokens');
-// Capacity remains inside Plan; Orders is a quick link while Search and Estimator stay reachable by group (17 routes).
+// Capacity remains inside Plan; original 17 routes stay unchanged and History CRM adds an 18th read-only route.
 const linksArea=nav.match(/<div class="drawer-links">([\s\S]*?)<div class="drawer-footer">/)?.[1];
 assert.ok(linksArea && html.includes('href="/menu-groups.css"'));
 const quickArea=linksArea.split('<details')[0];
 assert.deepEqual([...quickArea.matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]),['today','myWork','schedule','crm','orders']);
 const groups=[...linksArea.matchAll(/<details class="nav-group" name="vbos-nav-group">\s*<summary><span class="nav-group-label">([^<]+)<\/span><span class="nav-chevron" aria-hidden="true">▼<\/span><\/summary>\s*<div class="nav-submenu">([\s\S]*?)<\/div>\s*<\/details>/g)];
 assert.deepEqual(groups.map(x=>x[1]),['Клиенты и продажи','Исполнение и история','Финансы и отчёты','Инструменты']);
-const groupIds=[['clients','objects','catalog'],['workers','history','historyOrders'],['finance','capital','report'],['estimator','engineering','serviceReference']];
+const groupIds=[['clients','objects','catalog'],['workers','history','historyOrders','historyCrm'],['finance','capital','report'],['estimator','engineering','serviceReference']];
 for(let i=0;i<groups.length;i++){
   assert.deepEqual([...groups[i][2].matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]),groupIds[i]);
 }
 const routeIds=[...linksArea.matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]);
-assert.equal(new Set(routeIds).size,17,'Exactly one navigation target per route, including Estimator');
+assert.equal(new Set(routeIds).size,18,'Exactly one navigation target per route, including Estimator and read-only CRM history');
 assert.equal(routeIds.filter(x=>x==='estimator').length,1,'Calculator must remain reachable in Tools');
 assert.equal(routeIds.filter(x=>x==='catalog').length,1,'Search must remain reachable in Clients and Sales');
 assert.equal(quickArea.match(/data-tab="orders"/g)?.length,1,'Orders must be a quick destination');
