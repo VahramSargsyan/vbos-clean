@@ -1,0 +1,72 @@
+# One-shot owner-approved Finance P3 test qualification on 2026-11-23.
+# Exact-source Node 22 + isolated disposable PostgreSQL 17 only.
+# This push alone starts one job; branch+path+commit-message gate.
+# NO hosted Render/Neon/Google/PROD, credentials, secrets, paid API or money.
+name: VBOS Clean Finance P3 one-shot Node and disposable PG17
+on:
+  push:
+    branches:
+      - feature/finance-p3-native-transaction-parity-20261123
+    paths:
+      - .github/workflows/finance-p3-single-disposable-pg17-20261123.yml
+permissions:
+  contents: read
+concurrency:
+  group: finance-p3-single-disposable-pg17-20261123
+  cancel-in-progress: false
+jobs:
+  finance-p3:
+    if: "github.event.head_commit.message == 'ci(finance): one-shot P3 disposable PG17 qualification'"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 36
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic_pg17_password
+          POSTGRES_DB: vbos_mvp_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vbos_mvp_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      CI: 'true'
+      TEST_DATABASE_URL: postgresql://postgres:synthetic_pg17_password@127.0.0.1:5432/vbos_mvp_ci
+    steps:
+      - name: Checkout exact triggering source (credentials not retained)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies (no npm scripts)
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund
+      - name: Exact source, source layout and P3 static syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          npm run verify:source
+          node --check server.mjs
+          node --check public/app.js
+          node --check domains/finance/finance-p3-transaction-detail.mjs
+          node --check domains/finance/finance-p3-transaction-editor-view.mjs
+          node --check domains/finance/finance-native-summary-view.mjs
+          node --check domains/finance/finance-capital-view.mjs
+          node --check tests/finance-p3-transaction-parity.test.mjs
+          node --check tests/finance-p3-transaction-parity-pg.e2e.mjs
+          echo "FINANCE_P3_EXACT_SOURCE_SYNTAX_PASS=$GITHUB_SHA"
+      - name: Focused P3 editor, source-gate and client-material contracts
+        run: node --test tests/finance-p3-transaction-parity.test.mjs
+      - name: Full Node regression (Finance B23 P1 P2 P3)
+        run: npm test
+      - name: Complete disposable PG17 E2E (all modules, P3 real B14 edit cancel restore)
+        run: npm run test:e2e
+      - name: Final one-shot receipt
+        shell: bash
+        run: |
+          echo "FINANCE_P3_FULL_DISPOSABLE_PG17_PASS_SOURCE=$GITHUB_SHA"
+          echo "FINANCE_P3_NO_OCCUPIED_NEON_GOOGLE_RENDER_PROD_WRITES"
