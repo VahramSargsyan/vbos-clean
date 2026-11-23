@@ -79,7 +79,7 @@ async function install(){
     [kind,kind+'_'+(i+1),JSON.stringify({synthetic:true,amount:i+1,currency:'AMD'})]);
  }
  await pool.query(migration);
- const amounts=['1000','2000','2000','2500','0','1500','0','1000'];
+ const openingAmounts=['1000','2000','2000','2500','0','1500','0','1000'];
  const codes=['OPERATING_RESERVE','WARRANTY_RESERVE','MARKETING_SALES','PEOPLE_TRAINING',
   'TOOLS_CREW_KITS','RND_MATERIALS','DIGITAL_AI_VBOS','INFRASTRUCTURE'];
  await pool.query('INSERT INTO mvp_finance_native.opening_snapshot(source_snapshot_id,manifest_sha256,as_of_date,'+
@@ -90,7 +90,7 @@ async function install(){
   await pool.query('INSERT INTO mvp_finance_native.funds(fund_id,legacy_source_id,code,group_type,status) VALUES($1,$2,$3,$4,$5)',
    [fund,'FND-2026-'+String(i+1).padStart(4,'0'),codes[i],i<2?'PROTECTIVE':'GROWTH','active']);
   await pool.query('INSERT INTO mvp_finance_native.fund_openings(fund_id,legacy_balance_source_id,source_snapshot_id,opening_balance_base) VALUES($1,$2,$3,$4)',
-   [fund,'SYNTH_P1_FUND_'+(i+1),openingId,amounts[i]]);
+   [fund,'SYNTH_P1_FUND_'+(i+1),openingId,openingAmounts[i]]);
  }
  await pool.query(attestation);
  const googleSha=(await pool.query(
