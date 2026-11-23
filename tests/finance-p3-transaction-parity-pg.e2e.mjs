@@ -28,7 +28,18 @@ test('Finance P3 actual disposable PG17 detail + B14 edit/cancel/restore parity'
   assert.equal((await pool.query('SELECT count(*)::int n FROM mvp_history.source_records WHERE source_kind=$1',
    ['FINANCE_TRANSACTION'])).rows[0].n,24);
   assert.equal((await pool.query('SELECT phase FROM mvp_finance_native.cutover_control WHERE id=1')).rows[0].phase,'ACTIVE');
-  process.env.FINANCE_B10_SYNTHETIC_ONLY='1';
+  // P1/P2 E2E run in separate Node processes. Re-establish the signed
+  // synthetic-only source configuration from disposable PostgreSQL evidence.
+  const signed=(await pool.query('SELECT google_manifest_sha256,crm_bridge_sha256 FROM '+
+   'mvp_finance_native.post_fence_attestations')).rows[0];
+  assert.ok(signed?.google_manifest_sha256&&signed?.crm_bridge_sha256);
+  Object.assign(process.env,{
+   FINANCE_NATIVE_POSTING_ENABLE:'OWNER_APPROVED_CLEAN_TEST',
+   RENDER_SERVICE_ID:'srv-dbkvfh2jnfac73a31nv0',
+   FINANCE_NATIVE_FROZEN_MANIFEST_SHA256:signed.google_manifest_sha256,
+   FINANCE_NATIVE_CRM_BRIDGE_SHA256:signed.crm_bridge_sha256,
+   DATABASE_URL:uri,FINANCE_B10_SYNTHETIC_ONLY:'1'
+  });
   const original=(await pool.query("SELECT finance_transaction_id::text id,revision FROM mvp_finance_native.transactions "+
    "WHERE operation_type='INCOME' AND status='active' AND normalized->>'category'='current_work' ORDER BY finance_transaction_id LIMIT 1")).rows[0];
   assert.ok(original?.id,'requires P1 native synthetic income fixture');
