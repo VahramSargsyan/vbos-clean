@@ -58,7 +58,7 @@ const historySQL=[
  'transaction_date_key::text AS date,operation_type AS type,status,revision,',
  'amount_base::text AS amount_base,cash_effect_base::text AS cash_effect_base,',
  'coalesce(normalized->>\'category\',\'\') AS category,',
- 'coalesce(normalized->>\'incomeRecognition\',\'\') AS income_recognition,created_at::text AS created_at',
+ 'coalesce(normalized->>\'incomeRecognition\',\'\') AS income_recognition,created_at::text AS created_at_exact',
  'FROM mvp_finance_native.transactions',
  'WHERE work_order_id=$1::uuid AND source_system=\'CLEAN_NATIVE_FINANCE\'',
  'AND ($2::timestamptz IS NULL OR',
@@ -93,7 +93,7 @@ export async function readOrderFinancialResult(pool,orderId,{authorizeOwner,limi
   const items=visible.map(row=>{
    if(!UUID.test(row.id)||!['active','archived'].includes(row.status))
     fail(503,'B23_INVALID_LEDGER_ROW');
-   const at=String(row.created_at);
+   const at=String(row.created_at_exact);
    if(at.length>60||!Number.isFinite(Date.parse(at)))fail(503,'B23_INVALID_CREATED_AT');
    return Object.freeze({id:row.id,date:String(row.date),type:String(row.type),
     category:String(row.category),status:row.status,revision:row.revision,
