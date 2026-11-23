@@ -4149,7 +4149,7 @@ $('#content').addEventListener('click',async e=>{
   const financeMore=e.target.closest('button[data-order-finance-more]');
   if(financeMore&&orderDetailId===financeMore.dataset.orderFinanceMore){await loadOrderFinance(orderDetailId,true);return;}
   const financeRetry=e.target.closest('button[data-order-finance-retry]');
-  if(financeRetry&&orderDetailId===financeRetry.dataset.orderFinanceRetry){await loadOrderFinance(orderDetailId,orderFinance.loaded);return;}
+  if(financeRetry&&orderDetailId===financeRetry.dataset.orderFinanceRetry){orderFinance.error='';orderFinance.loaded=false;orderFinance.nextCursor=null;orderFinance.items=[];await loadOrderFinance(orderDetailId);return;}
   const orderMore=e.target.closest('button[data-order-logs-more]');
   if(orderMore&&orderDetailId===orderMore.dataset.orderLogsMore){await loadOrderCardLogs(orderDetailId,true);return;}
   const orderObject=e.target.closest('button[data-order-open-object]');
