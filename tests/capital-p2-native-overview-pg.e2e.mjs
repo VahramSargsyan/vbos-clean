@@ -42,6 +42,9 @@ async function setup(){
  const funds=(await q(
   'SELECT fund_id::text id,legacy_source_id FROM mvp_finance_native.funds ORDER BY legacy_source_id')).rows;
  a=funds[0].id;b=funds[1].id;c=funds[2].id;
+ // P1 leaves real-shaped funds at schema defaults; add a synthetic target for P2 source readback.
+ await q('UPDATE mvp_finance_native.funds SET target_amount_base=$1 WHERE fund_id=$2',
+  ['2000000.000000',a]);
  const signed=(await q('SELECT google_manifest_sha256,crm_bridge_sha256 FROM mvp_finance_native.post_fence_attestations')).rows[0];
  assert.ok(signed?.google_manifest_sha256&&signed?.crm_bridge_sha256);
  Object.assign(process.env,{
