@@ -151,7 +151,7 @@ export function financeLegacyFormHtml(action,{today='2026-11-13',refs={},liveEna
   (liveEnabled?'':'<button type="button" disabled>Сохранить · недоступно</button>')+
   '<button type="button" data-finance-legacy-close>Отмена</button>'+
   '</div><p role="status" aria-live="polite" data-finance-legacy-result></p></form>'+
-  ((income||expense)?'<button type="button" class="compact" data-finance-legacy-server-preview="'+esc(action)+
+  ((!liveEnabled&&(income||expense))?'<button type="button" class="compact" data-finance-legacy-server-preview="'+esc(action)+
    '">Открыть отдельную серверную проверку простого черновика</button>':'')+
   '</div></dialog>';
 }
@@ -415,7 +415,7 @@ export function mountFinanceCapitalArchivePanel(root,{fetchPage,mode,onDraft,ref
  }
  async function showForm(action,trigger){
   const host=formHost();
-  if(!host||!LEGACY_FORMS.includes(action))return false;
+  if(!host||!LEGACY_FORMS.includes(action)||posting||pendingPost)return false;
   focusReturn=trigger;
   const request=++dialogSeq;searchSeq++;
   if(typeof fetchNativeState!=='function'||typeof postNativeAction!=='function'){
@@ -426,7 +426,9 @@ export function mountFinanceCapitalArchivePanel(root,{fetchPage,mode,onDraft,ref
   catch{if(active&&dialogSeq===request)host.textContent='Невозможно проверить финансовый источник.';return false;}
   if(!active||dialogSeq!==request)return false;
   if(gate?.version!=='FINANCE_B18_NATIVE_WORKSPACE_V1'||gate?.source!=='CLEAN_NATIVE_POST_CUTOVER_ONLY'||
-     gate?.authority!=='POSTGRES'||gate?.phase!=='ACTIVE'||gate?.postingEnabled!==true){
+     gate?.authority!=='POSTGRES'||gate?.phase!=='ACTIVE'||gate?.postingEnabled!==true||
+     gate?.historicalArchiveImmutable!==true||gate?.asOfOpening!=='2026-09-30'||
+     gate?.ledger?.isCurrentFinanceBalance!==true){
    host.textContent='Запись заблокирована. PostgreSQL не подтверждён как единственный финансовый writer.';
    return false;
   }
@@ -455,7 +457,9 @@ export function mountFinanceCapitalArchivePanel(root,{fetchPage,mode,onDraft,ref
       ![true,false].includes(answer.replayed))throw Error('B22_UNVERIFIED_POSTGRES_RECEIPT');
    pendingPost=null;
    if(result)result.textContent='Сохранено в PostgreSQL. Запись подтверждена сервером.';
-   if(typeof onNativeSaved==='function')await onNativeSaved();
+   if(typeof onNativeSaved==='function'){
+    try{await onNativeSaved();}catch{/* The signed posting receipt already succeeded. Never resend. */}
+   }
    closeForm();
   }catch(error){
    const status=Number(error?.httpStatus);
@@ -479,7 +483,9 @@ export function mountFinanceCapitalArchivePanel(root,{fetchPage,mode,onDraft,ref
    void showForm(action,draft);
    return;
   }
-  if(e.target?.closest?.('[data-finance-legacy-close]')){if(!posting){pendingPost=null;closeForm();}return;}
+  if(e.target?.closest?.('[data-finance-legacy-close]')){
+   if(!posting&&!pendingPost)closeForm();return;
+  }
   if(e.target?.closest?.('[data-finance-native-retry]')){void sendPending();return;}
   if(e.target?.closest?.('[data-finance-legacy-search]')){void searchReference(false);return;}
   if(e.target?.closest?.('[data-finance-legacy-search-more]')){void searchReference(true);return;}
