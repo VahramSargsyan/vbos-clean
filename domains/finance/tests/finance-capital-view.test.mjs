@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {financeCapitalArchiveHtml,mountFinanceCapitalArchivePanel,financeLegacyFormHtml,validateFinanceLegacyPreview,financeLegacyActiveOrder,financeLegacySearchResult} from '../finance-capital-view.mjs';
+import {financeCapitalArchiveHtml,mountFinanceCapitalArchivePanel,financeLegacyFormHtml,validateFinanceLegacyPreview,financeLegacyActiveOrder,financeLegacySearchResult,financeLegacyNativeCreateAction} from '../finance-capital-view.mjs';
 const data={
  source:'VERIFIED_LEGACY_FINANCE_CAPITAL_CLEAN_TEST',readonly:true,financialWriter:'GOOGLE',currentOperationalFinance:false,
  sourceModifiedAt:'2026-11-03T19:06:09.263Z',
@@ -28,7 +28,7 @@ test('Finance tab labels frozen history and does not promise live money or edits
   'Долг рабочим','Выплачено рабочим','Выведено владельцем'])assert.match(html,new RegExp(name));
  assert.match(html,/data-finance-legacy-draft="INCOME"/);
  assert.match(html,/data-finance-legacy-draft="EXPENSE"/);
- assert.match(html,/БЕЗ сохранения денег/);
+ assert.match(html,/создают новые записи в PostgreSQL TEST/);
 });
 test('Capital tab renders funds, movements and escapes source HTML',()=>{
  const html=financeCapitalArchiveHtml(data,'capital');
@@ -63,16 +63,19 @@ test('mount performs only the authenticated same-origin archive GET; unmount pre
  assert.equal(root.innerHTML,before);
 });
 
-test('quick action routes an income draft without financial write',async()=>{
- const handlers={};const routed=[];
+test('quick action refuses to post without a confirmed PostgreSQL writer',async()=>{
+ const handlers={},host={innerHTML:''};
  const root={innerHTML:'',addEventListener(type,cb){handlers[type]=cb;},
-  removeEventListener(type){delete handlers[type];}};
+  removeEventListener(type){delete handlers[type];},
+  querySelector(selector){return selector==='[data-finance-legacy-form-host]'?host:null;}};
  const panel=mountFinanceCapitalArchivePanel(root,{mode:'finance',
-  fetchPage:async()=>data,onDraft:type=>routed.push(type)});
+  fetchPage:async()=>data});
  await Promise.resolve();await Promise.resolve();
  handlers.click({target:{closest:s=>s==='[data-finance-legacy-draft]'?
   {getAttribute:()=> 'INCOME'}:null}});
- assert.deepEqual(routed,['INCOME']);panel.unmount();
+ await Promise.resolve();await Promise.resolve();
+ assert.match(host.innerHTML,/PostgreSQL не подключён/);
+ panel.unmount();
 });
 test('missing financial value fails closed rather than displaying zero',()=>{
  const wrong={...data,finance:{...data.finance}};
@@ -114,7 +117,7 @@ test('all five original operations offer matching conditional fields but never a
  assert.match(owner,/Куда выведены деньги/);
  assert.doesNotMatch(owner,/name="workOrderId"/);
  const invest=financeLegacyFormHtml('INVEST',{refs});
- assert.match(invest,/15% \/ 15% \/ 70%/);
+ assert.match(invest,/распределяет её по восьми фондам/);
  assert.match(invest,/value="investments"/);
  assert.doesNotMatch(invest,/name="workOrderId"/);
 });
@@ -159,29 +162,31 @@ test('legacy preview rejects missing/forged links, invalid money and FX, stale c
  ];
  for(const raw of rejects)assert.throws(()=>validateFinanceLegacyPreview(raw,{refs}));
 });
-test('quick buttons open a complete UI-only modal; no implicit B15 call or financial POST',async()=>{
+test('five quick buttons open real native forms, never post before submit',async()=>{
  const handlers={},host={innerHTML:'',
   querySelector(selector){if(selector==='[data-finance-legacy-dialog]')
    return {showModal(){},open:true};return null;}};
  const root={innerHTML:'',addEventListener(type,cb){handlers[type]=cb;},
   removeEventListener(type){delete handlers[type];},
   querySelector(selector){return selector==='[data-finance-legacy-form-host]'?host:null;}};
- let calls=0,dryRun=0;
+ let posts=0;
  const panel=mountFinanceCapitalArchivePanel(root,{mode:'finance',refs,
-  fetchPage:async url=>{calls++;assert.equal(url,'/api/finance/archive');return data;},
-  onDraft:()=>dryRun++});
+  fetchPage:async()=>data,
+  fetchNativeState:async()=>({version:'FINANCE_B18_NATIVE_WORKSPACE_V1',
+   source:'CLEAN_NATIVE_POST_CUTOVER_ONLY',authority:'POSTGRES',phase:'ACTIVE',postingEnabled:true}),
+  postNativeAction:async()=>{posts++;throw Error('Must not be called before submit');}});
  await Promise.resolve();await Promise.resolve();
  for(const type of ['INCOME','EXPENSE','WORKER','OWNER_TRANSFER','INVEST']){
-  handlers.click({target:{getAttribute:()=>type,closest:s=>
-   s==='[data-finance-legacy-draft]'?{getAttribute:()=>type}:null}});
+  handlers.click({target:{closest:s=>s==='[data-finance-legacy-draft]'?
+   {getAttribute:()=>type}:null}});
+  await Promise.resolve();await Promise.resolve();await Promise.resolve();
   assert.match(host.innerHTML,new RegExp('value="'+type+'"'));
-  assert.match(host.innerHTML,/Сохранить · недоступно/);
+  assert.match(host.innerHTML,/Сохранить в PostgreSQL/);
+  assert.doesNotMatch(host.innerHTML,/Сохранить · недоступно/);
  }
- assert.equal(calls,1);assert.equal(dryRun,0);
+ assert.equal(posts,0);
  panel.unmount();
- assert.equal(handlers.click,undefined);
 });
-
 test('verified active session preselects only its exact order and object; inactive/stale do not',()=>{
  const state={
   currentSession:{order_id:'ord-current',day_date:'2026-11-13',ended_at:null},
@@ -200,6 +205,68 @@ test('verified active session preselects only its exact order and object; inacti
   {...state,currentSession:null},
   {selectedOrderId:'ord-current',contextOrder:state.contextOrder}
  ])assert.equal(financeLegacyActiveOrder(invalid,'2026-11-13'),null);
+});
+const nativeIds={
+ order:'00000000-0000-4000-8000-000000000031',
+ object:'00000000-0000-4000-8000-000000000032',
+ worker:'00000000-0000-4000-8000-000000000033'
+};
+const nativeRefs={
+ orders:[{id:nativeIds.order,title:'Заказ',object_id:nativeIds.object}],
+ objects:[{id:nativeIds.object,name:'Объект'}],
+ workers:[{id:nativeIds.worker,name:'Исполнитель'}]
+};
+function nativeForm(legacyAction,operationType,extra={}){
+ return {legacyAction,operationType,transactionDate:'2026-11-23',
+  amountOriginal:'1500',currencyOriginal:'AMD',commissionOriginal:'0',
+  category:'other',incomeRecognition:'EARNED_AND_RECEIVED',
+  ...extra};
+}
+test('B22 five real creates map to exact native finance types with no Google IDs',()=>{
+ const plans=[
+  [nativeForm('INCOME','INCOME'),'INCOME'],
+  [nativeForm('EXPENSE','EXPENSE'),'EXPENSE'],
+  [nativeForm('WORKER','WORKER_PAYMENT',{workerId:nativeIds.worker}),'WORKER_PAYMENT'],
+  [nativeForm('WORKER','WORKER_ACCRUAL',{workerId:nativeIds.worker,
+    workOrderId:nativeIds.order}),'WORKER_ACCRUAL'],
+  [nativeForm('WORKER','WORKER_ACCRUAL_PAYMENT',{workerId:nativeIds.worker,
+    workOrderId:nativeIds.order}),'WORKER_ACCRUAL_PAYMENT'],
+  [nativeForm('OWNER_TRANSFER','OWNER_TRANSFER',{ownerDirection:'home'}),'OWNER_TRANSFER'],
+  [nativeForm('INVEST','OWNER_TRANSFER'),'OWNER_TRANSFER']
+ ];
+ for(const [raw,type] of plans){
+  const x=financeLegacyNativeCreateAction(raw,{refs:nativeRefs,today:'2026-11-23'});
+  assert.equal(x.action,'FINANCE_CREATE');assert.equal(x.payload.operationType,type);
+  assert.equal(x.payload.currencyOriginal,'AMD');
+  assert.equal(x.payload.transactionDate,'2026-11-23');
+  assert.equal(x.payload.amountOriginal,'1500');
+  assert.ok(!Object.hasOwn(x.payload,'financeTransactionId'));
+  assert.ok(!Object.hasOwn(x.payload,'synthetic'));
+  if(raw.legacyAction==='INVEST')assert.equal(x.payload.ownerDirection,'investments');
+  if(type.startsWith('WORKER_'))assert.equal(x.payload.workerId,nativeIds.worker);
+ }
+});
+test('B22 native bridge denies pre-cutover dates, unknown refs and legacy IDs',()=>{
+ for(const changed of [
+  {transactionDate:'2026-09-30'},
+  {transactionDate:'2026-11-24'},
+  {workOrderId:'ord-old'},
+  {workOrderId:'00000000-0000-4000-8000-000000000099'}
+ ])assert.throws(()=>financeLegacyNativeCreateAction(
+  nativeForm('INCOME','INCOME',{category:'current_work',workOrderId:nativeIds.order,...changed}),
+  {refs:nativeRefs,today:'2026-11-23'}));
+ assert.throws(()=>financeLegacyNativeCreateAction(
+  nativeForm('WORKER','WORKER_PAYMENT',{workerId:'wrk-old'}),
+  {refs:nativeRefs,today:'2026-11-23'}));
+ assert.throws(()=>financeLegacyNativeCreateAction(
+  nativeForm('INVEST','OWNER_TRANSFER',{currencyOriginal:'DOGE'}),
+  {refs:nativeRefs,today:'2026-11-23'}));
+ for(const type of ['INCOME','EXPENSE','WORKER','OWNER_TRANSFER','INVEST']){
+  const html=financeLegacyFormHtml(type,{today:'2026-11-23',refs:nativeRefs,liveEnabled:true});
+  assert.match(html,/Сохранить в PostgreSQL/);
+  assert.match(html,/PostgreSQL TEST/);
+  assert.doesNotMatch(html,/Сохранить · недоступно/);
+ }
 });
 test('owner-only search results validate source, exact query, cursor and preserve HTML escaping',()=>{
  const payload={entity:'orders',q:'Кухня',items:[{
