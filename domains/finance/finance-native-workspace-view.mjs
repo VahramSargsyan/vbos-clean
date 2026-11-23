@@ -305,6 +305,6 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
  root.addEventListener('change',change);
  root.addEventListener('submit',submit);
  void load();
- return {unmount(){live=false;root.removeEventListener('click',click);
+ return {load,unmount(){live=false;root.removeEventListener('click',click);
   root.removeEventListener('change',change);root.removeEventListener('submit',submit);}};
 }
