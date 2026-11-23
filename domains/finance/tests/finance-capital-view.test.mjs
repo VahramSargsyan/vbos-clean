@@ -173,7 +173,8 @@ test('five quick buttons open real native forms, never post before submit',async
  const panel=mountFinanceCapitalArchivePanel(root,{mode:'finance',refs,
   fetchPage:async()=>data,
   fetchNativeState:async()=>({version:'FINANCE_B18_NATIVE_WORKSPACE_V1',
-   source:'CLEAN_NATIVE_POST_CUTOVER_ONLY',authority:'POSTGRES',phase:'ACTIVE',postingEnabled:true}),
+   source:'CLEAN_NATIVE_POST_CUTOVER_ONLY',authority:'POSTGRES',phase:'ACTIVE',postingEnabled:true,
+   historicalArchiveImmutable:true,asOfOpening:'2026-09-30',ledger:{isCurrentFinanceBalance:true}}),
   postNativeAction:async()=>{posts++;throw Error('Must not be called before submit');}});
  await Promise.resolve();await Promise.resolve();
  for(const type of ['INCOME','EXPENSE','WORKER','OWNER_TRANSFER','INVEST']){
