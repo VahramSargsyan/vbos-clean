@@ -25,7 +25,7 @@ function db(rows=[record()],receipt=true){
   throw new Error('UNEXPECTED_ARCHIVE_QUERY');
  }}};
 }
-const get=async(p,options={},path='type=leads')=>historicalCrmArchivePage(p,url(path),{
+const get=async(p,options={},path='type=leads')=>historicalCrmArchivePage(p.pool||p,url(path),{
  authorizeOwner:()=>true,batchId:batch,...options
 });
 test('CRM history: strict owner and reconciled batch receipt before any source read',async()=>{
@@ -122,6 +122,6 @@ test('CRM history navigation and read-only route preserve existing work and fina
  assert.match(html,/crm-history-archive.css/);
  assert.match(app,/mountHistoricalCrm/);
  assert.match(app,/crm-history-archive-view.mjs/);
- assert.match(app,/historyCrmPanel\.unmount/); // corrected below if name mismatch
+ assert.match(app,/historicalCrmPanel\.unmount/);
  assert.match(app,/tab==='historyOrders'\?historyOrdersView\(\)/);
 });
