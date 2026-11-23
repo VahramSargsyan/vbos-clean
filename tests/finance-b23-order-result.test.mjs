@@ -16,7 +16,7 @@ const zero={
 const receipt={id:tx,date:'2026-11-23',type:'INCOME',category:'advance',
  income_recognition:'RECEIVED_ONLY',status:'active',revision:1,
  amount_base:'10000.000000',cash_effect_base:'10000.000000',
- created_at:'2026-11-23 10:00:00.123456+00'};
+ created_at_exact:'2026-11-23 10:00:00.123456+00'};
 function setup({found=true,history=[receipt],summary=null}={}){
  const calls=[];let released=false;
  const pool={async connect(){return {async query(sql,params=[]){
@@ -72,10 +72,12 @@ test('scope uses stored Order FK and native writer source, not names or legacy r
  assert.match(queries[0].sql,/commission_base/);
  assert.match(queries[0].sql,/worker_payable_effect_base/);
  assert.match(queries[1].sql,/LIMIT \$4/);
+ assert.match(queries[1].sql,/created_at::text AS created_at_exact/);
+ assert.match(queries[1].sql,/ORDER BY created_at DESC,finance_transaction_id DESC/);
  assert.match(x.calls[0].sql,/REPEATABLE READ READ ONLY/);
 });
 test('history pagination never truncates aggregate totals and cursor is order-bound',async()=>{
- const rows=[receipt,{...receipt,id:other,created_at:'2026-11-22 10:00:00.123455+00'}];
+ const rows=[receipt,{...receipt,id:other,created_at_exact:'2026-11-22 10:00:00.123455+00'}];
  const x=setup({history:rows,summary:{...zero,total_count:210,active_count:205,
   received_base:'123000.000000'}});
  const a=await readOrderFinancialResult(x.pool,order,{authorizeOwner:()=>true,limit:1});
