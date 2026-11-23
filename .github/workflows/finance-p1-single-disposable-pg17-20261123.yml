@@ -1,0 +1,92 @@
+# One-shot Finance P1 qualification expressly authorized by owner on 2026-11-23.
+# Only this file's single new push on the dedicated feature branch starts a job.
+# No Neon, Google, Render, PROD, hosted secrets, paid APIs, or deployment.
+name: VBOS Clean Finance P1 one-shot exact Node and disposable PG17 qualification
+on:
+  push:
+    branches:
+      - feature/finance-p1-native-ledger-parity-20261123
+    paths:
+      - .github/workflows/finance-p1-single-disposable-pg17-20261123.yml
+permissions:
+  contents: read
+concurrency:
+  group: finance-p1-single-disposable-pg17-20261123
+  cancel-in-progress: false
+jobs:
+  finance-p1:
+    if: "github.event.head_commit.message == 'ci(finance): one-shot P1 PG17 qualification'"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 32
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test_only_password
+          POSTGRES_DB: vbos_mvp_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vbos_mvp_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:test_only_password@127.0.0.1:5432/vbos_mvp_ci
+      CI: 'true'
+    steps:
+      - name: Checkout exact owner-authorized P1 triggering commit
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install source dependencies without package scripts
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund
+      - name: Verify source, exact SHA and P1 API/UI/PG17 syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          npm run verify:source
+          node --check server.mjs
+          node --check public/app.js
+          node --check domains/finance/finance-native-summary-history.mjs
+          node --check domains/finance/finance-native-summary-view.mjs
+          node --check tests/finance-p1-native-summary.test.mjs
+          node --check tests/finance-p1-native-summary-pg.e2e.mjs
+          echo "FINANCE_P1_EXACT_SOURCE_SYNTAX_PASS=$GITHUB_SHA"
+      - name: P1 focused owner read and Android history unit contract
+        run: node --test tests/finance-p1-native-summary.test.mjs
+      - name: Complete Node regression including P1 and B22/B23
+        run: npm test
+      - name: Full disposable PostgreSQL 17 E2E including new P1 real database scenario
+        run: npm run test:e2e
+      - name: Reset only ephemeral finance evidence for existing B21 standalone PG17 regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import pg from 'pg';
+          const uri=process.env.TEST_DATABASE_URL||'';
+          const u=new URL(uri);
+          if(!['postgres:','postgresql:'].includes(u.protocol)||
+            !['localhost','127.0.0.1'].includes(u.hostname)||
+            u.pathname!=='/vbos_mvp_ci')
+            throw new Error('P1_EPHEMERAL_FINANCE_RESET_ONLY');
+          const c=new pg.Client({connectionString:uri,ssl:false});
+          await c.connect();
+          try {
+            if((await c.query('SELECT current_database() name')).rows[0].name!=='vbos_mvp_ci')
+              throw new Error('P1_WRONG_DATABASE');
+            for(const schema of ['mvp_finance_native','mvp_finance_stage','mvp_history'])
+              await c.query('DROP SCHEMA IF EXISTS '+schema+' CASCADE');
+          } finally { await c.end(); }
+          console.log('FINANCE_P1_EPHEMERAL_SCHEMAS_CLEAN');
+          NODE
+      - name: Existing B21 signed-fence and archive immutability isolated PG17 regression
+        run: node --test tests/finance-b21-postfence-attestation-pg.e2e.mjs
+      - name: Exact P1 one-shot GitHub Actions receipt
+        run: |
+          echo "FINANCE_P1_FULL_DISPOSABLE_PG17_PASS_SOURCE=$GITHUB_SHA"
+          echo "FINANCE_P1_NO_NEON_GOOGLE_RENDER_PROD_DATA_WRITES"
