@@ -38,6 +38,9 @@ export function financeP3ValidDetail(x){
     typeof r.linkedFinCap!=='boolean'||typeof r.editable!=='boolean'||
     typeof r.cancellable!=='boolean'||typeof r.restorable!=='boolean')
   throw Error('FINANCE_P3_UNVERIFIED_NATIVE_DETAIL');
+ if((r.status==='archived'&&(r.editable||r.cancellable))||
+    (r.status==='active'&&r.restorable))
+  throw Error('FINANCE_P3_STATUS_FLAGS_INVALID');
  if(r.linkedFinCap&&[r.editable,r.cancellable,r.restorable].some(Boolean))
   throw Error('FINANCE_P3_LINKED_BATCH_GUARD');
  if(r.operationType==='OWNER_TRANSFER'&&r.ownerDirection==='investments'&&
@@ -190,7 +193,7 @@ export function mountFinanceP3Editor(root,{fetchPage,postAction,onSaved,today}={
      answer.revisionAfter!==r.revision+1)
     throw Error('FINANCE_P3_UNVERIFIED_WRITE_RECEIPT');
    const id=r.id;
-   pending=null;
+   pending=null;busy=false;
    await open(id);
    if(live){feedback='Сохранено в PostgreSQL. Версия и эффект перечитаны с сервера.';failed=false;render();}
    await onSaved();
@@ -199,7 +202,7 @@ export function mountFinanceP3Editor(root,{fetchPage,postAction,onSaved,today}={
    const code=String(e?.message||'');
    const status=Number(e?.httpStatus);
    if(status===409||/REVISION_CONFLICT|STATUS_CONFLICT/.test(code)){
-    const id=detail.record.id;pending=null;await open(id);
+    const id=detail.record.id;pending=null;busy=false;await open(id);
     feedback='Запись уже изменилась. Проверь новую версию перед сохранением.';failed=true;render();
    }else if([400,403,503].includes(status)){
     pending=null;feedback='Операция отклонена защитой. Ничего повторно не отправлено.';failed=true;render();
