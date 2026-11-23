@@ -7,6 +7,8 @@ import {readNativeFinanceTransactionDetail,NativeFinanceTransactionDetailError}
  from '../domains/finance/finance-p3-transaction-detail.mjs';
 import {financeLegacyNativeCreateAction,financeLegacyFormHtml}
  from '../domains/finance/finance-capital-view.mjs';
+import {normalizeFinanceCreate} from '../domains/finance/finance-create-normalize.mjs';
+import {financeLegacyActiveOrder} from '../domains/finance/finance-capital-view.mjs';
 
 const id='00000000-0000-4000-8000-000000000071';
 const order='00000000-0000-4000-8000-000000000072';
@@ -129,4 +131,36 @@ test('P3 mounted only as native GET; P1 action remains in paginated history',()=
  assert.match(app,/onEditTransaction:id=>/);
  assert.match(app,/postAction:payload=>financeNativePostAction\(payload\)/);
  assert.match(parity,/data-finance-p1-open-edit/);
+});
+
+test('P3 client-material transit never becomes economic profit in canonical normalizer',()=>{
+ const obj='00000000-0000-4000-8000-000000000074';
+ const client='00000000-0000-4000-8000-000000000075';
+ const refs={
+  workOrders:{[order]:{workOrderId:order,objectId:obj,clientId:client}},
+  objects:{[obj]:{objectId:obj,clientId:client}},clients:{[client]:{clientId:client}}
+ };
+ const common={transactionDate:'2026-11-23',workOrderId:order,
+  currencyOriginal:'AMD',commissionOriginal:'0'};
+ const incoming=normalizeFinanceCreate({...common,operationType:'INCOME',
+  category:'client_material_funds',amountOriginal:'50',
+  incomeRecognition:'RECEIVED_ONLY'},{todayKey:'2026-11-23',references:refs});
+ assert.equal(incoming.cashEffectBase,50);
+ assert.equal(incoming.profitEffectBase,0);
+ const purchase=normalizeFinanceCreate({...common,operationType:'EXPENSE',
+  category:'client_material_purchase',amountOriginal:'30'},
+  {todayKey:'2026-11-23',references:refs});
+ assert.equal(purchase.cashEffectBase,-30);
+ assert.equal(purchase.profitEffectBase,0);
+});
+test('P3 reuses only verified active work-order prefill, never planned or stale session',()=>{
+ const snap={currentSession:{ended_at:null,day_date:'2026-11-23',order_id:order},
+  contextOrder:{id:order,object_id:'00000000-0000-4000-8000-000000000074',
+   status:'active',title:'Native order'}};
+ assert.equal(financeLegacyActiveOrder(snap,'2026-11-23').id,order);
+ assert.equal(financeLegacyActiveOrder(snap,'2026-11-24'),null);
+ assert.equal(financeLegacyActiveOrder({...snap,currentSession:{
+  ...snap.currentSession,ended_at:'2026-11-23T12:00:00Z'}},'2026-11-23'),null);
+ assert.equal(financeLegacyActiveOrder({...snap,contextOrder:{
+  ...snap.contextOrder,status:'planned'}},'2026-11-23'),null);
 });
