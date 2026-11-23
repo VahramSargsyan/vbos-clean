@@ -1,0 +1,92 @@
+# One-time Capital P2 source qualification expressly approved by owner, 2026-11-23.
+# This newly-created workflow is triggered only by this file's commit on P2 branch.
+# No Neon/Google/Render/PROD/real money, no secrets, no deployment, no parallel jobs.
+name: VBOS Clean Capital P2 one-shot Node and disposable PostgreSQL 17
+on:
+  push:
+    branches:
+      - feature/capital-p2-native-overview-history-20261123
+    paths:
+      - .github/workflows/capital-p2-single-disposable-pg17-20261123.yml
+permissions:
+  contents: read
+concurrency:
+  group: capital-p2-single-disposable-pg17-20261123
+  cancel-in-progress: false
+jobs:
+  capital-p2:
+    if: "github.event.head_commit.message == 'ci(capital): one-shot P2 disposable PG17 qualification'"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 32
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test_only_password
+          POSTGRES_DB: vbos_mvp_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vbos_mvp_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:test_only_password@127.0.0.1:5432/vbos_mvp_ci
+      CI: 'true'
+    steps:
+      - name: Checkout exact P2 triggering commit (no credentials retained)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies without scripts
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund
+      - name: Verify source layout, exact SHA and P2 application syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          npm run verify:source
+          node --check server.mjs
+          node --check public/app.js
+          node --check domains/finance/capital-native-overview-history.mjs
+          node --check domains/finance/capital-native-overview-view.mjs
+          node --check tests/capital-p2-native-overview.test.mjs
+          node --check tests/capital-p2-native-overview-pg.e2e.mjs
+          echo "CAPITAL_P2_EXACT_SOURCE_SYNTAX_PASS=$GITHUB_SHA"
+      - name: Capital P2 focused owner read and mobile UX tests
+        run: node --test tests/capital-p2-native-overview.test.mjs
+      - name: Complete native Node regression (including Finance B22 B23 P1 P2)
+        run: npm test
+      - name: Full ephemeral PG17 E2E (B23 P1 then P2 real fund movement accounting)
+        run: npm run test:e2e
+      - name: Reset only disposable finance schemas for standalone B21 signed fence regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import pg from 'pg';
+          const uri=process.env.TEST_DATABASE_URL||'';
+          const u=new URL(uri);
+          if(!['postgres:','postgresql:'].includes(u.protocol)||
+             !['127.0.0.1','localhost'].includes(u.hostname)||
+             u.pathname!=='/vbos_mvp_ci')
+            throw new Error('P2_ONLY_DISPOSABLE_PG17_RESET_ALLOWED');
+          const c=new pg.Client({connectionString:uri,ssl:false});
+          await c.connect();
+          try{
+            const name=(await c.query('SELECT current_database() name')).rows[0].name;
+            if(name!=='vbos_mvp_ci')throw new Error('P2_WRONG_DB');
+            for(const schema of ['mvp_finance_native','mvp_finance_stage','mvp_history'])
+              await c.query('DROP SCHEMA IF EXISTS '+schema+' CASCADE');
+          }finally{await c.end();}
+          console.log('CAPITAL_P2_EPHEMERAL_ONLY_RESET_PASS');
+          NODE
+      - name: Existing B21 standalone PG17 signed receipt and immutable Google archive
+        run: node --test tests/finance-b21-postfence-attestation-pg.e2e.mjs
+      - name: Final exact-source one-shot receipt
+        run: |
+          echo "CAPITAL_P2_FULL_DISPOSABLE_PG17_PASS_SOURCE=$GITHUB_SHA"
+          echo "CAPITAL_P2_NO_NEON_GOOGLE_RENDER_PROD_WRITES"
