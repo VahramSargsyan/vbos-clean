@@ -6,10 +6,12 @@ function summaryCard(label,value,hint=''){return '<div class="card"><span>'+esc(
  * No HTTP POST, storage, local balance computation, or mutation of archived records. */
 const LEGACY_FORMS=Object.freeze(['INCOME','EXPENSE','WORKER','OWNER_TRANSFER','INVEST']);
 const LEGACY_INCOME=Object.freeze([
- ['current_work','Оплата текущей работы'],['advance','Аванс'],['old_debt','Старый долг'],
+ ['current_work','Оплата текущей работы'],['advance','Аванс'],
+ ['client_material_funds','Деньги клиента на материалы'],['old_debt','Старый долг'],
  ['bonus','Бонус'],['other','Другой доход']]);
 const LEGACY_EXPENSE=Object.freeze([
- ['materials','Материалы'],['transport','Транспорт'],['tools','Инструменты'],
+ ['materials','Материалы'],['client_material_purchase','Покупка за деньги клиента'],
+ ['transport','Транспорт'],['tools','Инструменты'],
  ['subcontractor','Подрядчик'],['office','Офис'],['other','Другой расход']]);
 const LEGACY_RECOGNITION=Object.freeze([
  ['EARNED_AND_RECEIVED','Заработано и получено'],['RECEIVED_ONLY','Только получено'],
@@ -183,6 +185,8 @@ export function validateFinanceLegacyPreview(raw,{refs={}}={}){
   category=String(raw.category||'');recognition=String(raw.incomeRecognition||'');
   if(!LEGACY_INCOME.some(([id])=>id===category)||
      !LEGACY_RECOGNITION.some(([id])=>id===recognition))throw Error('Неверная категория дохода');
+  if(category==='client_material_funds'&&recognition!=='RECEIVED_ONLY')
+   throw Error('Деньги клиента на материалы учитываются только как поступление');
   if(recognition==='EARNED_ONLY'&&Number(commission)>0)
    throw Error('Для только заработанного дохода комиссия недопустима');
  }else if(type==='EXPENSE'){
@@ -200,7 +204,8 @@ export function validateFinanceLegacyPreview(raw,{refs={}}={}){
  }
  const workOrderId=type==='OWNER_TRANSFER'?'':String(raw.workOrderId||'');
  const objectId=type==='OWNER_TRANSFER'?'':String(raw.objectId||'');
- const needsOrder=(type==='INCOME'&&['current_work','advance'].includes(category))||
+ const needsOrder=(type==='INCOME'&&['current_work','advance','client_material_funds'].includes(category))||
+  (type==='EXPENSE'&&category==='client_material_purchase')||
   ['WORKER_ACCRUAL','WORKER_ACCRUAL_PAYMENT'].includes(type);
  const orders=legacyReferences(refs,'orders'),objects=legacyReferences(refs,'objects');
  if(needsOrder&&!workOrderId)throw Error('Для этого действия нужен заказ');
@@ -508,7 +513,7 @@ export function mountFinanceCapitalArchivePanel(root,{fetchPage,mode,onDraft,ref
    if(form.elements?.fxRate){form.elements.fxRate.required=!same;
     if(same)form.elements.fxRate.value='1';}
   }else if(el.name==='category'&&form.elements?.incomeRecognition){
-   form.elements.incomeRecognition.value=['advance','old_debt'].includes(el.value)?
+   form.elements.incomeRecognition.value=['advance','old_debt','client_material_funds'].includes(el.value)?
     'RECEIVED_ONLY':'EARNED_AND_RECEIVED';
   }else if(el.name==='workOrderId'){
    userTouchedOrder=true;
@@ -522,7 +527,8 @@ export function mountFinanceCapitalArchivePanel(root,{fetchPage,mode,onDraft,ref
   const operation=form.elements?.operationType?.value;
   const category=form.elements?.category?.value;
   const select=form.elements?.workOrderId;
-  if(select)select.required=(operation==='INCOME'&&['current_work','advance'].includes(category))||
+  if(select)select.required=(operation==='INCOME'&&['current_work','advance','client_material_funds'].includes(category))||
+   (operation==='EXPENSE'&&category==='client_material_purchase')||
    ['WORKER_ACCRUAL','WORKER_ACCRUAL_PAYMENT'].includes(operation);
  };
  const onSubmit=e=>{

@@ -79,6 +79,7 @@ let financeDraftIntent='';
 let financeOpeningPanel=null,financeOpeningModulePromise=null;
 let financeNativePanel=null,financeNativeModulePromise=null;
 let financeParityPanel=null,financeParityModulePromise=null;
+let financeP3Panel=null,financeP3ModulePromise=null;
 let capitalP2Panel=null,capitalP2ModulePromise=null;
 let financeOrderPanel=null,financeOrderModulePromise=null;
 let financeWorkerPanel=null,financeWorkerModulePromise=null;
@@ -2683,7 +2684,8 @@ async function mountHistoricalOrders(){
 }
 function financeCapitalView(mode){
  if(mode==='finance')return '<h1>Финансы</h1>'+
-  '<section class="card" id="financeP1Mount" role="region" aria-label="Текущая финансовая сводка и история PostgreSQL"><p class="muted">Загрузка подтверждённого финансового реестра…</p></section>'+
+  '<section class="card" id="financeP1Mount" role="region" aria-label="Текущая финансовая сводка и история PostgreSQL"><p class="muted">Загрузка подтверждённого финансового реестра…</p></section>'+ 
+  '<div id="financeP3Mount" role="region" aria-label="Изменение нативной финансовой операции"></div>'+
    '<section class="card" id="financeNativeMount" role="region" aria-label="Новые операции PostgreSQL"><p class="muted">Загрузка новых операций…</p></section>'+
   '<section class="card" aria-label="Финансовая сводка и операции"><div id="financeArchiveMount" role="region" aria-label="Историческая финансовая сводка"><p class="muted">Загрузка проверенной сводки…</p></div></section>'+
   '<details class="card" id="financeDraftDetails"><summary>Черновик операции · деньги не сохраняются</summary><section id="financeOpeningMount" role="region" aria-label="Проверка черновика PostgreSQL"><p class="muted">Проверка начальных остатков…</p></section></details>'+
@@ -2791,6 +2793,26 @@ async function mountFinanceOpening(){
  }
 }
 
+async function mountFinanceP3(){
+ const root=$('#financeP3Mount');
+ if(!data||tab!=='finance'||!root)return;
+ try{
+  const mod=await (financeP3ModulePromise??=import('/finance-p3-transaction-editor-view.mjs'));
+  if(!data||tab!=='finance'||root!==$('#financeP3Mount'))return;
+  financeP3Panel=mod.mountFinanceP3Editor(root,{
+   today:data.today,fetchPage:path=>api(path),
+   postAction:payload=>financeNativePostAction(payload),
+   onSaved:async()=>{
+    if(financeNativePanel?.load)await financeNativePanel.load();
+    if(financeParityPanel?.load)await financeParityPanel.load();
+    if(capitalP2Panel?.load)await capitalP2Panel.load();
+   }
+  });
+ }catch{
+  if(data&&tab==='finance'&&root===$('#financeP3Mount'))
+   root.textContent='Полный редактор нативных операций недоступен.';
+ }
+}
 async function mountFinanceParity(){
  const root=$('#financeP1Mount');
  if(!data||tab!=='finance'||!root)return;
@@ -2800,6 +2822,10 @@ async function mountFinanceParity(){
   financeParityPanel=mod.mountNativeFinanceParity(root,{
    fetchPage:path=>api(path),
    // Reuse exactly B22's owner/session/CSRF/idempotent POST form: never add a writer.
+   onEditTransaction:id=>{
+    if(!financeP3Panel?.open)return false;
+    void financeP3Panel.open(id);return true;
+   },
    onQuickAction:action=>{
     const key=['INCOME','EXPENSE','WORKER','OWNER_TRANSFER','INVEST'].includes(action)?action:null;
     if(!key)return false;
@@ -2982,6 +3008,7 @@ function render(){
  if(financeOpeningPanel){financeOpeningPanel.unmount();financeOpeningPanel=null;}
  if(financeNativePanel){financeNativePanel.unmount();financeNativePanel=null;}
  if(financeParityPanel){financeParityPanel.unmount();financeParityPanel=null;}
+ if(financeP3Panel){financeP3Panel.unmount();financeP3Panel=null;}
  if(capitalP2Panel){capitalP2Panel.unmount();capitalP2Panel=null;}
  if(financeMonthlyPanel){financeMonthlyPanel.unmount();financeMonthlyPanel=null;}
  if(financeOrderPanel){financeOrderPanel.unmount();financeOrderPanel=null;}if(financeWorkerPanel){financeWorkerPanel.unmount();financeWorkerPanel=null;}
@@ -3021,6 +3048,7 @@ function render(){
  if(tab==='finance')void mountFinanceWorkerHistory();
  if(tab==='finance')void mountFinanceObjectResult();
  if(tab==='finance')void mountFinanceMonthlyGains();
+ if(tab==='finance')void mountFinanceP3();
  if(tab==='finance')void mountFinanceParity();
  if(tab==='capital')void mountCapitalP2();
  if(tab==='finance'||tab==='capital'){void mountFinanceOpening();void mountFinanceNative();void mountFinanceCapitalArchive();void mountFinanceReview();void mountFinanceReviewAudit();void mountFinanceCorrections();void mountFinanceAudit();}
