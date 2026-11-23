@@ -1,0 +1,69 @@
+# One-shot owner-authorized CRM H27 qualification on source-only candidate.
+# No Google/Neon/Render/PROD credentials or writes. Disposable localhost PG17.
+name: VBOS Clean CRM H27 historical read-only UX and PG17 qualification
+on:
+  push:
+    branches:
+      - feature/crm-historical-browse-readonly-20261123
+    paths:
+      - .github/workflows/crm-h27-single-disposable-pg17-20261123.yml
+permissions:
+  contents: read
+concurrency:
+  group: crm-h27-single-disposable-pg17-20261123
+  cancel-in-progress: false
+jobs:
+  crm-h27:
+    if: "${{ github.event.head_commit.message == 'ci(crm): one-shot CRM H27 PG17 qualification' }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test_only_password
+          POSTGRES_DB: vbos_mvp_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vbos_mvp_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:test_only_password@127.0.0.1:5432/vbos_mvp_ci
+      CI: 'true'
+    steps:
+      - name: Checkout exact triggered candidate SHA
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies without executing package scripts
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund
+      - name: Source layout and syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          npm run verify:source
+          node --check crm-historical-archive.mjs
+          node --check public/crm-history-archive-view.mjs
+          node --check public/app.js
+          node --check server.mjs
+          node --check tests/crm-history-archive.test.mjs
+          node --check tests/crm-history-archive-pg.e2e.mjs
+          echo "CRM_H27_SOURCE_SYNTAX_PASS=$GITHUB_SHA"
+      - name: Historical CRM owner source and legacy UI parity tests
+        run: node --test tests/crm-history-archive.test.mjs
+      - name: Actual local disposable PostgreSQL 17 archive query and hash tamper check
+        run: node --test tests/crm-history-archive-pg.e2e.mjs
+      - name: Full Node UI and API unit regression
+        run: npm test
+      - name: Full disposable PostgreSQL 17 application E2E
+        run: npm run test:e2e
+      - name: One-shot PASS receipt
+        run: |
+          echo "CRM_H27_READONLY_ARCHIVE_PG17_PASS_SOURCE=$GITHUB_SHA"
+          echo "CRM_H27_NO_REMOTE_NEON_GOOGLE_RENDER_PROD_WRITES"
