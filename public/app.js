@@ -69,6 +69,7 @@ function clientPortfolioSection(x,kind){
 let objectContactState={id:null,items:[],loading:false,loaded:false,error:'',hasMore:false,nextCursor:null};
 let orderContactState={id:null,items:[],loading:false,loaded:false,error:'',hasMore:false,nextCursor:null};
 let orderLogs={id:null,items:[],loaded:false,loading:false,error:'',hasMore:false,nextCursor:null,context:null};
+let orderFinance={id:null,items:[],metrics:null,loading:false,loaded:false,error:'',hasMore:false,nextCursor:null,totalCount:0};
 let history={filters:{mode:'day',day:'',from:'',to:'',orderId:''},items:[],nextCursor:null,hasMore:false,loaded:false,loading:false};
 let historicalOrdersPanel=null,historicalOrdersModulePromise=null;
 let historicalCrmPanel=null,historicalCrmModulePromise=null;
@@ -2224,6 +2225,84 @@ async function loadOrderCardLogs(id,append=false){
   }
  }
 }
+
+/** Finance B23: native PostgreSQL only, scoped by exact current Order UUID. */
+async function loadOrderFinance(id,more=false){
+ if(!id)return;
+ if(orderFinance.id!==id)orderFinance={id,items:[],metrics:null,loading:false,loaded:false,
+  error:'',hasMore:false,nextCursor:null,totalCount:0};
+ const state=orderFinance;
+ if(state.loading||!more&&(state.loaded||state.error)||more&&(!state.loaded||!state.nextCursor))return;
+ state.loading=true;state.error='';
+ try{
+  const result=await api('/api/finance/order-native-result?orderId='+encodeURIComponent(id)+
+   (more?'&cursor='+encodeURIComponent(state.nextCursor):''));
+  if(orderFinance!==state)return;
+  if(result?.version!=='FINANCE_B23_ORDER_NATIVE_RESULT_V1'||result.source!=='CLEAN_NATIVE_ORDER_LEDGER'||
+   result.readonly!==true||result.historicalIncluded!==false||result.orderId!==id||
+   result.currency!=='AMD'||!result.metrics||!Array.isArray(result.items)||
+   result.items.length>20||!Number.isSafeInteger(result.totalCount)||
+   Boolean(result.hasMore)!==Boolean(result.nextCursor))
+   throw Error('Источник финансового результата не подтверждён.');
+  const items=more?state.items.concat(result.items):result.items;
+  if(new Set(items.map(row=>row.id)).size!==items.length||
+   items.some(row=>!row.id||!['active','archived'].includes(row.status)))
+   throw Error('Недостоверная история финансов заказа.');
+  state.items=items;state.metrics=result.metrics;state.totalCount=result.totalCount;
+  state.hasMore=result.hasMore;state.nextCursor=result.nextCursor;state.loaded=true;
+ }catch(error){if(orderFinance===state)state.error=String(error?.message||'Финансы недоступны.');}
+ finally{
+  if(orderFinance===state){state.loading=false;
+   if(orderDetailId===id&&(tab==='orders'||tab==='catalog'&&catalog.entity==='orders'))render();}
+ }
+}
+function orderFinanceMoney(value){
+ const raw=String(value??'');
+ if(!/^-?(0|[1-9]\d*)(?:\.\d{1,6})?$/.test(raw))return '—';
+ const neg=raw.startsWith('-'),[w,f='']=(neg?raw.slice(1):raw).split('.');
+ const tail=f.replace(/0+$/,'');
+ return (neg?'-':'')+w.replace(/\B(?=(\d{3})+(?!\d))/g,'\u00a0')+(tail?','+tail:'')+' ֏';
+}
+function orderFinanceView(x){
+ const state=orderFinance,active=state.id===x.id;
+ let h='<section class="card" aria-label="Финансовый результат заказа"><h2>Финансы заказа</h2>'+
+  '<p class="small muted">Новый учёт PostgreSQL · только операции с UUID этого заказа. Архив Google отдельно.</p>';
+ if(!active||state.loading&&!state.loaded)h+='<p role="status">Загрузка финансов…</p>';
+ if(active&&state.error)h+='<p role="alert">'+esc(state.error)+'</p>'+
+  '<button type="button" data-order-finance-retry="'+esc(x.id)+'">Повторить</button>';
+ if(active&&state.loaded){
+  const money=(title,val)=>'<div class="card"><span>'+esc(title)+'</span><strong>'+
+   esc(orderFinanceMoney(val))+'</strong></div>';
+  if(state.totalCount===0)h+='<p class="muted">Привязанных финансовых операций нет. Результат пока неизвестен, не подтверждённый ноль.</p>';
+  else{
+   const m=state.metrics;
+   h+='<div class="summary">'+money('Фактически получено',m.receivedBase)+
+    money('Из них авансы',m.advanceBase)+money('Денежные списания',m.cashOutBase)+
+    money('Денежный результат',m.cashBalanceBase)+'</div>'+
+    '<details><summary>Начисления, расходы и обязательства</summary><div class="summary">'+
+    money('Начисленная выручка',m.earnedBase)+money('Учётные расходы',m.economicExpenseBase)+
+    money('Результат по проводкам',m.profitBase)+money('Начислено работникам',m.workerAccruedBase)+
+    money('Выплачено работникам',m.workerPaidBase)+money('Осталось работникам',m.workerPayableBase)+
+    '</div><p class="small muted">Результат по проводкам не равен чистой прибыли. Начисление и оплата не одно и то же. Комиссии учтены в денежном результате.</p></details>';
+  }
+  const cat={current_work:'Оплата работы',advance:'Аванс',materials:'Материалы',transport:'Транспорт',
+   tools:'Инструменты',subcontractor:'Подрядчик',office:'Офис',other:'Прочее',bonus:'Бонус',
+   worker:'Работники',client_material_purchase:'Материалы клиента'};
+  const typ={INCOME:'Поступление',EXPENSE:'Расход',WORKER_ACCRUAL:'Начисление работнику',
+   WORKER_PAYMENT:'Выплата работнику',WORKER_ACCRUAL_PAYMENT:'Начисление и выплата'};
+  h+='<details><summary>Связанные операции ('+esc(state.totalCount)+')</summary>'+
+   (state.items.map(row=>'<article class="record"><strong>'+
+    esc(typ[row.type]||row.type)+' · '+esc(orderFinanceMoney(row.amountBase))+'</strong>'+
+    '<p class="small muted">'+esc(row.date)+' · '+esc(cat[row.category]||row.category||'Без категории')+
+    ' · '+(row.status==='active'?'Активна':'Отменена')+'</p></article>').join('')||
+    '<p class="muted">Операций нет.</p>')+
+   (state.hasMore?'<button type="button" data-order-finance-more="'+esc(x.id)+'">Показать ещё 20</button>':'')+
+   '</details>';
+  if(state.loading)h+='<p role="status">Загрузка истории…</p>';
+ }
+ return h+'</section>';
+}
+
 function orderWorklogsView(x){
  const state=orderLogs,active=state.id===x.id;
  let html='<section class="card" aria-label="Фактические работы заказа"><h2>Фактические работы</h2>'+
@@ -2330,7 +2409,7 @@ function orderDetails(x){
   workerOrderPanel(x)+
   (operational?'<div class="actions"><button type="button" class="primary compact" data-act="work_start_order" data-order-id="'+esc(x.id)+'">Начать работу по заказу</button></div>'+
    '<button type="button" class="primary wide-button" data-workflow-open="log" data-order-id="'+esc(x.id)+'">+ Записать работу</button>':'')+
-  orderWorklogsView(x)+orderContactsView(x)+
+  orderFinanceView(x)+orderWorklogsView(x)+orderContactsView(x)+
   '<section class="order-close-preview card" aria-label="Проверка закрытия заказа"><h2>Закрытие заказа</h2>'
   +'<p class="muted">Предварительная проверка: заказ и расчёты не меняются.</p>'
   +'<button type="button" data-close-preview="'+esc(x.id)+'"'+(closePreviewState.id===x.id&&closePreviewState.loading?' disabled':'')+'>Проверить закрытие</button>'
@@ -2884,7 +2963,9 @@ function render(){
   void loadObjectCardOrders(objectDetailId);
   void loadObjectContacts(objectDetailId);
  }
+ if(!orderDetailId)orderFinance={id:null,items:[],metrics:null,loading:false,loaded:false,error:'',hasMore:false,nextCursor:null,totalCount:0};
  if(orderDetailId&&(tab==='orders'||(tab==='catalog'&&catalog.entity==='orders'))){
+  void loadOrderFinance(orderDetailId);
   void loadOrderCardLogs(orderDetailId);
   void loadOrderContacts(orderDetailId);
  }
@@ -4065,6 +4146,10 @@ $('#content').addEventListener('click',async e=>{
   }
   const orderContactMore=e.target.closest('button[data-order-contact-more]');
   if(orderContactMore&&orderDetailId===orderContactMore.dataset.orderContactMore){await loadOrderContacts(orderDetailId,true);return;}
+  const financeMore=e.target.closest('button[data-order-finance-more]');
+  if(financeMore&&orderDetailId===financeMore.dataset.orderFinanceMore){await loadOrderFinance(orderDetailId,true);return;}
+  const financeRetry=e.target.closest('button[data-order-finance-retry]');
+  if(financeRetry&&orderDetailId===financeRetry.dataset.orderFinanceRetry){await loadOrderFinance(orderDetailId,orderFinance.loaded);return;}
   const orderMore=e.target.closest('button[data-order-logs-more]');
   if(orderMore&&orderDetailId===orderMore.dataset.orderLogsMore){await loadOrderCardLogs(orderDetailId,true);return;}
   const orderObject=e.target.closest('button[data-order-open-object]');
