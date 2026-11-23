@@ -133,3 +133,26 @@ test('P4 integration mounted only as owner-authenticated GET and preserves archi
  assert.match(app,/id="financeObjectResultMount"/);
  assert.match(app,/id="financeWorkerResultMount"/);
 });
+
+test('P4 rapid Object to Worker switch rejects stale overview response',async()=>{
+ const callbacks={};const requests=[];const root={
+  innerHTML:'',addEventListener:(n,f)=>{callbacks[n]=f;},
+  removeEventListener:(n)=>{delete callbacks[n];}
+ };
+ const panel=mountFinanceP4Native(root,{fetchPage:url=>new Promise(resolve=>requests.push({url,resolve})),
+  onOpenScope:()=>true});
+ assert.equal(requests.length,1);
+ callbacks.click({target:{closest:()=>({
+  getAttribute:k=>k==='data-finance-p4-kind'?'workers':null,
+  hasAttribute:()=>false
+ })}});
+ assert.equal(requests.length,2,'new tab should start a new GET without waiting for old');
+ requests[1].resolve(source('workers'));
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.match(root.innerHTML,/не полный расчёт зарплаты/);
+ requests[0].resolve(source('objects'));
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.match(root.innerHTML,/не полный расчёт зарплаты/);
+ assert.doesNotMatch(root.innerHTML,/Заработано.*Получено/);
+ panel.unmount();
+});
