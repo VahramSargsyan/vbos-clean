@@ -74,7 +74,7 @@ test('quick action refuses to post without a confirmed PostgreSQL writer',async(
  handlers.click({target:{closest:s=>s==='[data-finance-legacy-draft]'?
   {getAttribute:()=> 'INCOME'}:null}});
  await Promise.resolve();await Promise.resolve();
- assert.match(host.innerHTML,/PostgreSQL не подключён/);
+ assert.match(host.textContent,/PostgreSQL не подключён/);
  panel.unmount();
 });
 test('missing financial value fails closed rather than displaying zero',()=>{
