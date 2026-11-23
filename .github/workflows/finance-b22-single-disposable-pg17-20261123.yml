@@ -60,6 +60,25 @@ jobs:
         run: npm test
       - name: Full disposable PostgreSQL application E2E
         run: npm run test:e2e
+      - name: Reset only disposable Finance schemas before independent B21 standalone test
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import pg from 'pg';
+          const url=new URL(process.env.TEST_DATABASE_URL||'');
+          if(!['localhost','127.0.0.1'].includes(url.hostname)||url.pathname!=='/vbos_mvp_ci'){
+            throw new Error('B22_EPHEMERAL_DB_RESET_FORBIDDEN');
+          }
+          const c=new pg.Client({connectionString:process.env.TEST_DATABASE_URL,ssl:false});
+          await c.connect();
+          try{
+            for(const schema of ['mvp_finance_native','mvp_finance_stage','mvp_history']){
+              await c.query('DROP SCHEMA IF EXISTS '+schema+' CASCADE');
+            }
+          }finally{await c.end();}
+          console.log('B22_EPHEMERAL_LOCAL_FINANCE_SCHEMAS_CLEAN');
+          NODE
       - name: Additional signed B21 source / immutable receipt E2E
         run: node --test tests/finance-b21-postfence-attestation-pg.e2e.mjs
       - name: B22 test receipt
