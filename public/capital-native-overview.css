@@ -1,0 +1,45 @@
+/* Capital P2 — isolated mobile-safe native capital overview, no write controls. */
+.capital-p2-root{min-width:0}
+.capital-p2-root>h2{margin:2px 0 6px}
+.capital-p2-totals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}
+.capital-p2-total{background:var(--s2,#f7f8fa);border:1px solid var(--hairline,#d9dfe7);border-radius:12px;display:grid;gap:7px;padding:14px;min-width:0}
+.capital-p2-total>span{font-size:12px;color:var(--mute,#657184)}
+.capital-p2-total strong{font-size:19px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.capital-p2-total small{font-size:11px;line-height:1.4;color:var(--mute,#657184)}
+.capital-p2-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:18px 0 7px}
+.capital-p2-actions button{min-height:48px;padding:10px 8px;font-weight:650}
+.capital-p2-actions button:first-child{background:var(--accent,#1557b0);color:#fff;border-color:var(--accent,#1557b0)}
+.capital-p2-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:16px 0}
+.capital-p2-groups>div{min-width:0}
+.capital-p2-groups h3{font-size:16px;margin:10px 0}
+.capital-p2-fund{border:1px solid var(--hairline,#d9dfe7);border-radius:11px;margin:8px 0;min-width:0;overflow:hidden}
+.capital-p2-fund summary{display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer;min-height:54px;padding:12px;list-style:none}
+.capital-p2-fund summary::-webkit-details-marker{display:none}
+.capital-p2-fund summary::before{content:'▸';color:var(--mute,#657184);font-size:16px}
+.capital-p2-fund[open] summary::before{content:'▾'}
+.capital-p2-fund-title{display:grid;gap:4px;min-width:0;flex:1}
+.capital-p2-fund-title strong{font-size:13px;overflow-wrap:anywhere}
+.capital-p2-fund-title small{font-size:11px;color:var(--mute,#657184);overflow-wrap:anywhere}
+.capital-p2-fund-balance{font-size:13px;white-space:normal;overflow-wrap:anywhere;text-align:right;font-variant-numeric:tabular-nums}
+.capital-p2-fund-detail{padding:0 12px 12px;display:grid;gap:6px}
+.capital-p2-progress{height:9px;border-radius:99px;background:var(--hairline,#d9dfe7);overflow:hidden}
+.capital-p2-progress>div{height:100%;background:var(--accent,#1557b0);max-width:100%}
+.capital-p2-detail-line{display:flex;justify-content:space-between;gap:7px;border-bottom:1px solid var(--hairline,#d9dfe7);padding:7px 0;font-size:12px}
+.capital-p2-detail-line span{max-width:65%}
+.capital-p2-detail-line strong{text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.capital-p2-fund-detail button{min-height:44px;margin-top:6px}
+.capital-p2-history{margin-top:22px;border-top:1px solid var(--hairline,#d9dfe7);padding-top:8px}
+.capital-p2-history>summary{min-height:48px}
+.capital-p2-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px 12px;margin:12px 0}
+.capital-p2-filters label{min-width:0}
+.capital-p2-filters input,.capital-p2-filters select{min-width:0;min-height:44px}
+.capital-p2-filter-actions{display:flex;gap:8px;align-items:end}
+.capital-p2-filter-actions button{min-height:48px;min-width:110px}
+.capital-p2-records{display:grid;gap:9px;margin:14px 0}
+.capital-p2-movement{border:1px solid var(--hairline,#d9dfe7);border-radius:11px;padding:13px;overflow-wrap:anywhere}
+.capital-p2-movement-head{display:flex;justify-content:space-between;gap:8px;font-variant-numeric:tabular-nums}
+.capital-p2-movement-head strong:last-child{text-align:right}
+.capital-p2-movement p{margin:7px 0}
+.capital-p2-history [data-capital-p2-more]{min-height:48px;width:100%}
+@media(max-width:900px){.capital-p2-groups{grid-template-columns:minmax(0,1fr)}.capital-p2-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.capital-p2-totals{grid-template-columns:minmax(0,1fr)}.capital-p2-actions{grid-template-columns:minmax(0,1fr)}.capital-p2-filters{grid-template-columns:minmax(0,1fr)}.capital-p2-filter-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.capital-p2-filter-actions button{min-width:0}.capital-p2-movement-head{flex-direction:column}}

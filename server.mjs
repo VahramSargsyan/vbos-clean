@@ -49,6 +49,7 @@ import {benchmarkProposalsRead,benchmarkApprovalAction} from './benchmark-approv
 import {historicalOrdersPage,historicalOrderAssessment,historicalFinanceTransactionsPage,historicalFinanceFilterOptions,HistoryOrdersAccessError} from './domains/finance/history-orders-api.mjs';
 import {financeOrderResultRead,FinanceOrderResultError} from './domains/finance/finance-order-result.mjs';
 import {readNativeFinanceHistory,NativeFinanceHistoryError} from './domains/finance/finance-native-summary-history.mjs';
+import {readNativeCapitalOverview,NativeCapitalOverviewError} from './domains/finance/capital-native-overview-history.mjs';
 import {financeWorkerOptionsRead,financeWorkerHistoryRead,FinanceWorkerHistoryError} from './domains/finance/finance-worker-history.mjs';
 import {financeLegacyWorkersPage,FinanceLegacyReferenceError} from './domains/finance/finance-legacy-reference-search.mjs';
 import {financeObjectOptionsRead,financeObjectResultRead,FinanceObjectResultError} from './domains/finance/finance-object-result.mjs';
@@ -120,6 +121,8 @@ const files = {
  '/finance-native-workspace-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-native-workspace-view.mjs',import.meta.url))],
  '/finance-native-summary-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-native-summary-view.mjs',import.meta.url))],
  '/finance-native-summary.css': ['text/css; charset=utf-8',readFileSync(new URL('./public/finance-native-summary.css',import.meta.url))],
+ '/capital-native-overview-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/capital-native-overview-view.mjs',import.meta.url))],
+ '/capital-native-overview.css': ['text/css; charset=utf-8',readFileSync(new URL('./public/capital-native-overview.css',import.meta.url))],
  '/finance-order-result-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-order-result-view.mjs',import.meta.url))],
  '/finance-worker-history-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-worker-history-view.mjs',import.meta.url))],
  '/finance-object-result-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-object-result-view.mjs',import.meta.url))],
@@ -589,6 +592,22 @@ async function handler(req,res){
       throw new AppError(error.status,error.status===503?'FINANCE_P1_ATTESTED_SOURCE_UNAVAILABLE':error.code);
      if(['42P01','3F000','42501'].includes(error?.code))
       throw new AppError(503,'Нативный финансовый источник недоступен.');
+     throw error;
+    }
+   }
+   // Capital P2: owner-attested PostgreSQL fund summary and full movement history.
+   // No writer or fund settings are exposed through this GET.
+   if(pathname==='/api/capital/native-overview-history'&&req.method==='GET'){
+    try{
+     return json(res,200,await readNativeCapitalOverview(pool,
+      new URL(req.url,'http://localhost').searchParams,{authorizeOwner:()=>sessionValid(req)}));
+    }catch(error){
+     if(error instanceof NativeCapitalOverviewError)
+      throw new AppError(error.status,error.code);
+     if(error instanceof NativeFinanceWorkspaceError)
+      throw new AppError(error.status,error.status===503?'CAPITAL_P2_ATTESTED_SOURCE_UNAVAILABLE':error.code);
+     if(['42P01','3F000','42501'].includes(error?.code))
+      throw new AppError(503,'Нативные фонды PostgreSQL сейчас недоступны.');
      throw error;
     }
    }

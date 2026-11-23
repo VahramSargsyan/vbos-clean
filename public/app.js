@@ -79,6 +79,7 @@ let financeDraftIntent='';
 let financeOpeningPanel=null,financeOpeningModulePromise=null;
 let financeNativePanel=null,financeNativeModulePromise=null;
 let financeParityPanel=null,financeParityModulePromise=null;
+let capitalP2Panel=null,capitalP2ModulePromise=null;
 let financeOrderPanel=null,financeOrderModulePromise=null;
 let financeWorkerPanel=null,financeWorkerModulePromise=null;
 let financeObjectPanel=null,financeObjectModulePromise=null;
@@ -2698,6 +2699,7 @@ function financeCapitalView(mode){
   '<section class="card"><div id="financeCorrectionMount" role="region" aria-label="Исправление описаний истории"><p class="muted">Загрузка исправлений…</p></div></section>'+
   '<section class="card"><div id="financeAuditMount" role="region" aria-label="Журнал исправлений истории"><p class="muted">Загрузка журнала…</p></div></section></details>';
  return '<h1>Капитал · фонды</h1>'+
+   '<section class="card" id="capitalP2Mount" role="region" aria-label="Текущие фонды и движения PostgreSQL"><p class="muted">Загрузка текущих фондов PostgreSQL…</p></section>'+
    '<section class="card" id="financeNativeMount" role="region" aria-label="Новые операции PostgreSQL"><p class="muted">Загрузка новых операций…</p></section>'+
   '<section id="financeOpeningMount" role="region" aria-label="Начальное состояние PostgreSQL и черновик операции"><p class="muted">Проверка начальных остатков…</p></section>'+
   '<section class="card"><div id="financeArchiveMount" role="region" aria-label="Сохранённый финансовый архив"><p class="muted">Проверка источника…</p></div></section>'+
@@ -2811,6 +2813,41 @@ async function mountFinanceParity(){
    root.textContent='Текущая финансовая сводка недоступна. Архивные суммы не заменяют текущий баланс.';
  }
 }
+async function mountCapitalP2(){
+ const root=$('#capitalP2Mount');
+ if(!data||tab!=='capital'||!root)return;
+ try{
+  const mod=await (capitalP2ModulePromise??=import('/capital-native-overview-view.mjs'));
+  if(!data||tab!=='capital'||root!==$('#capitalP2Mount'))return;
+  capitalP2Panel=mod.mountNativeCapitalP2(root,{
+   fetchPage:path=>api(path),
+   // The B18 form and guarded B17 money writer remain the only POST authority.
+   // No synthetic capital allocation or fund-edit path is created here.
+   onAction:action=>{
+    if(!['transfer','spend','reverse'].includes(action)||tab!=='capital')return false;
+    if(action==='reverse'){
+     const target=$('#financeNativeMount [data-b18-reverse]');
+     if(!target||target.disabled)return false;
+     target.scrollIntoView?.({behavior:'smooth',block:'center'});
+     target.focus?.({preventScroll:true});
+     return true;
+    }
+    const form=$('#financeNativeMount [data-b18-form="capital"]');
+    const choice=form?.querySelector?.('[data-b18-fund-type]');
+    if(!form||!choice||choice.disabled)return false;
+    choice.value=action==='transfer'?'CAPITAL_TRANSFER':'CAPITAL_SPEND';
+    choice.dispatchEvent(new Event('change',{bubbles:true}));
+    form.scrollIntoView?.({behavior:'smooth',block:'start'});
+    const amount=form.elements?.amount;
+    amount?.focus?.({preventScroll:true});
+    return true;
+   }
+  });
+ }catch{
+  if(data&&tab==='capital'&&root===$('#capitalP2Mount'))
+   root.textContent='Нативный капитал недоступен. Архив ниже не является текущим балансом.';
+ }
+}
 async function mountFinanceNative(){
  const root=$('#financeNativeMount'),mode=tab;
  if(!data||!['finance','capital'].includes(mode)||!root)return;
@@ -2820,7 +2857,10 @@ async function mountFinanceNative(){
   financeNativePanel=mod.mountFinanceNativeWorkspace(root,{
    mode,today:data.today,fetchPage:path=>api(path),
    postAction:payload=>financeNativePostAction(payload),
-   onSource:()=>{if(tab==='finance'&&financeParityPanel?.load)void financeParityPanel.load();}
+   onSource:()=>{
+    if(tab==='finance'&&financeParityPanel?.load)void financeParityPanel.load();
+    if(tab==='capital'&&capitalP2Panel?.load)void capitalP2Panel.load();
+   }
   });
  }catch{
   if(data&&tab===mode&&root===$('#financeNativeMount'))
@@ -2942,6 +2982,7 @@ function render(){
  if(financeOpeningPanel){financeOpeningPanel.unmount();financeOpeningPanel=null;}
  if(financeNativePanel){financeNativePanel.unmount();financeNativePanel=null;}
  if(financeParityPanel){financeParityPanel.unmount();financeParityPanel=null;}
+ if(capitalP2Panel){capitalP2Panel.unmount();capitalP2Panel=null;}
  if(financeMonthlyPanel){financeMonthlyPanel.unmount();financeMonthlyPanel=null;}
  if(financeOrderPanel){financeOrderPanel.unmount();financeOrderPanel=null;}if(financeWorkerPanel){financeWorkerPanel.unmount();financeWorkerPanel=null;}
  if(financeObjectPanel){financeObjectPanel.unmount();financeObjectPanel=null;}
@@ -2981,6 +3022,7 @@ function render(){
  if(tab==='finance')void mountFinanceObjectResult();
  if(tab==='finance')void mountFinanceMonthlyGains();
  if(tab==='finance')void mountFinanceParity();
+ if(tab==='capital')void mountCapitalP2();
  if(tab==='finance'||tab==='capital'){void mountFinanceOpening();void mountFinanceNative();void mountFinanceCapitalArchive();void mountFinanceReview();void mountFinanceReviewAudit();void mountFinanceCorrections();void mountFinanceAudit();}
  if(tab==='serviceReference')void mountServiceReference();
  if(clientDetailId&&(tab==='clients'||(tab==='catalog'&&catalog.entity==='clients'))){
