@@ -2715,7 +2715,12 @@ async function mountFinanceCapitalArchive(){
   if(!data||tab!==mode||root!==$('#financeArchiveMount'))return;
   financeArchivePanel=source.mountFinanceCapitalArchivePanel(root,{mode,fetchPage:path=>api(path),onDraft:openLegacyFinanceDraft,
    today:data.today,refs:{orders:data.orders||[],objects:data.objects||[],workers:data.workers||[]},
-   fetchCurrentContext:()=>api('/api/my-work'),fetchReferencePage:path=>api(path)});
+   fetchCurrentContext:()=>api('/api/my-work'),fetchReferencePage:path=>api(path),
+   fetchNativeState:path=>api(path),postNativeAction:payload=>financeNativePostAction(payload),
+   onNativeSaved:async()=>{
+    if(financeNativePanel?.load)await financeNativePanel.load();
+    $('#financeNativeMount')?.scrollIntoView?.({block:'start'});
+   }});
  }catch{
   if(data&&tab===mode&&root===$('#financeArchiveMount'))
    root.textContent='Не удалось загрузить сохранённый финансовый архив.';
