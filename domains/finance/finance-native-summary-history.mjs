@@ -87,7 +87,7 @@ function whereFor(f,{history=false}={}){
  }
  return {args,sql:conditions.join(' AND ')};
 }
-const sums=[
+export const nativeFinanceScopeSumsSql=Object.freeze([
  "COALESCE(sum(t.amount_base) FILTER (WHERE t.status='active' AND t.operation_type='INCOME' AND coalesce(t.normalized->>'incomeRecognition','')<>'RECEIVED_ONLY'),0)::text AS earned_base",
  "COALESCE(sum(t.amount_base) FILTER (WHERE t.status='active' AND t.operation_type='INCOME' AND coalesce(t.normalized->>'incomeRecognition','')<>'EARNED_ONLY'),0)::text AS received_base",
  "COALESCE(sum(CASE WHEN t.status='active' THEN "+
@@ -99,7 +99,8 @@ const sums=[
  "COALESCE(sum(t.worker_payable_effect_base) FILTER (WHERE t.status='active'),0)::text AS worker_payable_base",
  "COALESCE(sum(t.amount_base) FILTER (WHERE t.status='active' AND t.operation_type IN ('WORKER_PAYMENT','WORKER_ACCRUAL_PAYMENT')),0)::text AS worker_paid_base",
  "COALESCE(sum(t.amount_base) FILTER (WHERE t.status='active' AND t.operation_type='OWNER_TRANSFER'),0)::text AS owner_transfer_base"
-];
+]);
+const sums=nativeFinanceScopeSumsSql;
 const joins=' LEFT JOIN public.mvp_orders o ON o.id=t.work_order_id'+
  ' LEFT JOIN public.mvp_objects obj ON obj.id=t.object_id'+
  ' LEFT JOIN public.mvp_workers w ON w.id=t.worker_id';
