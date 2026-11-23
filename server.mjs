@@ -49,6 +49,7 @@ import {benchmarkProposalsRead,benchmarkApprovalAction} from './benchmark-approv
 import {historicalOrdersPage,historicalOrderAssessment,historicalFinanceTransactionsPage,historicalFinanceFilterOptions,HistoryOrdersAccessError} from './domains/finance/history-orders-api.mjs';
 import {financeOrderResultRead,FinanceOrderResultError} from './domains/finance/finance-order-result.mjs';
 import {readNativeFinanceHistory,NativeFinanceHistoryError} from './domains/finance/finance-native-summary-history.mjs';
+import {readNativeFinanceEntityResults,NativeFinanceEntityResultsError} from './domains/finance/finance-p4-native-entity-results.mjs';
 import {readNativeFinanceTransactionDetail,NativeFinanceTransactionDetailError} from './domains/finance/finance-p3-transaction-detail.mjs';
 import {readNativeCapitalOverview,NativeCapitalOverviewError} from './domains/finance/capital-native-overview-history.mjs';
 import {financeWorkerOptionsRead,financeWorkerHistoryRead,FinanceWorkerHistoryError} from './domains/finance/finance-worker-history.mjs';
@@ -121,6 +122,8 @@ const files = {
  '/finance-opening-preview-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-opening-preview-view.mjs',import.meta.url))],
  '/finance-native-workspace-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-native-workspace-view.mjs',import.meta.url))],
  '/finance-native-summary-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-native-summary-view.mjs',import.meta.url))],
+ '/finance-p4-native-entity-results-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-p4-native-entity-results-view.mjs',import.meta.url))],
+ '/finance-p4-native-entity-results.css': ['text/css; charset=utf-8',readFileSync(new URL('./public/finance-p4-native-entity-results.css',import.meta.url))],
  '/finance-p3-transaction-editor-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-p3-transaction-editor-view.mjs',import.meta.url))],
  '/finance-p3-transaction-editor.css': ['text/css; charset=utf-8',readFileSync(new URL('./public/finance-p3-transaction-editor.css',import.meta.url))],
  '/finance-native-summary.css': ['text/css; charset=utf-8',readFileSync(new URL('./public/finance-native-summary.css',import.meta.url))],
@@ -595,6 +598,22 @@ async function handler(req,res){
       throw new AppError(error.status,error.status===503?'FINANCE_P1_ATTESTED_SOURCE_UNAVAILABLE':error.code);
      if(['42P01','3F000','42501'].includes(error?.code))
       throw new AppError(503,'Нативный финансовый источник недоступен.');
+     throw error;
+    }
+   }
+   // Finance P4: signed native-only object/worker aggregate results, READ ONLY.
+   if(pathname==='/api/finance/native-entity-results'&&req.method==='GET'){
+    try{
+     return json(res,200,await readNativeFinanceEntityResults(pool,
+      new URL(req.url,'http://localhost').searchParams,
+      {authorizeOwner:()=>sessionValid(req)}));
+    }catch(error){
+     if(error instanceof NativeFinanceEntityResultsError)
+      throw new AppError(error.status,error.code);
+     if(error instanceof NativeFinanceWorkspaceError)
+      throw new AppError(error.status,error.code);
+     if(['42P01','3F000','42501'].includes(error?.code))
+      throw new AppError(503,'Нативная аналитика объектов/работников недоступна.');
      throw error;
     }
    }
