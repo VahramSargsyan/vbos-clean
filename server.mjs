@@ -59,6 +59,7 @@ import {financeCorrectionRead,financeCorrectionAction,financeCorrectionAuditRead
 import {financeB11OwnerGateway} from './domains/finance/finance-owner-gateway.mjs';
 import {postHostedFinanceCapital,NativeFinanceWriterError} from './domains/finance/native-finance-writer.mjs';
 import {readNativeFinanceWorkspace,NativeFinanceWorkspaceError} from './domains/finance/native-finance-workspace-read.mjs';
+import {readOrderFinancialResult,OrderFinanceResultError} from './domains/finance/finance-native-order-result.mjs';
 import {readFinanceOpeningPreview,FinanceOpeningPreviewError} from './domains/finance/finance-opening-readonly.mjs';
 import {validateFinanceB15ServerDraft,FinanceB15DraftError} from './domains/finance/finance-draft-server-preview.mjs';
 import {financeCsrfForValidatedSession,verifyFinanceCsrfForValidatedSession} from './domains/finance/finance-session-csrf.mjs';
@@ -552,6 +553,23 @@ async function handler(req,res){
     }));}
     catch(error){
      if(error instanceof NativeFinanceWorkspaceError)throw new AppError(error.status,error.code);
+     throw error;
+    }
+   }
+   // B23: exact native UUID, canonical PostgreSQL ledger, read-only.
+   // Historical legacy WorkOrders and Google Finance are never joined here.
+   if(pathname==='/api/finance/order-native-result'&&req.method==='GET'){
+    const url=new URL(req.url,'http://localhost');
+    try{
+     return json(res,200,await readOrderFinancialResult(pool,url.searchParams.get('orderId'),{
+      authorizeOwner:()=>sessionValid(req),
+      cursor:url.searchParams.get('cursor'),
+      limit:20
+     }));
+    }catch(error){
+     if(error instanceof OrderFinanceResultError)throw new AppError(error.status,error.code);
+     if(['42P01','3F000','42501'].includes(error?.code))
+      throw new AppError(503,'Нативный финансовый реестр заказов недоступен.');
      throw error;
     }
    }
