@@ -106,6 +106,8 @@ export function mountFinanceP4Native(root,{fetchPage,onOpenScope}={}){
   const next=b.getAttribute('data-finance-p4-kind');
   if(next){
    if(!Object.hasOwn(summaries,next)||next===kind)return;
+   // Discard an old in-flight category GET; it must not overwrite this tab.
+   if(loading){seq++;loading=false;queued=false;}
    kind=next;q='';data=null;items=[];void load();return;
   }
   if(b.hasAttribute('data-finance-p4-reset')){q='';data=null;items=[];void load();return;}
