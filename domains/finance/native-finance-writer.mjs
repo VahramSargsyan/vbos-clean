@@ -408,6 +408,7 @@ async function storeReply(c,requestKey,digest,action,response){
   [requestKey,action,response.sourceKind,response.sourceId,JSON.stringify({
    synthetic:response.synthetic===true,action,openingUnchanged:true,sourceSystem:'CLEAN_NATIVE_FINANCE',
    financialAuthority:'POSTGRES',
+   ...(response.capitalMetadata?{capitalMetadata:response.capitalMetadata}:{}),
    ...(response.revisionBefore===undefined?{}:{
     revisionBefore:response.revisionBefore,revisionAfter:response.revisionAfter,
     statusBefore:response.statusBefore,statusAfter:response.statusAfter,
@@ -542,6 +543,8 @@ async function capitalAction(c,g,action,requestKey,payload){
  return {sourceKind:'CapitalFundTransaction',sourceId:id,movementId:id,
   movementType:record.movementType,reversalOf:original?.movement_id||null,
   fundEffects:effects,financeLedgerEffect:'NONE',
+  capitalMetadata:{version:1,purpose:record.purpose,notes:record.notes,
+   reason:original?record.purpose.slice('Сторно: '.length):null},
   writer:'B10_ISOLATED_PG',synthetic:true,replayed:false};
 }
 /**

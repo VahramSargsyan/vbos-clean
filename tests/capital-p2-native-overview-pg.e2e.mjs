@@ -132,6 +132,18 @@ test('Capital P2 real disposable PG17 exact eight fund opening/effects/history a
    assert.deepEqual(new Set(rows.map(r=>r.type)),new Set(['ALLOCATION','TRANSFER','SPEND','REVERSAL']));
    assert.equal(rows.find(x=>x.id===transferId).status,'reversed');
    assert.equal(rows.find(x=>x.id===reversalId).reversalOf,transferId);
+   assert.equal(rows.find(x=>x.id===transferId).reversedBy,reversalId);
+   assert.equal(rows.find(x=>x.id===reversalId).originalType,'TRANSFER');
+   assert.equal(rows.find(x=>x.id===transferId).metadata,null);
+  });
+  await t.test('P6 receipt metadata is joined only to its exact movement, including across pages',async()=>{
+   const key=(await q('SELECT request_key FROM mvp_finance_native.fund_movements WHERE movement_id=$1',[reversalId])).rows[0].request_key;
+   const metadata={version:1,purpose:'Сторно: Тест',notes:'Комментарий',reason:'Тест'};
+   await q('INSERT INTO mvp_finance_native.request_receipts(request_key,payload_sha256,action,response) VALUES($1,$2,$3,$4)',[key,'a'.repeat(64),'CAPITAL_REVERSE',{sourceId:reversalId,capitalMetadata:metadata}]);
+   const p=await run({movementType:'REVERSAL',limit:'1'});
+   assert.deepEqual(p.items[0].metadata,metadata);
+   assert.equal(p.items[0].originalDate,today);
+   assert.equal((await run({movementType:'TRANSFER'})).items[0].metadata,null);
   });
   await t.test('scope fund via real effect relation, including original and reversal',async()=>{
    const protect=await run({fundId:a,limit:'50'});

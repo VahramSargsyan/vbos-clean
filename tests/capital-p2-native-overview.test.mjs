@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {parseCapitalP2Filters,readNativeCapitalOverview,NativeCapitalOverviewError}
+import {parseCapitalP2Filters,readNativeCapitalOverview,NativeCapitalOverviewError,capitalMovementMetadata}
  from '../domains/finance/capital-native-overview-history.mjs';
 import {nativeCapitalP2Html,mountNativeCapitalP2}
  from '../domains/finance/capital-native-overview-view.mjs';
@@ -136,3 +136,15 @@ test('P5 original action order, linked investment source and loading gate',()=>{
  assert.match(html,/15% — операционный резерв, 15% — гарантийный резерв, 70%/);
  assert.equal((html.match(/data-capital-p2-fund="/g)||[]).length,8);
 });
+
+ test('P6 history metadata validation, escaping, old record honesty and reverse link',()=>{
+ const d=source(),metadata={version:1,purpose:'Сторно: <script>',notes:'<img>',reason:'<script>'};
+ assert.deepEqual(capitalMovementMetadata('REVERSAL',metadata),metadata);
+ assert.equal(capitalMovementMetadata('SPEND',null),null);
+ assert.throws(()=>capitalMovementMetadata('REVERSAL',{...metadata,reason:'wrong'}),/CAPITAL_P6_METADATA_CONTRACT_DRIFT/);
+ const row={id:move,date:'2026-11-24',type:'REVERSAL',status:'active',amountBase:'1',effects:[],metadata,reversalOf:ids[0],originalType:'TRANSFER',originalDate:'2026-11-23'};
+ const old={...row,type:'TRANSFER',status:'reversed',metadata:null,reversalOf:'',reversedBy:move,reversedDate:'2026-11-24'};
+ const html=nativeCapitalP2Html({data:d,items:[row,old]});
+ assert.match(html,/Причина сторно: &lt;script&gt;/);assert.match(html,/Комментарий: &lt;img&gt;/);
+ assert.match(html,/Сторнировано операцией/);assert.match(html,/не были сохранены/);assert.doesNotMatch(html,/<script|<img/);
+ });
