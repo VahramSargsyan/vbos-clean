@@ -12,7 +12,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {normalizeFinanceCreate} from './finance-create-normalize.mjs';
 import {financeAmendSynthetic} from './finance-amend-synthetic.mjs';
-import {prepareNewFinanceInvestmentAllocation} from './capital-waterfall.mjs';
+import {prepareNewFinanceInvestmentAllocation,CapitalWaterfallError} from './capital-waterfall.mjs';
 import {planCapitalMovement,planCapitalReversal} from './capital-movement.mjs';
 
 export class NativeFinanceWriterError extends Error {
@@ -28,6 +28,7 @@ const FINANCE_FIELDS=new Set([
  'currencyOriginal','fxRate','fxRateDate','fxRateSource','commissionOriginal',
  'counterparty','notes'
 ]);
+const FINANCE_CREATE_FIELDS=new Set([...FINANCE_FIELDS,'manualAllocations']);
 const AMEND_FIELDS=new Set(['financeTransactionId','expectedRevision','patch']);
 const STATUS_FIELDS=new Set(['financeTransactionId','expectedRevision']);
 const CAPITAL_FIELDS={
@@ -59,12 +60,21 @@ function validateInput(action,requestKey,payload,context){
   fail('B10_PAYLOAD_INVALID');
  if(context?.syntheticOwnerVerified!==true)
   fail('B10_TEST_OWNER_GATE_CLOSED');
- const fields=action==='FINANCE_CREATE'?FINANCE_FIELDS:
+ const fields=action==='FINANCE_CREATE'?FINANCE_CREATE_FIELDS:
   action==='FINANCE_EDIT'?AMEND_FIELDS:
   ['FINANCE_CANCEL','FINANCE_RESTORE'].includes(action)?STATUS_FIELDS:CAPITAL_FIELDS[action];
  if(Object.keys(payload).some(k=>!fields.has(k)))fail('B10_UNEXPECTED_PAYLOAD_FIELD');
  if(action==='FINANCE_CREATE'&&typeof payload.transactionDate!=='string')
   fail('B10_EXPLICIT_FINANCE_DATE_REQUIRED');
+ if(action==='FINANCE_CREATE'&&Object.hasOwn(payload,'manualAllocations')){
+  if(payload.operationType!=='OWNER_TRANSFER'||payload.ownerDirection!=='investments'||
+     payload.currencyOriginal!=='AMD'||typeof payload.amountOriginal!=='string'||
+     micro(payload.amountOriginal,'P5_amount')<=0n||
+     (payload.commissionOriginal!==undefined&&micro(payload.commissionOriginal,'P5_commission')!==0n)||
+     !Array.isArray(payload.manualAllocations)||payload.manualAllocations.length<1||
+     payload.manualAllocations.length>8)
+   fail('P5_MANUAL_INVESTMENT_ONLY');
+ }
  if(['FINANCE_EDIT','FINANCE_CANCEL','FINANCE_RESTORE'].includes(action)){
   if(!UUID.test(payload.financeTransactionId??''))
    fail('B14_FINANCE_ID_INVALID');
@@ -412,8 +422,12 @@ async function storeReply(c,requestKey,digest,action,response){
 }
 async function financeCreate(c,g,requestKey,payload){
  requireActive(g,payload.transactionDate);
- const normalized=normalizeFinanceCreate(payload,{
-  todayKey:payload.transactionDate,references:await refs(c,payload)});
+ const {manualAllocations,...financePayload}=payload;
+ const normalized=normalizeFinanceCreate(financePayload,{
+  todayKey:payload.transactionDate,references:await refs(c,financePayload)});
+ if(Object.hasOwn(payload,'manualAllocations')&&
+    micro(normalized.amountBase,'P5_normalized')!==micro(payload.amountOriginal,'P5_amount'))
+  fail('P5_MANUAL_AMOUNT_PRECISION');
  if(normalized.status!=='active')fail('B10_FINANCE_STATUS_INVALID');
  const before=await readLedger(c),delta=micro(normalized.cashEffectBase,'cash_effect');
  const payDelta=micro(normalized.workerPayableEffectBase,'payable_effect');
@@ -438,12 +452,20 @@ async function financeCreate(c,g,requestKey,payload){
  let finCap=null;
  if(normalized.operationType==='OWNER_TRANSFER'&&normalized.ownerDirection==='investments'){
   const state=await fundsLocked(c);
-  const plan=prepareNewFinanceInvestmentAllocation({
-   ...normalized,financeTransactionId:id,sourceSystem:'CLEAN_NATIVE_FINANCE'
-  },state.funds,state.balances,{
-   newFinancePostVerified:true,sourceSnapshotVerified:true,
-   finCapLookupVerified:true,existingFinCapBatchCount:0
-  });
+  let plan;
+  try{
+   plan=prepareNewFinanceInvestmentAllocation({
+    ...normalized,financeTransactionId:id,sourceSystem:'CLEAN_NATIVE_FINANCE'
+   },state.funds,state.balances,{
+    newFinancePostVerified:true,sourceSnapshotVerified:true,
+    finCapLookupVerified:true,existingFinCapBatchCount:0,
+    ...(Object.hasOwn(payload,'manualAllocations')?{manualAllocations}:{})
+   });
+  }catch(error){
+   if(Object.hasOwn(payload,'manualAllocations')&&error instanceof CapitalWaterfallError)
+    fail(error.code);
+   throw error;
+  }
   const batchId=randomUUID();
   await c.query(
    'INSERT INTO mvp_finance_native.fincap_batches('+

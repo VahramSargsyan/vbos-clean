@@ -268,6 +268,31 @@ test('Finance B10: single synthetic native Finance + Capital writer on B9 schema
    assert.deepEqual(await cash(),balance);
    assert.deepEqual(await fundBalance('OPERATING_RESERVE'),beforeFund);
   });
+  await t.test('P5 explicit linked allocation uses same cash debit, batch, effects and durable replay',async()=>{
+   const prior=await snapshotCounts(),money=await cash(),key=uuid();
+   const payload={operationType:'OWNER_TRANSFER',ownerDirection:'investments',currencyOriginal:'AMD',
+    amountOriginal:'40',transactionDate:date,manualAllocations:[
+     {fundId:byCode.GROWTH_ALPHA,amountBase:'17.000001'},
+     {fundId:byCode.GROWTH_GAMMA,amountBase:'22.999999'}]};
+   const [a,b]=await Promise.all([invoke('FINANCE_CREATE',payload,key),invoke('FINANCE_CREATE',payload,key)]);
+   assert.equal(a.sourceId,b.sourceId);assert.equal(a.finCap.batchId,b.finCap.batchId);
+   assert.equal([a.replayed,b.replayed].filter(Boolean).length,1);
+   assert.equal(Number((await cash()).current_cash_balance_base),Number(money.current_cash_balance_base)-40);
+   const actual=Object.fromEntries(a.finCap.lines.map(x=>[x.fundId,x.amountBase]));
+   assert.deepEqual(actual,Object.fromEntries(payload.manualAllocations.map(x=>[x.fundId,x.amountBase])));
+   const saved=await pool.query('SELECT m.to_fund_id::text AS fund_id,m.amount_base::text,e.balance_delta_base::text FROM mvp_finance_native.fund_movements m JOIN mvp_finance_native.fund_effects e USING(movement_id) WHERE m.allocation_batch_id=$1',[a.finCap.batchId]);
+   assert.equal(saved.rows.length,2);
+   for(const row of saved.rows){assert.equal(row.amount_base,actual[row.fund_id]);assert.equal(row.balance_delta_base,row.amount_base);}
+   const after=await snapshotCounts();
+   assert.deepEqual(after,{tx:prior.tx+1,batches:prior.batches+1,movements:prior.movements+2,effects:prior.effects+2,receipts:prior.receipts+1,audits:prior.audits+1});
+   await assert.rejects(invoke('FINANCE_CREATE',{...payload,manualAllocations:[{fundId:byCode.GROWTH_GAMMA,amountBase:'40'}]},key),isError('B10_IDEMPOTENCY_PAYLOAD_CONFLICT'));
+   await assert.rejects(invoke('FINANCE_CREATE',{...payload,manualAllocations:[payload.manualAllocations[0]]}),/CAPITAL_P5_SUM_NOT_EXACT/);
+   await assert.rejects(invoke('FINANCE_CREATE',{...payload,manualAllocations:[payload.manualAllocations[0],payload.manualAllocations[0]]}),/CAPITAL_P5_ALLOCATION_LINE_INVALID/);
+   await assert.rejects(invoke('FINANCE_CREATE',{...payload,manualAllocations:[{fundId:uuid(),amountBase:'40'}]}),/CAPITAL_P5_FUND_UNAVAILABLE/);
+   await assert.rejects(invoke('FINANCE_CREATE',{...payload,ownerDirection:'home'}),/P5_MANUAL_INVESTMENT_ONLY/);
+   await assert.rejects(invoke('CAPITAL_REVERSE',{fundTransactionId:a.finCap.lines[0].movementId,transactionDateKey:date,reason:'Запрещено'}),/B10_FINCAP_ALLOCATION_REVERSAL_FORBIDDEN/);
+   assert.deepEqual(await snapshotCounts(),after);
+  });
   await t.test('PAUSED keeps PostgreSQL authority but denies fresh money writes',async()=>{
    await pool.query(
     "UPDATE mvp_finance_native.cutover_control SET phase='PAUSED' WHERE id=1");
