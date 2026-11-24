@@ -194,3 +194,15 @@ test('P5 source options allow paused positive funds; destination active only',()
  assert.ok(!source.includes(state.funds[4].id));
  assert.match(html,/Причина перемещения/);assert.match(html,/не сохраняются в истории PostgreSQL/);
 });
+
+
+test('P5 permits a source balance at the B6 upper bound without expanding transaction amount policy',()=>{
+ const state=uiState(true);const [from,to]=state.funds;
+ from.balanceAMD='1000000000000.000000';
+ const req={action:'CAPITAL_TRANSFER',payload:{fromFundId:from.id,toFundId:to.id,amountBase:'1'}};
+ assert.match(capitalMovementUiCheck(req,state.funds),/Подтвердить/);
+ const html=nativeWorkspaceHtml(state,'capital');
+ assert.ok(html.match(/name="fromFundId" required>(.*?)<\/select>/s)[1].includes(from.id));
+ from.balanceAMD='1000000000000.000001';
+ assert.throws(()=>capitalMovementUiCheck(req,state.funds),/B18_INVALID_FUND_BALANCE/);
+});

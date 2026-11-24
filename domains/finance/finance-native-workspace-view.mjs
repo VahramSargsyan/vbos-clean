@@ -43,9 +43,12 @@ const fundNames={OPERATING_RESERVE:'Операционный резерв',WARRA
 const protective=f=>['OPERATING_RESERVE','WARRANTY_RESERVE'].includes(f.code);
 function capitalMicro(value){
  const raw=String(value??'');
- if(!MONEY.test(raw))throw Error('B18_INVALID_FUND_BALANCE');
+ // Match B6's canonical balance bound (one trillion AMD), independently of the existing form amount limit.
+ if(!/^(0|[1-9]\d{0,12})(?:\.\d{1,6})?$/.test(raw))throw Error('B18_INVALID_FUND_BALANCE');
  const [whole,frac='']=raw.split('.');
- return BigInt(whole)*1000000n+BigInt(frac.padEnd(6,'0'));
+ const micro=BigInt(whole)*1000000n+BigInt(frac.padEnd(6,'0'));
+ if(micro>1000000000000n*1000000n)throw Error('B18_INVALID_FUND_BALANCE');
+ return micro;
 }
 function sourceAvailable(f){
  try{return ['active','paused'].includes(f.status)&&capitalMicro(f.balanceAMD)>0n;}
