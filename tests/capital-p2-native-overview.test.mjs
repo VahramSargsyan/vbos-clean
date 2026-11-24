@@ -123,3 +123,14 @@ test('P2 history can represent reversals and negative effects without a second w
  assert.match(html,/Сторно/);assert.match(html,/\+25/);
  assert.match(html,/Сторнирует операцию/);
 });
+
+
+test('P5 original action order and explicit blocked allocation',()=>{
+ const html=nativeCapitalP2Html({data:source(),items:[],filters:blank()});
+ assert.match(html,/<button type="button" disabled aria-describedby="capital-p5-allocation-blocked">\+ Распределить капитал/);
+ assert.ok(html.indexOf('+ Распределить капитал')<html.indexOf('Переместить между фондами'));
+ assert.ok(html.indexOf('Переместить между фондами')<html.indexOf('Расход из фонда'));
+ assert.match(html,/Назначение по исходному стандарту/);
+ assert.match(html,/15% — операционный резерв, 15% — гарантийный резерв, 70%/);
+ assert.equal((html.match(/data-capital-p2-fund="/g)||[]).length,8);
+});

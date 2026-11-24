@@ -2700,7 +2700,7 @@ function financeCapitalView(mode){
   '<section class="card"><div id="financeReviewAuditMount" role="region" aria-label="Журнал отметок проверки"><p class="muted">Загрузка журнала отметок…</p></div></section>'+
   '<section class="card"><div id="financeCorrectionMount" role="region" aria-label="Исправление описаний истории"><p class="muted">Загрузка исправлений…</p></div></section>'+
   '<section class="card"><div id="financeAuditMount" role="region" aria-label="Журнал исправлений истории"><p class="muted">Загрузка журнала…</p></div></section></details>';
- return '<h1>Капитал · фонды</h1>'+
+ return '<h1>Капитал</h1>'+
    '<section class="card" id="capitalP2Mount" role="region" aria-label="Текущие фонды и движения PostgreSQL"><p class="muted">Загрузка текущих фондов PostgreSQL…</p></section>'+
    '<section class="card" id="financeNativeMount" role="region" aria-label="Новые операции PostgreSQL"><p class="muted">Загрузка новых операций…</p></section>'+
   '<section id="financeOpeningMount" role="region" aria-label="Начальное состояние PostgreSQL и черновик операции"><p class="muted">Проверка начальных остатков…</p></section>'+

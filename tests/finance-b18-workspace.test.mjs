@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {nativeWorkspaceHtml,nativeWorkspaceFormAction} from
+import {nativeWorkspaceHtml,nativeWorkspaceFormAction,capitalMovementUiCheck} from
  '../domains/finance/finance-native-workspace-view.mjs';
 import {readNativeFinanceWorkspace,validateNativeWorkspaceSource,NativeFinanceWorkspaceError} from
  '../domains/finance/native-finance-workspace-read.mjs';
@@ -170,4 +170,27 @@ test('B18 form derives only server-approved actions; rejects invalid date/amount
  assert.throws(()=>nativeWorkspaceFormAction({mode:'capital',today:'2026-11-10',
   form:{date:'2026-10-02',amount:'40',action:'CAPITAL_TRANSFER',
    fromFundId:nativeFunds[0].fund_id,toFundId:nativeFunds[0].fund_id,purpose:'Резерв'}}));
+});
+
+
+test('P5 capital preflight uses exact funds and six-place balance',()=>{
+ const state=uiState(true);const [from,to]=state.funds;
+ from.status='paused';from.balanceAMD='1000.000001';
+ const request={action:'CAPITAL_TRANSFER',payload:{fromFundId:from.id,toFundId:to.id,amountBase:'1000.000001'}};
+ assert.match(capitalMovementUiCheck(request,state.funds),/Подтвердить/);
+ assert.throws(()=>capitalMovementUiCheck({...request,payload:{...request.payload,amountBase:'1000.000002'}},state.funds),/недостаточно/);
+ to.status='paused';assert.throws(()=>capitalMovementUiCheck(request,state.funds),/активный фонд/);
+ to.status='active';const growth=state.funds[2];
+ assert.match(capitalMovementUiCheck({...request,payload:{...request.payload,toFundId:growth.id}},state.funds),/защитного капитала/);
+ assert.match(capitalMovementUiCheck({action:'CAPITAL_SPEND',payload:{fromFundId:from.id,amountBase:'1'}},state.funds),/Подтвердить расход/);
+ from.status='archived';assert.throws(()=>capitalMovementUiCheck(request,state.funds),/недоступен/);
+});
+test('P5 source options allow paused positive funds; destination active only',()=>{
+ const state=uiState(true);state.funds[0].status='paused';
+ const html=nativeWorkspaceHtml(state,'capital');
+ const source=html.match(/name="fromFundId" required>(.*?)<\/select>/s)[1];
+ const destination=html.match(/name="toFundId" required>(.*?)<\/select>/s)[1];
+ assert.ok(source.includes(state.funds[0].id));assert.ok(!destination.includes(state.funds[0].id));
+ assert.ok(!source.includes(state.funds[4].id));
+ assert.match(html,/Причина перемещения/);assert.match(html,/не сохраняются в истории PostgreSQL/);
 });

@@ -43,3 +43,7 @@
 .capital-p2-history [data-capital-p2-more]{min-height:48px;width:100%}
 @media(max-width:900px){.capital-p2-groups{grid-template-columns:minmax(0,1fr)}.capital-p2-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.capital-p2-totals{grid-template-columns:minmax(0,1fr)}.capital-p2-actions{grid-template-columns:minmax(0,1fr)}.capital-p2-filters{grid-template-columns:minmax(0,1fr)}.capital-p2-filter-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.capital-p2-filter-actions button{min-width:0}.capital-p2-movement-head{flex-direction:column}}
+
+/* P5: unavailable allocation must not appear enabled. */
+.capital-p2-actions button:disabled{background:var(--s2,#f7f8fa);color:var(--mute,#657184);border-color:var(--hairline,#d9dfe7);cursor:not-allowed;opacity:1}
+.capital-p2-history>[data-capital-p2-action]{min-height:44px;margin:6px 0}

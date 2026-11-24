@@ -36,10 +36,42 @@ const check=x=>{
 const requiresOrder=(type,category)=>type==='INCOME'&&['current_work','advance'].includes(category);
 const options=(a,selected='')=>a.map(([v,label])=>
  '<option value="'+esc(v)+'"'+(v===selected?' selected':'')+'>'+esc(label)+'</option>').join('');
-function fundOptions(funds,selected=''){
- return funds.filter(f=>f.status==='active').map(f=>
-  '<option value="'+esc(f.id)+'"'+(f.id===selected?' selected':'')+'>'+
-  esc(f.code)+' · '+fmt(f.balanceAMD)+' ֏</option>').join('');
+const fundNames={OPERATING_RESERVE:'Операционный резерв',WARRANTY_RESERVE:'Гарантийный резерв',
+ MARKETING_SALES:'Маркетинг и продажи',PEOPLE_TRAINING:'Люди и обучение',
+ TOOLS_CREW_KITS:'Инструменты / Crew Kits',RND_MATERIALS:'R&D / материалы',
+ DIGITAL_AI_VBOS:'Digital / AI / Business OS',INFRASTRUCTURE:'Инфраструктура'};
+const protective=f=>['OPERATING_RESERVE','WARRANTY_RESERVE'].includes(f.code);
+function capitalMicro(value){
+ const raw=String(value??'');
+ if(!MONEY.test(raw))throw Error('B18_INVALID_FUND_BALANCE');
+ const [whole,frac='']=raw.split('.');
+ return BigInt(whole)*1000000n+BigInt(frac.padEnd(6,'0'));
+}
+function sourceAvailable(f){
+ try{return ['active','paused'].includes(f.status)&&capitalMicro(f.balanceAMD)>0n;}
+ catch{return false;}
+}
+function fundOptions(funds,source){
+ return '<option value="">Выбери фонд</option>'+funds.filter(f=>source?sourceAvailable(f):f.status==='active').map(f=>
+  '<option value="'+esc(f.id)+'">'+esc(Object.hasOwn(fundNames,f.code)?fundNames[f.code]:f.code)+' · '+fmt(f.balanceAMD)+' ֏</option>').join('');
+}
+// Preflight only; the existing locked PostgreSQL writer remains authoritative.
+export function capitalMovementUiCheck(req,funds){
+ const {action,payload}=req;
+ if(!['CAPITAL_TRANSFER','CAPITAL_SPEND'].includes(action)||!Array.isArray(funds))
+  throw Error('B18_FUND_ACTION_INVALID');
+ const from=funds.find(f=>f.id===payload.fromFundId);
+ if(!from||!['active','paused'].includes(from.status))throw Error('Фонд-источник недоступен.');
+ if(capitalMicro(payload.amountBase)<=0n||capitalMicro(payload.amountBase)>capitalMicro(from.balanceAMD))
+  throw Error('В выбранном фонде недостаточно денег.');
+ if(action==='CAPITAL_TRANSFER'){
+  const to=funds.find(f=>f.id===payload.toFundId);
+  if(!to||to.status!=='active'||from.id===to.id)throw Error('Выбери другой активный фонд назначения.');
+  return protective(from)&&!protective(to)
+   ?'Перевод из защитного капитала в капитал роста против базового правила резервов. Продолжить?'
+   :'Подтвердить перемещение между фондами?';
+ }
+ return 'Подтвердить расход из фонда?';
 }
 function categoryChoices(type,selected){
  return options(CATEGORY[type]||[],selected);
@@ -79,12 +111,14 @@ function fundEditor(funds,today){
  return '<form data-b18-form="capital" autocomplete="off"><h3>Новая операция фонда</h3>'+
   '<label>Тип<select name="action" data-b18-fund-type required>'+options(FUND_TYPES)+'</select></label>'+
   '<label>Дата<input type="date" name="date" min="2026-10-01" max="'+esc(today)+'" value="'+esc(today)+'" required></label>'+
-  '<label>Из фонда<select name="fromFundId" required>'+fundOptions(funds)+'</select></label>'+
-  '<label data-b18-to-fund>В фонд<select name="toFundId" required>'+fundOptions(funds)+'</select></label>'+
+  '<label>Из фонда<select name="fromFundId" required>'+fundOptions(funds,true)+'</select></label>'+
+  '<label data-b18-to-fund>В фонд<select name="toFundId" required>'+fundOptions(funds,false)+'</select></label>'+
   '<label>Сумма, ֏<input name="amount" type="text" inputmode="decimal" maxlength="20" required></label>'+
-  '<label>Назначение<input name="purpose" type="text" maxlength="300" required></label>'+
-  '<label>Примечание<textarea name="notes" maxlength="300" rows="2"></textarea></label>'+
-  '<button type="submit" class="primary">Сохранить движение фонда</button></form>';
+  '<label data-b18-purpose-label><span>Причина перемещения</span><textarea name="purpose" maxlength="300" rows="2" required></textarea></label>'+
+  '<label>Комментарий<textarea name="notes" maxlength="300" rows="2"></textarea></label>'+
+  '<p class="small muted">Назначение и комментарий сейчас проверяются при вводе, но не сохраняются в истории PostgreSQL.</p>'+
+  '<p class="small muted" data-b18-movement-hint>Перевод создаёт отдельное движение и не редактирует баланс вручную.</p>'+
+  '<button type="submit" class="primary" data-b18-movement-submit>Переместить</button></form>';
 }
 export function nativeWorkspaceHtml(raw,mode,{today='2026-11-10',editingId=null}={}){
  const data=check(raw);
@@ -287,6 +321,13 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
    const label=field.closest('form')?.querySelector('[data-b18-to-fund]');
    if(label){label.hidden=field.value!=='CAPITAL_TRANSFER';
     const select=label.querySelector('select');if(select)select.disabled=label.hidden;}
+   const form=field.closest('form'),transfer=field.value==='CAPITAL_TRANSFER';
+   const purpose=form?.querySelector('[data-b18-purpose-label] span');
+   const hint=form?.querySelector('[data-b18-movement-hint]');
+   const button=form?.querySelector('[data-b18-movement-submit]');
+   if(purpose)purpose.textContent=transfer?'Причина перемещения':'Назначение расхода';
+   if(hint)hint.textContent=transfer?'Перевод создаёт отдельное движение и не редактирует баланс вручную.':'Расход уменьшает зарезервированный баланс, не удаляя историю наполнения.';
+   if(button)button.textContent=transfer?'Переместить':'Записать расход';
   }
  };
  const submit=e=>{
@@ -297,7 +338,9 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
   const row=values.nativeId?state.entries.find(x=>x.id===values.nativeId&&x.id===editingId):null;
   try{
    if(values.nativeId&&!row)throw Error('B18_EDITOR_STATE_CHANGED');
-   void act(nativeWorkspaceFormAction({mode,form:values,record:row,orders:state.orders||[],today}));
+   const req=nativeWorkspaceFormAction({mode,form:values,record:row,orders:state.orders||[],today});
+   if(mode==='capital'&&!confirm(capitalMovementUiCheck(req,state.funds)))return;
+   void act(req);
   }
   catch(error){status(String(error.message||'Неправильная операция.'),true);}
  };
