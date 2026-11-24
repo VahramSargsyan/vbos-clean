@@ -79,6 +79,7 @@ let financeDraftIntent='';
 let financeOpeningPanel=null,financeOpeningModulePromise=null;
 let financeNativePanel=null,financeNativeModulePromise=null;
 let financeParityPanel=null,financeParityModulePromise=null;
+let financeP4Panel=null,financeP4ModulePromise=null;
 let financeP3Panel=null,financeP3ModulePromise=null;
 let capitalP2Panel=null,capitalP2ModulePromise=null;
 let financeOrderPanel=null,financeOrderModulePromise=null;
@@ -2685,7 +2686,9 @@ async function mountHistoricalOrders(){
 function financeCapitalView(mode){
  if(mode==='finance')return '<h1>Финансы</h1>'+
   '<section class="card" id="financeP1Mount" role="region" aria-label="Текущая финансовая сводка и история PostgreSQL"><p class="muted">Загрузка подтверждённого финансового реестра…</p></section>'+ 
-  '<div id="financeP3Mount" role="region" aria-label="Изменение нативной финансовой операции"></div>'+
+  '<div id="financeP3Mount" role="region" aria-label="Изменение нативной финансовой операции"></div>'+ 
+  '<details class="card" id="financeP4Details" open><summary><strong>Результаты объектов и работников · PostgreSQL</strong></summary>'+ 
+  '<section id="financeP4Mount" role="region" aria-label="Результаты объектов и работников нового учёта">Загружаю финансовую аналитику…</section></details>'+
    '<section class="card" id="financeNativeMount" role="region" aria-label="Новые операции PostgreSQL"><p class="muted">Загрузка новых операций…</p></section>'+
   '<section class="card" aria-label="Финансовая сводка и операции"><div id="financeArchiveMount" role="region" aria-label="Историческая финансовая сводка"><p class="muted">Загрузка проверенной сводки…</p></div></section>'+
   '<details class="card" id="financeDraftDetails"><summary>Черновик операции · деньги не сохраняются</summary><section id="financeOpeningMount" role="region" aria-label="Проверка черновика PostgreSQL"><p class="muted">Проверка начальных остатков…</p></section></details>'+
@@ -2805,12 +2808,28 @@ async function mountFinanceP3(){
    onSaved:async()=>{
     if(financeNativePanel?.load)await financeNativePanel.load();
     if(financeParityPanel?.load)await financeParityPanel.load();
+    if(financeP4Panel?.load)await financeP4Panel.load();
     if(capitalP2Panel?.load)await capitalP2Panel.load();
    }
   });
  }catch{
   if(data&&tab==='finance'&&root===$('#financeP3Mount'))
    root.textContent='Полный редактор нативных операций недоступен.';
+ }
+}
+async function mountFinanceP4(){
+ const root=$('#financeP4Mount');
+ if(!data||tab!=='finance'||!root)return;
+ try{
+  const mod=await (financeP4ModulePromise??=import('/finance-p4-native-entity-results-view.mjs'));
+  if(!data||tab!=='finance'||root!==$('#financeP4Mount'))return;
+  financeP4Panel=mod.mountFinanceP4Native(root,{
+   fetchPage:path=>api(path),
+   onOpenScope:(kind,id,label)=>financeParityPanel?.focusScope?.(kind,id,label)===true
+  });
+ }catch{
+  if(data&&tab==='finance'&&root===$('#financeP4Mount'))
+   root.textContent='Нативная аналитика объектов и работников пока недоступна.';
  }
 }
 async function mountFinanceParity(){
@@ -2892,6 +2911,7 @@ async function mountFinanceNative(){
    postAction:payload=>financeNativePostAction(payload),
    onSource:()=>{
     if(tab==='finance'&&financeParityPanel?.load)void financeParityPanel.load();
+    if(tab==='finance'&&financeP4Panel?.load)void financeP4Panel.load();
     if(tab==='capital'&&capitalP2Panel?.load)void capitalP2Panel.load();
    }
   });
@@ -2913,6 +2933,7 @@ async function mountFinanceCapitalArchive(){
    onNativeSaved:async()=>{
     if(financeNativePanel?.load)await financeNativePanel.load();
     if(financeParityPanel?.load)await financeParityPanel.load();
+    if(financeP4Panel?.load)await financeP4Panel.load();
     $('#financeP1Mount')?.scrollIntoView?.({block:'start'});
    }});
  }catch{
@@ -3015,6 +3036,7 @@ function render(){
  if(financeOpeningPanel){financeOpeningPanel.unmount();financeOpeningPanel=null;}
  if(financeNativePanel){financeNativePanel.unmount();financeNativePanel=null;}
  if(financeParityPanel){financeParityPanel.unmount();financeParityPanel=null;}
+ if(financeP4Panel){financeP4Panel.unmount();financeP4Panel=null;}
  if(financeP3Panel){financeP3Panel.unmount();financeP3Panel=null;}
  if(capitalP2Panel){capitalP2Panel.unmount();capitalP2Panel=null;}
  if(financeMonthlyPanel){financeMonthlyPanel.unmount();financeMonthlyPanel=null;}
@@ -3057,6 +3079,7 @@ function render(){
  if(tab==='finance')void mountFinanceMonthlyGains();
  if(tab==='finance')void mountFinanceP3();
  if(tab==='finance')void mountFinanceParity();
+ if(tab==='finance')void mountFinanceP4();
  if(tab==='capital')void mountCapitalP2();
  if(tab==='finance'||tab==='capital'){void mountFinanceOpening();void mountFinanceNative();void mountFinanceCapitalArchive();void mountFinanceReview();void mountFinanceReviewAudit();void mountFinanceCorrections();void mountFinanceAudit();}
  if(tab==='serviceReference')void mountServiceReference();
