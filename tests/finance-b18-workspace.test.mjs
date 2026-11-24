@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {nativeWorkspaceHtml,nativeWorkspaceFormAction,capitalMovementUiCheck,capitalAllocationUiAction,capitalReversalUiAction} from
+import {nativeWorkspaceHtml,nativeWorkspaceFormAction,capitalMovementUiCheck,capitalAllocationUiAction,capitalReversalUiAction,capitalFundSettingsUiAction} from
  '../domains/finance/finance-native-workspace-view.mjs';
 import {readNativeFinanceWorkspace,validateNativeWorkspaceSource,NativeFinanceWorkspaceError} from
  '../domains/finance/native-finance-workspace-read.mjs';
@@ -13,7 +13,7 @@ const nativeFunds=amount.map((opening,i)=>({
  legacy_source_id:'FND-2026-'+String(i+1).padStart(4,'0'),
  code:['OPERATING_RESERVE','WARRANTY_RESERVE','MARKETING_SALES','PEOPLE_TRAINING',
   'TOOLS_CREW_KITS','RND_MATERIALS','DIGITAL_AI_VBOS','INFRASTRUCTURE'][i],
- status:'active',opening_balance_base:Number(opening).toFixed(6),
+ status:'active',group_type:i<2?'PROTECTIVE':'GROWTH',target_amount_base:i<2?'10000':'0',allocation_share_pct:i<2?'0':'20',opening_balance_base:Number(opening).toFixed(6),
  current_balance_base:Number(opening).toFixed(6)
 }));
 const open={source_snapshot_id:SNAP,manifest_sha256:SHA,as_of_date:'2026-09-30',
@@ -64,7 +64,7 @@ const uiState=(postingEnabled=false)=>({
  openingPayableAMD:'0.000000',nativePayableDeltaAMD:'0.000000',
  isCurrentFinanceBalance:postingEnabled},
  funds:nativeFunds.map(f=>({id:f.fund_id,legacyId:f.legacy_source_id,
-  code:f.code,status:f.status,openingBalanceAMD:f.opening_balance_base,
+  code:f.code,status:f.status,groupType:f.group_type,targetBase:f.target_amount_base,allocationSharePct:f.allocation_share_pct,openingBalanceAMD:f.opening_balance_base,
   balanceAMD:f.current_balance_base})),
  entries:[],movements:[],counts:{transactions:0,movements:0},truncated:false
 });
@@ -241,4 +241,14 @@ test('P5 allocation UI derives only linked AMD investment from a matching P2/B18
  assert.throws(()=>capitalReversalUiAction(form,{...row,type:'ALLOCATION'},today));
  const html=nativeWorkspaceHtml(state,'capital',{today,reversalId:row.id});
  assert.match(html,/data-b18-form="reversal"/);assert.match(html,/name="reason"[^>]*required/);
+ });
+
+ test('P7 settings are future-only, explicit, exact and unavailable for archived funds',()=>{
+ const state=uiState(true),f=state.funds[2];
+ const req=capitalFundSettingsUiAction({fundId:f.id,status:'paused',targetBase:'120.000001',allocationSharePct:'12.5'},f);
+ assert.deepEqual(req,{action:'CAPITAL_FUND_SETTINGS',payload:{fundId:f.id,expected:{status:'active',targetBase:'0.000000',allocationSharePct:'20.000000'},settings:{status:'paused',targetBase:'120.000001',allocationSharePct:'12.500000'}}});
+ for(const x of [{status:'archived',targetBase:'0',allocationSharePct:'20'},{status:'active',targetBase:'-1',allocationSharePct:'20'},{status:'active',targetBase:'0',allocationSharePct:'100.000001'}])assert.throws(()=>capitalFundSettingsUiAction({fundId:f.id,...x},f));
+ assert.throws(()=>capitalFundSettingsUiAction({fundId:f.id,status:'active',targetBase:'0',allocationSharePct:'20'},f),/не изменились/);
+ const html=nativeWorkspaceHtml(state,'capital',{settingsId:f.id});assert.match(html,/data-b18-form="fund-settings"/);assert.match(html,/Вес фонда роста/);
+ assert.doesNotMatch(nativeWorkspaceHtml(uiState(false),'capital',{settingsId:f.id}),/data-b18-form="fund-settings"/);
  });

@@ -90,7 +90,9 @@ function allocationSources(snapshot,workspace){
  const rows=snapshot.funds.map(f=>{
   const current=workspace.funds.find(x=>x.id===f.id);
   if(!UUID.test(f.id)||ids.has(f.id)||!current||f.code!==current.code||
-     f.status!==current.status||capitalMicro(f.balanceBase)!==capitalMicro(current.balanceAMD))
+     f.status!==current.status||f.groupType!==current.groupType||
+     capitalMicro(f.targetBase)!==capitalMicro(current.targetBase)||capitalMicro(f.allocationSharePct)!==capitalMicro(current.allocationSharePct)||
+     capitalMicro(f.balanceBase)!==capitalMicro(current.balanceAMD))
    throw Error('Фонды изменились. Обнови раздел перед распределением.');
   ids.add(f.id);return f;
  });
@@ -221,7 +223,32 @@ function reversalEditor(row,today){
   '<p class="small muted">Исходное движение остаётся в истории; создаётся компенсирующая операция.</p>'+
   '<button type="submit" class="primary">Подтвердить сторно</button> <button type="button" data-p6-close-reversal>Отмена</button></form>';
 }
-export function nativeWorkspaceHtml(raw,mode,{today='2026-11-10',editingId=null,allocationSnapshot=null,reversalId=null}={}){
+function p7Settings(f){
+ if(!f||!UUID.test(f.id)||!['active','paused'].includes(f.status)||!['PROTECTIVE','GROWTH'].includes(f.groupType))
+  throw Error('Фонд недоступен для изменения настроек.');
+ const target=capitalMicro(f.targetBase),share=capitalMicro(f.allocationSharePct);
+ if(share>100000000n||f.groupType==='PROTECTIVE'&&share!==0n)throw Error('Настройки фонда не подтверждены.');
+ const fixed=n=>String(n/1000000n)+'.'+String(n%1000000n).padStart(6,'0');
+ return {status:f.status,targetBase:fixed(target),allocationSharePct:fixed(share)};
+}
+export function capitalFundSettingsUiAction(form,f){
+ if(!f||form.fundId!==f.id)throw Error('Фонд изменился. Обнови данные.');
+ const expected=p7Settings(f);
+ const settings=p7Settings({...f,status:form.status,targetBase:form.targetBase,allocationSharePct:f.groupType==='PROTECTIVE'?'0':form.allocationSharePct});
+ if(JSON.stringify(expected)===JSON.stringify(settings))throw Error('Настройки не изменились.');
+ return {action:'CAPITAL_FUND_SETTINGS',payload:{fundId:f.id,expected,settings}};
+}
+function settingsEditor(f){
+ const p=p7Settings(f);
+ return '<form data-b18-form="fund-settings" autocomplete="off"><h3>Настройки · '+esc(fundNames[f.code]||f.code)+'</h3>'+
+  '<input type="hidden" name="fundId" value="'+esc(f.id)+'">'+
+  '<label>Статус<select name="status">'+options([['active','Активен'],['paused','Приостановлен']],p.status)+'</select></label>'+
+  '<label>Целевая сумма, AMD<input name="targetBase" type="text" inputmode="decimal" maxlength="20" required value="'+esc(p.targetBase)+'"></label>'+
+  (f.groupType==='GROWTH'?'<label>Вес фонда роста, %<input name="allocationSharePct" type="text" inputmode="decimal" maxlength="10" required value="'+esc(p.allocationSharePct)+'"></label>':'<p class="small">Защитный фонд: фиксированные 15% по политике до достижения цели.</p>')+
+  '<p class="small muted">Меняются только настройки будущих распределений. Остаток и история не меняются. Приостановка закрывает новые поступления, но сохраняет возможность расхода и перевода из фонда. Архивирование и название здесь не редактируются.</p>'+
+  '<button class="primary" type="submit">Сохранить настройки</button> <button type="button" data-p7-close-settings>Отмена</button></form>';
+}
+export function nativeWorkspaceHtml(raw,mode,{today='2026-11-10',editingId=null,allocationSnapshot=null,reversalId=null,settingsId=null}={}){
  const data=check(raw);
  if(!['finance','capital'].includes(mode))throw Error('B18_MODE_INVALID');
  const writable=data.postingEnabled===true;
@@ -268,6 +295,8 @@ export function nativeWorkspaceHtml(raw,mode,{today='2026-11-10',editingId=null,
      '<button type="button" data-b18-reverse="'+esc(m.id)+'">Сторнировать</button>'+
       (reversalId===m.id?reversalEditor(m,today):''):'')+
     '</article>').join('');
+  if(writable){const fund=data.funds.find(f=>f.id===settingsId);
+   if(fund)body+='<section class="card">'+settingsEditor(fund)+'</section>';}
   if(writable)body+='<section class="card">'+fundEditor(data.funds,today)+'</section>'+
    (allocationSnapshot?'<section class="card">'+allocationEditor(allocationSnapshot,data,today)+'</section>':'');
  }
@@ -330,8 +359,8 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
  if(!root||typeof root.addEventListener!=='function'||typeof fetchPage!=='function'||
     typeof postAction!=='function'||!['finance','capital'].includes(mode))
   throw Error('B18_CONFIGURATION_MISSING');
- let live=true,state=null,busy=false,editingId=null,pending=null,allocationSnapshot=null,reversalId=null;
- const show=()=>{if(live&&state)root.innerHTML=nativeWorkspaceHtml(state,mode,{today,editingId,allocationSnapshot,reversalId});};
+ let live=true,state=null,busy=false,editingId=null,pending=null,allocationSnapshot=null,reversalId=null,settingsId=null;
+ const show=()=>{if(live&&state)root.innerHTML=nativeWorkspaceHtml(state,mode,{today,editingId,allocationSnapshot,reversalId,settingsId});};
  const status=(msg,error=false)=>{
   const el=root.querySelector('[data-b18-status]');
   if(el){el.textContent=msg;el.classList.toggle('error',error);}
@@ -340,7 +369,7 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
   if(!live)return;
   try{
    const data=check(await fetchPage('/api/finance/native-workspace'));
-   if(!live)return false;state=data;editingId=null;allocationSnapshot=null;reversalId=null;show();
+   if(!live)return false;state=data;editingId=null;allocationSnapshot=null;reversalId=null;settingsId=null;show();
    if(typeof onSource==='function')onSource({phase:data.phase,authority:data.authority});
    return true;
   }catch{
@@ -363,9 +392,11 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
     throw Error('B18_UNVERIFIED_WRITE_RECEIPT');
    if(pending.payload?.manualAllocations&&!allocationReceiptMatches(answer,pending.payload))
     throw Error('P5_UNVERIFIED_ALLOCATION_RECEIPT');
-   const wasAllocation=Boolean(pending.payload?.manualAllocations);
+   const wasAllocation=Boolean(pending.payload?.manualAllocations),wasSettings=pending.action==='CAPITAL_FUND_SETTINGS';
+   if(wasSettings&&(answer.sourceId!==pending.payload.fundId||answer.capitalFundSettings?.version!==1||
+      JSON.stringify(p7Settings({id:pending.payload.fundId,groupType:state.funds.find(f=>f.id===pending.payload.fundId)?.groupType,...answer.capitalFundSettings.after}))!==JSON.stringify(pending.payload.settings)))throw Error('P7_UNVERIFIED_SETTINGS_RECEIPT');
    pending=null;const reloaded=await load();
-   if(live&&reloaded)status(wasAllocation?'Капитал распределён. Связанная инвестиция и фонды перечитаны.':'Сохранено в PostgreSQL. Результат перечитан с сервера.');
+   if(live&&reloaded)status(wasAllocation?'Капитал распределён. Связанная инвестиция и фонды перечитаны.':wasSettings?'Настройки фонда сохранены и перечитаны.':'Сохранено в PostgreSQL. Результат перечитан с сервера.');
    else if(live&&wasAllocation){
     const msg=document.createElement('p');msg.setAttribute('role','status');
     msg.textContent='Распределение подтверждено сервером. Повторно не сохраняй; обнови данные.';
@@ -414,9 +445,14 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
   if(period)period.textContent=String(form.elements.date?.value||'').slice(0,7);
   updateAllocationSum(form);
  };
+ const openFundSettings=(snapshot,id)=>{
+  if(!live||mode!=='capital'||!state?.postingEnabled||busy||pending)return false;
+  try{allocationSources(snapshot,state);p7Settings(state.funds.find(f=>f.id===id));settingsId=id;allocationSnapshot=null;reversalId=null;show();return true;}
+  catch(e){status(String(e.message),true);return false;}
+ };
  const openAllocation=snapshot=>{
   if(!live||mode!=='capital'||!state?.postingEnabled||busy||pending)return false;
-  try{allocationSources(snapshot,state);allocationSnapshot=snapshot;show();return true;}
+  try{allocationSources(snapshot,state);allocationSnapshot=snapshot;settingsId=null;show();return true;}
   catch(e){allocationSnapshot=null;status(String(e.message),true);return false;}
  };
  const click=e=>{
@@ -425,6 +461,7 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
   if(target.hasAttribute('data-b18-retry-load')){void load();return;}
   if(target.hasAttribute('data-b18-retry-post')){void send();return;}
   if(!state?.postingEnabled||busy||pending)return;
+  if(target.hasAttribute('data-p7-close-settings')){settingsId=null;show();return;}
   if(target.hasAttribute('data-p6-close-reversal')){reversalId=null;show();return;}
   if(target.hasAttribute('data-p5-close-allocation')){allocationSnapshot=null;show();return;}
   if(target.hasAttribute('data-p5-waterfall')){
@@ -494,6 +531,12 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
   const values=Object.fromEntries(new FormData(form));
   const row=values.nativeId?state.entries.find(x=>x.id===values.nativeId&&x.id===editingId):null;
   try{
+   if(form.getAttribute('data-b18-form')==='fund-settings'){
+    if(mode!=='capital'||!settingsId)throw Error('Фонд недоступен.');
+    const req=capitalFundSettingsUiAction(values,state.funds.find(f=>f.id===settingsId));
+    if(!confirm('Изменить настройки будущих распределений? Баланс фонда не изменится.'))return;
+    void act(req);return;
+   }
    if(form.getAttribute('data-b18-form')==='reversal'){
     if(mode!=='capital')throw Error('P6_REVERSAL_STATE_CHANGED');
     const m=state.movements.find(x=>x.id===reversalId);
@@ -519,6 +562,6 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
  root.addEventListener('input',allocationInput);
  root.addEventListener('submit',submit);
  void load();
- return {load,openAllocation,unmount(){live=false;root.removeEventListener('click',click);
+ return {load,openAllocation,openFundSettings,unmount(){live=false;root.removeEventListener('click',click);
   root.removeEventListener('change',change);root.removeEventListener('input',allocationInput);root.removeEventListener('submit',submit);}};
 }

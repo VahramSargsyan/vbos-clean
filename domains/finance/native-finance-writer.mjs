@@ -21,7 +21,7 @@ export class NativeFinanceWriterError extends Error {
 const fail=code=>{throw new NativeFinanceWriterError(code);};
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TYPES=new Set(['FINANCE_CREATE','FINANCE_EDIT','FINANCE_CANCEL','FINANCE_RESTORE',
- 'CAPITAL_TRANSFER','CAPITAL_SPEND','CAPITAL_REVERSE']);
+ 'CAPITAL_TRANSFER','CAPITAL_SPEND','CAPITAL_REVERSE','CAPITAL_FUND_SETTINGS']);
 const FINANCE_FIELDS=new Set([
  'operationType','category','incomeRecognition','ownerDirection','workerId',
  'workOrderId','objectId','clientId','transactionDate','amountOriginal',
@@ -34,7 +34,8 @@ const STATUS_FIELDS=new Set(['financeTransactionId','expectedRevision']);
 const CAPITAL_FIELDS={
  CAPITAL_TRANSFER:new Set(['fromFundId','toFundId','amountBase','transactionDateKey','purpose','notes']),
  CAPITAL_SPEND:new Set(['fromFundId','amountBase','transactionDateKey','purpose','notes']),
- CAPITAL_REVERSE:new Set(['fundTransactionId','transactionDateKey','reason','notes'])
+ CAPITAL_REVERSE:new Set(['fundTransactionId','transactionDateKey','reason','notes']),
+ CAPITAL_FUND_SETTINGS:new Set(['fundId','expected','settings'])
 };
 const MICRO=1000000n;
 function micro(raw,label){
@@ -89,6 +90,33 @@ function validateInput(action,requestKey,payload,context){
     fail('B14_EXPLICIT_AMENDMENT_DATE_REQUIRED');
   }
  }
+}
+function canonicalFundSettings(value){
+ if(!value||typeof value!=='object'||Array.isArray(value)||
+    Object.keys(value).sort().join(',')!=='allocationSharePct,status,targetBase'||
+    !['active','paused'].includes(value.status)||typeof value.targetBase!=='string'||
+    typeof value.allocationSharePct!=='string')fail('P7_SETTINGS_INVALID');
+ const target=micro(value.targetBase,'P7_target'),share=micro(value.allocationSharePct,'P7_share');
+ if(target<0n||share<0n||share>100n*MICRO)fail('P7_SETTINGS_INVALID');
+ return {status:value.status,targetBase:dec(target),allocationSharePct:dec(share)};
+}
+async function capitalFundSettings(c,g,payload){
+ requireActive(g,day(g.cutover_date_key));
+ if(typeof payload.fundId!=='string'||!UUID.test(payload.fundId))fail('P7_FUND_UUID_REQUIRED');
+ const expected=canonicalFundSettings(payload.expected),after=canonicalFundSettings(payload.settings);
+ const rows=(await c.query('SELECT fund_id::text AS id,code,group_type,status,target_amount_base::text AS target_base,allocation_share_pct::text AS share FROM mvp_finance_native.funds ORDER BY fund_id FOR UPDATE')).rows;
+ if(rows.length!==8||new Set(rows.map(f=>f.id)).size!==8)fail('P7_FUND_SNAPSHOT_INVALID');
+ const row=rows.find(f=>f.id===payload.fundId);
+ if(!row||!['active','paused'].includes(row.status)||!['PROTECTIVE','GROWTH'].includes(row.group_type))fail('P7_FUND_UNAVAILABLE');
+ const before=canonicalFundSettings({status:row.status,targetBase:row.target_base,allocationSharePct:row.share});
+ if(JSON.stringify(before)!==JSON.stringify(expected))fail('P7_SETTINGS_REVISION_CONFLICT');
+ if(JSON.stringify(before)===JSON.stringify(after))fail('P7_SETTINGS_UNCHANGED');
+ if(row.group_type==='PROTECTIVE'&&after.allocationSharePct!=='0.000000')fail('P7_PROTECTIVE_SHARE_FIXED');
+ if(!rows.some(f=>f.group_type==='GROWTH'&&(f.id===row.id?after.status==='active'&&micro(after.allocationSharePct,'P7_weight')>0n:f.status==='active'&&micro(f.share,'P7_weight')>0n)))
+  fail('P7_ACTIVE_GROWTH_REQUIRED');
+ const updated=await c.query('UPDATE mvp_finance_native.funds SET status=$1,target_amount_base=$2,allocation_share_pct=$3 WHERE fund_id=$4',[after.status,after.targetBase,after.allocationSharePct,row.id]);
+ if(updated.rowCount!==1)fail('P7_FUND_UPDATE_RACE');
+ return {sourceKind:'CapitalFund',sourceId:row.id,capitalFundSettings:{version:1,before,after},financeLedgerEffect:'NONE',writer:'B10_ISOLATED_PG',synthetic:true,replayed:false};
 }
 function canonicalDigest(action,payload){
  const sort=x=>Array.isArray(x)?x.map(sort):x&&typeof x==='object'?
@@ -409,6 +437,7 @@ async function storeReply(c,requestKey,digest,action,response){
    synthetic:response.synthetic===true,action,openingUnchanged:true,sourceSystem:'CLEAN_NATIVE_FINANCE',
    financialAuthority:'POSTGRES',
    ...(response.capitalMetadata?{capitalMetadata:response.capitalMetadata}:{}),
+   ...(response.capitalFundSettings?{capitalFundSettings:response.capitalFundSettings}:{}),
    ...(response.revisionBefore===undefined?{}:{
     revisionBefore:response.revisionBefore,revisionAfter:response.revisionAfter,
     statusBefore:response.statusBefore,statusAfter:response.statusAfter,
@@ -568,7 +597,8 @@ async function postNativeFinanceCapitalCore(pool,req,mode){
   if(replay)return replay;
   if(g.phase!=='ACTIVE'||g.financial_write_authority!=='POSTGRES')
    fail('B10_FINANCIAL_AUTHORITY_BLOCKED');
-  const result=action==='FINANCE_CREATE'?
+  const result=action==='CAPITAL_FUND_SETTINGS'?
+   await capitalFundSettings(c,g,payload):action==='FINANCE_CREATE'?
    await financeCreate(c,g,requestKey,payload):
    ['FINANCE_EDIT','FINANCE_CANCEL','FINANCE_RESTORE'].includes(action)?
    await financeAmendSynthetic(c,g,action,requestKey,payload,{

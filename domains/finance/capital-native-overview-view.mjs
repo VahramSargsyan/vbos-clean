@@ -43,7 +43,7 @@ function choices(values,selected){
  return values.map(([key,label])=>'<option value="'+esc(key)+'"'+
   (key===selected?' selected':'')+'>'+esc(label)+'</option>').join('');
 }
-function fundCard(f){
+function fundCard(f,disabled){
  const name=names[f.code]||f.code;
  const goal=Number(f.targetBase)>0;
  const progress=goal?Math.max(0,Math.min(100,Number(f.targetProgressPct)||0)):null;
@@ -57,7 +57,8 @@ function fundCard(f){
    '<p class="small muted">Цель в PostgreSQL не задана; процент заполнения не рассчитывается.</p>')+
   '<p class="small muted">Доля распределения: '+esc(f.groupType==='PROTECTIVE'?15:f.allocationSharePct)+'%'+(f.groupType==='PROTECTIVE'?' базово, до цели':' от капитала роста')+'.</p>'+
   (Object.hasOwn(purposes,f.code)?'<p class="small">Назначение по исходному стандарту: '+esc(purposes[f.code])+'</p>':'')+
-  '<p class="small muted">Настройки фонда только для просмотра; баланс меняется через движения.</p>'+
+  '<p class="small muted">Баланс меняется только через движения.</p>'+
+  (['active','paused'].includes(f.status)?'<button type="button" data-capital-p7-settings="'+esc(f.id)+'"'+(disabled?' disabled':'')+'>Настройки фонда</button>':'')+
   line('Начальное состояние 30.09.2026',f.openingBase)+
   line('Получено распределением',f.allocatedBase)+
   line('Получено переводами',f.transferredInBase)+
@@ -96,7 +97,7 @@ export function nativeCapitalP2Html({data,items=[],filters=zero(),loading=false,
     data.historicalIncluded!==false||data.postingEnabled!==true||
     !Array.isArray(data.funds)||data.funds.length!==8))
   throw Error('CAPITAL_P2_UNVERIFIED_SOURCE');
- const group=g=>(data?.funds||[]).filter(f=>f.groupType===g).map(fundCard).join('');
+ const group=g=>(data?.funds||[]).filter(f=>f.groupType===g).map(f=>fundCard(f,loading||Boolean(error))).join('');
  const total=data?.summary;
  const summary=total?
   '<div class="capital-p2-totals" aria-label="Нативный капитал PostgreSQL">'+
@@ -195,6 +196,9 @@ export function mountNativeCapitalP2(root,{fetchPage,onAction}={}){
  };
  const click=e=>{
   const b=e.target?.closest?.('button');if(!b||!active)return;
+  const settings=b.getAttribute('data-capital-p7-settings');
+  if(settings){if(!data||busy||error||!data.funds.some(f=>f.id===settings))return;
+   if(!onAction('settings',data,settings)){const target=root.querySelector('[data-capital-p2-action-status]');if(target)target.textContent='Настройки пока недоступны. Обнови раздел.';}return;}
   const action=b.getAttribute('data-capital-p2-action');
   if(action){
    if(action==='allocate'&&(!data||busy||error))return;
