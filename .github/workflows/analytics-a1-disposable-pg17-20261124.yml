@@ -4,7 +4,7 @@ name: VBOS Clean Analytics A1 one-shot exact Node and disposable PG17
 on:
   push:
     branches:
-      - feature/feature/analytics-a1-legacy-parity-20261124
+      - feature/analytics-a1-legacy-parity-20261124
     paths:
       - .github/workflows/analytics-a1-disposable-pg17-20261124.yml
 permissions:
