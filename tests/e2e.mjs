@@ -243,6 +243,8 @@ try{
  assert.equal((await request('/api/finance/native-ledger-preview')).status,401);
  assert.equal((await request('/api/finance/cutover-readiness')).status,401);
  assert.equal((await request('/api/finance/native-action-preview',{})).status,401);
+ assert.equal((await request('/api/finance/monthly-gains?monthKey=2035-07')).status,401);
+ assert.equal((await request('/api/finance/monthly-gains',{})).status,401);
  assert.equal((await request('/api/finance/reviews')).status,401);
  assert.equal((await request('/api/finance/corrections')).status,401);
  assert.equal((await request('/api/finance/correction-audit?mode=capital')).status,401);
@@ -400,6 +402,7 @@ try{
   operationType:'INCOME',amountOriginal:'300',transactionDate:'2026-11-11'}};
  assert.equal((await request('/api/finance/native-action-preview',financeAttempt,cookie)).status,403,
   'Owner session alone does not satisfy dedicated finance CSRF');
+ assert.equal((await request('/api/finance/monthly-gains',{monthKey:'2035-07'},cookie)).status,403,'M1 requires session-bound finance CSRF before SQL');
  const csrfPost=async(extra={})=>{
   const response=await fetch(base+'/api/finance/native-action-preview',{
    method:'POST',headers:{

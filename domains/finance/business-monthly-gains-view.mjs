@@ -14,8 +14,9 @@ const currentMonth=()=>{
 };
 const monthOK=x=>/^\d{4}-(0[1-9]|1[0-2])$/.test(x);
 const asCents=x=>{
- const v=String(x??'0');
- if(!/^(0|[1-9]\d{0,8})(?:\.\d{1,6})?$/.test(v))throw Error('Укажи корректную положительную сумму.');
+ if(x!=null&&typeof x!=='string'&&typeof x!=='number')throw Error('Укажи корректную неотрицательную сумму.');
+ const v=String(x??'0').trim()||'0';
+ if(!/^(0|[1-9]\d{0,8})(?:\.\d{1,6})?$/.test(v))throw Error('Укажи корректную неотрицательную сумму.');
  const [a,b='']=v.split('.');
  const c=BigInt(a)*100n+(BigInt(b.padEnd(6,'0'))+5000n)/10000n;
  if(c>99999999999n)throw Error('Сумма превышает предел.');
@@ -30,31 +31,50 @@ const formatted=x=>{
  const [a,b]=String(x).split('.');
  return a.replace(/\B(?=(\d{3})+(?!\d))/g,'\u00a0')+','+(b||'00')+' AMD';
 };
-const verified=(out,month)=>out?.source==='CLEAN_TEST_MONTHLY_GAINS_NO_LEDGER'&&
- out.scope==='TEST_ONLY'&&out.financialAuthority==='GOOGLE'&&
- out.currentOperationalFinance===false&&out.ledgerEffect===false&&
- out.record?.monthKey===month&&Number.isInteger(out.record.revision);
+const verified=(out,month)=>{
+ if(out?.source!=='CLEAN_TEST_MONTHLY_GAINS_NO_LEDGER'||out.scope!=='TEST_ONLY'||
+  out.monthlyAuthority!=='POSTGRESQL'||out.financialAuthority!=='NOT_APPLICABLE'||
+  out.currentOperationalFinance!==false||out.ledgerEffect!==false||out.readonly!==false||
+  out.record?.monthKey!==month||!Number.isInteger(out.record.revision)||out.record.revision<0||
+  typeof out.record.notes!=='string'||out.record.notes.length>2000||
+  !gainFields.every(([key])=>typeof out.record[key]==='string'))return false;
+ try{return businessGainPreview(out.record)===out.record.totalBusinessGainsBase;}catch{return false;}
+};
+const readableError=e=>{
+ const code=String(e?.message||'');
+ if(code.startsWith('MONTHLY_GAIN_AMOUNT_INVALID_')||code.startsWith('MONTHLY_GAIN_AMOUNT_OVERFLOW_')){
+  const field=gainFields.find(([key])=>code.endsWith('_'+key));
+  return 'Проверь сумму'+(field?' в поле «'+field[1]+'»':'')+'. Допустимы только неотрицательные суммы в установленном пределе.';
+ }
+ if(code==='MONTH_KEY_INVALID')return 'Укажи корректный месяц в формате ГГГГ-ММ.';
+ if(code==='MONTHLY_GAIN_NOTES_TOO_LONG'||code==='MONTHLY_GAIN_NOTES_INVALID')return 'Комментарий должен содержать не более 2000 символов.';
+ if(code==='MONTHLY_GAIN_STALE_REVISION'||code==='MONTHLY_GAIN_REQUEST_KEY_REUSED'||e?.status===409)
+  return 'Итоги уже изменены или запрос конфликтует. Перезагрузи месяц перед повторным сохранением.';
+ if(code==='FINANCE_M1_CSRF_REJECTED'||e?.status===401||e?.status===403)
+  return 'Финансовая сессия не подтверждена. Проверь вход в приложение.';
+ return code||'Не удалось выполнить запрос.';
+};
 export function businessGainEditorHtml({monthKey,draft,revision,loading=false,busy=false,available=true,error='',message='',months=[]}){
  if(!monthOK(monthKey))throw Error('INVALID_MONTH_KEY');
  let total='Проверь суммы';
  try{total=formatted(businessGainPreview(draft));}catch{}
  const amountInputs=gainFields.map(([key,title])=>
-  '<label>'+esc(title)+'<input type="number" min="0" max="999999999.99" step="0.01" inputmode="decimal" data-gain-amount="'+key+'" value="'+esc(draft[key]??'0')+'"'+(busy?' disabled':'')+'></label>').join('');
- return '<h2>Дополнительная прибыль бизнеса за месяц · TEST</h2>'+
-  '<p class="muted">Отдельный новый TEST-реестр, без проводок. История Google выше не перенесена. Не дублируй старые суммы.</p>'+
-  '<label>Месяц <input type="month" data-gain-month value="'+esc(monthKey)+'"'+(busy?' disabled':'')+'></label>'+
+  '<label>'+esc(title)+'<input type="number" name="'+key+'" min="0" max="999999999.99" step="0.01" inputmode="decimal" data-gain-amount="'+key+'" value="'+esc(draft[key]??'0')+'"'+(busy?' disabled':'')+'></label>').join('');
+ return '<h2>Дополнительная прибыль бизнеса за месяц</h2>'+
+  '<p class="muted">Только месячные итоги из других учётов. Не дублируй суммы, уже записанные как обычные финансовые операции VBOS.</p>'+
+  '<p class="small muted">Отдельный реестр PostgreSQL · TEST. Не влияет на текущие финансы, денежный остаток, фонды или прибыль заказа.</p>'+
+  '<label>Месяц <input type="month" name="monthKey" required data-gain-month value="'+esc(monthKey)+'"'+(busy?' disabled':'')+'></label>'+
   (loading?'<p role="status">Загрузка месяца…</p>':
    !available?'<button type="button" data-gain-reload>Повторить загрузку месяца</button>':
    '<form data-gain-form><div class="grid">'+amountInputs+'</div>'+
-   '<label>Комментарий<textarea rows="2" maxlength="2000" data-gain-notes'+(busy?' disabled':'')+'>'+esc(draft.notes||'')+'</textarea></label>'+
-   '<p class="small muted">Налоговая оптимизация — только законная подтверждённая экономия. Существующие расходы не дублировать.</p>'+
-   '<div class="card"><span>Итого за месяц</span><strong data-gain-total>'+esc(total)+'</strong></div>'+
+   '<label>Комментарий<textarea name="notes" rows="2" maxlength="2000" placeholder="Необязательно. Например: итог перенесён из отдельного APP" data-gain-notes'+(busy?' disabled':'')+'>'+esc(draft.notes||'')+'</textarea></label>'+
+   '<div class="card"><strong>Налоговая оптимизация</strong><p class="muted">Вноси только положительную сумму законно сохранённых денег с понятной базой сравнения. Налоги ИП и общие расходы бизнеса здесь не учитываются.</p></div>'+
+   '<div class="card"><span>Итого дополнительная прибыль</span> <strong data-gain-total aria-live="polite">'+esc(total)+'</strong><p class="small muted">Сумма пяти категорий за выбранный месяц</p></div>'+
    '<p class="small muted">Версия записи: '+esc(revision||'новая')+'. Не влияет на текущие финансы.</p>'+
-   '<button type="submit"'+(busy?' disabled':'')+'>'+(busy?'Сохранение…':'Сохранить в TEST')+'</button>'+
+   '<button class="primary" type="submit"'+(busy?' disabled':'')+'>'+(busy?'Сохранение…':'Сохранить итоги месяца')+'</button>'+
    '<button type="button" data-gain-reload'+(busy?' disabled':'')+'>Перезагрузить</button></form>')+
-  (months.length?'<p class="small muted">Сохранено новых TEST-месяцев: '+esc(months.length)+'</p>':'')+
   (error?'<p role="alert">'+esc(error)+'</p>':'')+
-  (message?'<p role="status">'+esc(message)+'</p>':'');
+  '<p class="muted" data-gain-status role="status">'+esc(message)+'</p>';
 }
 export function mountBusinessGainEditor(root,{fetchPage}={}){
  if(!root||typeof root.addEventListener!=='function'||typeof fetchPage!=='function')
@@ -73,42 +93,48 @@ export function mountBusinessGainEditor(root,{fetchPage}={}){
    revision=out.record.revision;
    draft={...Object.fromEntries(gainFields.map(([k])=>[k,String(out.record[k]??'0')])),notes:String(out.record.notes||'')};
    months=Array.isArray(out.months)?out.months:[];
-  }catch(e){if(active&&n===seq)error=String(e?.message||'Ошибка чтения');}
+   message=revision?'Итоги месяца загружены.':'Для этого месяца итогов пока нет.';
+  }catch(e){if(active&&n===seq)error=readableError(e);}
   finally{if(active&&n===seq){loading=false;draw();}}
  }
  async function save(){
   if(!active||loading||busy||!available)return;
   let preview;
-  try{preview=businessGainPreview(draft);}
-  catch(e){error=String(e?.message||'Ошибка суммы');draw();return;}
+  try{preview=businessGainPreview(draft);if(draft.notes.length>2000)throw Error('MONTHLY_GAIN_NOTES_TOO_LONG');}
+  catch(e){error=readableError(e);draw();return;}
   requestKey??=crypto.randomUUID();const request=requestKey,m=monthKey;
   busy=true;error='';message='';draw();
   try{
    const out=await fetchPage('/api/finance/monthly-gains',{monthKey:m,...draft,requestKey:request,expectedRevision:revision});
    if(!active||m!==monthKey)return;
-   if(!verified(out,m)||String(out.record.totalBusinessGainsBase)!==preview)
-    throw Error('Ответ сервера не совпал с проверенным итогом.');
+   if(!verified(out,m)||out.record.revision<1)throw Error('Ответ месячного реестра не подтверждён.');
+   if(out.superseded){available=false;requestKey=null;error='Месяц уже изменён после этого запроса. Перезагрузи месяц.';return;}
+   if(out.record.totalBusinessGainsBase!==preview||
+      !gainFields.every(([key])=>asCents(out.record[key])===asCents(draft[key]))||
+      out.record.notes!==draft.notes.trim())
+    throw Error('Ответ сервера не совпал с проверенными итогами. Перезагрузи месяц.');
    revision=out.record.revision;
    draft={...Object.fromEntries(gainFields.map(([k])=>[k,String(out.record[k])])),notes:String(out.record.notes||'')};
    requestKey=null;
-   message=out.superseded?'Это повтор старой версии. Перезагрузи месяц.':
-    out.replayed?'Повторный запрос подтверждён.':'Сохранено в отдельном TEST-реестре.';
-  }catch(e){if(active)error=String(e?.message||'Ошибка сохранения, можно повторить с тем же ключом.');}
+   message=out.replayed?'Повторный запрос подтверждён.':'Итоги месяца сохранены.';
+  }catch(e){if(active){error=readableError(e);if(e?.status===409||String(e?.message||'').startsWith('MONTHLY_GAIN_STALE_REVISION'))available=false;}}
   finally{if(active){busy=false;draw();}}
  }
  const change=e=>{
-  if(e.target?.matches?.('[data-gain-month]')){
+  if(!busy&&e.target?.matches?.('[data-gain-month]')){
    const v=String(e.target.value||'');
    if(!monthOK(v)){error='Выбери корректный месяц.';draw();return;}
    if(v!==monthKey){monthKey=v;revision=0;draft={...empty(),notes:''};void load();}
   }
  };
  const input=e=>{
+  if(busy||loading||!available)return;
   const key=e.target?.getAttribute?.('data-gain-amount');
-  if(key&&gainFields.some(([k])=>k===key))draft[key]=String(e.target.value??'');
+  if(key&&gainFields.some(([k])=>k===key))draft[key]=e.target.validity?.badInput?'invalid':String(e.target.value??'');
   else if(e.target?.matches?.('[data-gain-notes]'))draft.notes=String(e.target.value??'');
   else return;
-  requestKey=null;
+  requestKey=null;message='';
+  const status=root.querySelector?.('[data-gain-status]');if(status)status.textContent='';
   const el=root.querySelector?.('[data-gain-total]');
   if(el){try{el.textContent=formatted(businessGainPreview(draft));}catch{el.textContent='Проверь суммы';}}
  };

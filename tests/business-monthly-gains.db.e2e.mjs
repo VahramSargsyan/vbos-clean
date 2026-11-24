@@ -1,6 +1,6 @@
 /**
  * FINANCE-MONTH-04 — disposable PostgreSQL E2E, no Neon/Render connection.
- * Called only by the existing CI TEST_DATABASE_URL (PostgreSQL 16 service).
+ * Called only by an authorized disposable localhost TEST_DATABASE_URL (M1 requires PG17).
  */
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -25,7 +25,8 @@ try{
  const initial=await readBusinessMonthlyGain(pool,month,approved);
  assert.equal(initial.record.revision,0);
  assert.equal(initial.record.totalBusinessGainsBase,'0.00');
- assert.equal(initial.financialAuthority,'GOOGLE');
+ assert.equal(initial.financialAuthority,'NOT_APPLICABLE');
+ assert.equal(initial.monthlyAuthority,'POSTGRESQL');
  assert.equal(initial.ledgerEffect,false);
  let rejected=false;
  try{await saveBusinessMonthlyGain(pool,{...data,requestKey:randomUUID(),expectedRevision:0},{authorizeOwner:()=>false});}
@@ -74,6 +75,13 @@ try{
  assert.equal(race.filter(x=>x.status==='fulfilled').length,1);
  assert.equal(race.filter(x=>x.status==='rejected'&&x.reason?.status===409).length,1);
  assert.equal((await pool.query('SELECT count(*)::int AS n FROM public.mvp_business_monthly_gains WHERE month_key=$1',[competing])).rows[0].n,1);
+ const updates=await Promise.allSettled([
+  saveBusinessMonthlyGain(pool,{...one,notes:'update A',requestKey:randomUUID(),expectedRevision:1},approved),
+  saveBusinessMonthlyGain(pool,{...one,notes:'update B',requestKey:randomUUID(),expectedRevision:1},approved)
+ ]);
+ assert.equal(updates.filter(x=>x.status==='fulfilled').length,1);
+ assert.equal(updates.filter(x=>x.status==='rejected'&&x.reason?.status===409).length,1);
+ assert.equal((await readBusinessMonthlyGain(pool,competing,approved)).record.revision,2);
  console.log('FINANCE_MONTHLY_CONCURRENT_SAME_MONTH_SINGLE_WRITER_PASS');
  const schema=(await pool.query(
   "SELECT column_name,is_generated FROM information_schema.columns WHERE table_schema='public' AND table_name='mvp_business_monthly_gains' AND column_name='total_business_gains_base'")).rows;

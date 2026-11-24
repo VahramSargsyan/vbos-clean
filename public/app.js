@@ -2690,6 +2690,7 @@ function financeCapitalView(mode){
   '<details class="card" id="financeP4Details" open><summary><strong>Результаты объектов и работников · PostgreSQL</strong></summary>'+ 
   '<section id="financeP4Mount" role="region" aria-label="Результаты объектов и работников нового учёта">Загружаю финансовую аналитику…</section></details>'+
    '<section class="card" id="financeNativeMount" role="region" aria-label="Новые операции PostgreSQL"><p class="muted">Загрузка новых операций…</p></section>'+
+  '<section class="card" id="financeMonthlyMount" role="region" aria-label="Дополнительная прибыль бизнеса за месяц"><p class="muted">Загрузка месячных итогов…</p></section>'+
   '<section class="card" aria-label="Финансовая сводка и операции"><div id="financeArchiveMount" role="region" aria-label="Историческая финансовая сводка"><p class="muted">Загрузка проверенной сводки…</p></div></section>'+
   '<details class="card" id="financeDraftDetails"><summary>Черновик операции · деньги не сохраняются</summary><section id="financeOpeningMount" role="region" aria-label="Проверка черновика PostgreSQL"><p class="muted">Проверка начальных остатков…</p></section></details>'+
   '<details class="card" open><summary>История операций</summary>'+financeHistoryView()+'</details>'+
@@ -2697,7 +2698,7 @@ function financeCapitalView(mode){
   '<section class="card"><div id="financeOrderResultMount" role="region" aria-label="Финансовый результат отдельного заказа"><p class="muted">Загрузка заказов…</p></div></section>'+
   '<section class="card"><div id="financeObjectResultMount" role="region" aria-label="Финансовый итог объекта"><p class="muted">Загрузка объектов…</p></div></section>'+
   '<section class="card"><div id="financeWorkerResultMount" role="region" aria-label="Финансовый итог работника"><p class="muted">Загрузка работников…</p></div></section></details>'+
-  '<details class="card"><summary>Дополнительная прибыль бизнеса за месяц</summary><section id="financeMonthlyMount" role="region" aria-label="Месячная прибыль бизнеса"><p class="muted">Читаю TEST-реестр…</p></section></details>'+
+
   '<details class="card"><summary>Сверка, архивные отметки и исправления</summary>'+
   '<section class="card"><div id="financeReviewMount" role="region" aria-label="Ручная разборка финансового архива"><p class="muted">Загрузка отметок…</p></div></section>'+
   '<section class="card"><div id="financeReviewAuditMount" role="region" aria-label="Журнал отметок проверки"><p class="muted">Загрузка журнала отметок…</p></div></section>'+
@@ -2749,16 +2750,27 @@ async function mountFinanceObjectResult(){
    root.textContent='Финансовый итог объекта сейчас недоступен.';
  }
 }
+async function financeMonthlyPost(payload){
+ const csrf=await api('/api/finance/csrf');
+ if(csrf?.version!=='FINANCE_B12_CSRF_V1'||typeof csrf.token!=='string'||!/^[0-9a-f]{64}$/.test(csrf.token))
+  throw Error('Финансовая сессия не подтверждена. Запись не выполнена.');
+ const response=await fetch('/api/finance/monthly-gains',{method:'POST',credentials:'same-origin',
+  headers:{Accept:'application/json','Content-Type':'application/json','X-Finance-CSRF':csrf.token},
+  body:JSON.stringify(payload)});
+ let answer;try{answer=await response.json();}catch{throw Error('Ответ сохранения не получен. Повтори запрос или перезагрузи месяц.');}
+ if(!response.ok){const err=Error(answer.error||'HTTP '+response.status);err.status=response.status;throw err;}
+ return answer;
+}
 async function mountFinanceMonthlyGains(){
  const root=$('#financeMonthlyMount');
  if(!data||tab!=='finance'||!root)return;
  try{
   const mod=await (financeMonthlyModulePromise??=import('/business-monthly-gains-view.mjs'));
   if(!data||tab!=='finance'||root!==$('#financeMonthlyMount'))return;
-  financeMonthlyPanel=mod.mountBusinessGainEditor(root,{fetchPage:(path,payload)=>api(path,payload)});
+  financeMonthlyPanel=mod.mountBusinessGainEditor(root,{fetchPage:(path,payload)=>payload===undefined?api(path):financeMonthlyPost(payload)});
  }catch{
   if(data&&tab==='finance'&&root===$('#financeMonthlyMount'))
-   root.textContent='Новый месячный TEST-реестр недоступен.';
+   root.textContent='Месячный реестр PostgreSQL недоступен.';
  }
 }
 function openLegacyFinanceDraft(type){

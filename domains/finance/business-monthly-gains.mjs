@@ -26,7 +26,8 @@ function month(value){
  return key;
 }
 function cents(value,field){
- const text=value===undefined||value===null||value===''?'0':String(value).trim();
+ if(value!=null&&typeof value!=='string'&&typeof value!=='number')fail(400,'MONTHLY_GAIN_AMOUNT_INVALID_'+field);
+ const text=value==null?'0':String(value).trim()||'0';
  if(!moneyRegex.test(text))fail(400,'MONTHLY_GAIN_AMOUNT_INVALID_'+field);
  const [whole,frac='']=text.split('.');
  const six=BigInt(frac.padEnd(6,'0'));
@@ -41,7 +42,8 @@ export function normalizeBusinessMonthlyGain(payload){
  for(const [camel] of MONTHLY_GAIN_CATEGORIES){
   const n=cents(payload[camel],camel);values[camel]=moneyFromCents(n);items.push(n);
  }
- const notes=payload.notes===undefined||payload.notes===null?'':String(payload.notes).trim();
+ if(payload.notes!=null&&typeof payload.notes!=='string')fail(400,'MONTHLY_GAIN_NOTES_INVALID');
+ const notes=payload.notes==null?'':payload.notes.trim();
  if(notes.length>2000)fail(400,'MONTHLY_GAIN_NOTES_TOO_LONG');
  const totalBusinessGainsBase=moneyFromCents(items.reduce((sum,n)=>sum+n,0n));
  return Object.freeze({monthKey,...values,notes,totalBusinessGainsBase});
@@ -63,7 +65,7 @@ function whitelist(row){
 }
 const wrap=(record,months=[],extra={})=>Object.freeze({
  source:'CLEAN_TEST_MONTHLY_GAINS_NO_LEDGER',readonly:false,
- financialAuthority:'GOOGLE',currentOperationalFinance:false,
+ monthlyAuthority:'POSTGRESQL',financialAuthority:'NOT_APPLICABLE',currentOperationalFinance:false,
  ledgerEffect:false,scope:'TEST_ONLY',record,months,...extra
 });
 export async function readBusinessMonthlyGain(db,monthKey,{authorizeOwner}={}){
