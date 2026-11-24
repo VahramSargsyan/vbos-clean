@@ -301,6 +301,25 @@ test('Finance B10: single synthetic native Finance + Capital writer on B9 schema
    await assert.rejects(invoke('CAPITAL_REVERSE',{fundTransactionId:a.finCap.lines[0].movementId,transactionDateKey:date,reason:'Запрещено'}),/B10_FINCAP_ALLOCATION_REVERSAL_FORBIDDEN/);
    assert.deepEqual(await snapshotCounts(),after);
   });
+  await t.test('P7 settings change only the existing fund row, audit and receipt; CAS and replay',async()=>{
+   const id=byCode.GROWTH_ALPHA,key=uuid(),before=await snapshotCounts(),ledger=await cash(),balance=await fundBalance('GROWTH_ALPHA');
+   const expected={status:'active',targetBase:'0',allocationSharePct:'20'},settings={status:'paused',targetBase:'123.000001',allocationSharePct:'25.5'};
+   const payload={fundId:id,expected,settings};
+   const [a,b]=await Promise.all([invoke('CAPITAL_FUND_SETTINGS',payload,key),invoke('CAPITAL_FUND_SETTINGS',payload,key)]);
+   assert.equal([a.replayed,b.replayed].filter(Boolean).length,1);
+   assert.deepEqual(a.capitalFundSettings.after,{status:'paused',targetBase:'123.000001',allocationSharePct:'25.500000'});
+   const saved=(await pool.query('SELECT status,target_amount_base::text AS target,allocation_share_pct::text AS share FROM mvp_finance_native.funds WHERE fund_id=$1',[id])).rows[0];
+   assert.deepEqual(saved,{status:'paused',target:'123.000001',share:'25.500000'});
+   assert.deepEqual(await cash(),ledger);assert.deepEqual(await fundBalance('GROWTH_ALPHA'),balance);
+   assert.deepEqual(await snapshotCounts(),{...before,receipts:before.receipts+1,audits:before.audits+1});
+   const audit=(await pool.query('SELECT details FROM mvp_finance_native.audit_events WHERE request_key=$1',[key])).rows[0];
+   assert.deepEqual(audit.details.capitalFundSettings,a.capitalFundSettings);
+   await assert.rejects(invoke('CAPITAL_FUND_SETTINGS',payload),isError('P7_SETTINGS_REVISION_CONFLICT'));
+   await assert.rejects(invoke('CAPITAL_FUND_SETTINGS',{...payload,settings:{...settings,status:'archived'}}),isError('P7_SETTINGS_INVALID'));
+   await assert.rejects(invoke('CAPITAL_FUND_SETTINGS',{...payload,balanceBase:'999'}),isError('B10_UNEXPECTED_PAYLOAD_FIELD'));
+   await assert.rejects(invoke('CAPITAL_FUND_SETTINGS',{fundId:byCode.OPERATING_RESERVE,expected:{status:'active',targetBase:'1000',allocationSharePct:'0'},settings:{status:'active',targetBase:'1000',allocationSharePct:'1'}}),isError('P7_PROTECTIVE_SHARE_FIXED'));
+   assert.deepEqual(await snapshotCounts(),{...before,receipts:before.receipts+1,audits:before.audits+1});
+  });
   await t.test('PAUSED keeps PostgreSQL authority but denies fresh money writes',async()=>{
    await pool.query(
     "UPDATE mvp_finance_native.cutover_control SET phase='PAUSED' WHERE id=1");

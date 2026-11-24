@@ -2868,8 +2868,13 @@ async function mountCapitalP2(){
    fetchPage:path=>api(path),
    // The B18 form and guarded B17 money writer remain the only POST authority.
    // Allocation uses the same B18 pending queue and guarded FINANCE_CREATE.
-   onAction:(action,snapshot)=>{
-    if(!['allocate','transfer','spend','reverse'].includes(action)||tab!=='capital')return false;
+   onAction:(action,snapshot,fundId)=>{
+    if(!['allocate','transfer','spend','reverse','settings'].includes(action)||tab!=='capital')return false;
+    if(action==='settings'){
+     if(!financeNativePanel?.openFundSettings?.(snapshot,fundId))return false;
+     const form=$('#financeNativeMount [data-b18-form="fund-settings"]');
+     form?.scrollIntoView?.({behavior:'smooth',block:'start'});return Boolean(form);
+    }
     if(action==='allocate'){
      if(!financeNativePanel?.openAllocation?.(snapshot))return false;
      const form=$('#financeNativeMount [data-b18-form="allocation"]');

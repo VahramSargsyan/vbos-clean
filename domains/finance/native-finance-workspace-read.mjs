@@ -63,7 +63,7 @@ export async function readNativeFinanceWorkspace(pool,{authorizeOwner}={}){
   const archive=(await c.query(
    "SELECT count(*)::int AS n FROM mvp_history.source_records WHERE source_kind='FINANCE_TRANSACTION'")).rows[0];
   const funds=(await c.query(
-   'SELECT f.fund_id,f.legacy_source_id,f.code,f.status,fo.opening_balance_base::text,'+
+   'SELECT f.fund_id,f.legacy_source_id,f.code,f.status,f.group_type,f.target_amount_base::text,f.allocation_share_pct::text,fo.opening_balance_base::text,'+
    'v.current_balance_base::text FROM mvp_finance_native.funds f '+
    'JOIN mvp_finance_native.fund_openings fo ON fo.fund_id=f.fund_id '+
    'JOIN mvp_finance_native.v_fund_balances v ON v.fund_id=f.fund_id '+
@@ -109,7 +109,8 @@ export async function readNativeFinanceWorkspace(pool,{authorizeOwner}={}){
     isCurrentFinanceBalance:check.ready===true
    },
    funds:funds.map(f=>({id:f.fund_id,legacyId:f.legacy_source_id,code:f.code,
-    status:f.status,openingBalanceAMD:f.opening_balance_base,balanceAMD:f.current_balance_base})),
+    status:f.status,groupType:f.group_type,targetBase:f.target_amount_base,allocationSharePct:f.allocation_share_pct,
+    openingBalanceAMD:f.opening_balance_base,balanceAMD:f.current_balance_base})),
    entries:entries.map(t=>({
     id:t.finance_transaction_id,date:t.transaction_date_key,
     operationType:t.operation_type,status:t.status,revision:t.revision,

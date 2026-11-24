@@ -148,3 +148,9 @@ test('P5 original action order, linked investment source and loading gate',()=>{
  assert.match(html,/Причина сторно: &lt;script&gt;/);assert.match(html,/Комментарий: &lt;img&gt;/);
  assert.match(html,/Сторнировано операцией/);assert.match(html,/не были сохранены/);assert.doesNotMatch(html,/<script|<img/);
  });
+
+ test('P7 eight settings shortcuts, archived and loading guarded',()=>{
+ const d=source();d.funds[7].status='archived';
+ assert.equal((nativeCapitalP2Html({data:d}).match(/data-capital-p7-settings="/g)||[]).length,7);
+ assert.equal((nativeCapitalP2Html({data:d,loading:true}).match(/data-capital-p7-settings="[^"]+" disabled/g)||[]).length,7);
+ });
