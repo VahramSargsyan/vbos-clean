@@ -1,0 +1,94 @@
+# Owner authorized one P6 qualification on 2026-11-24.
+# Exact source, disposable localhost PG17, no deployment or hosted credentials.
+name: VBOS Clean Capital P6 one-shot exact Node and disposable PG17
+on:
+  push:
+    branches:
+      - feature/capital-p6-movement-audit-history-20261124
+    paths:
+      - .github/workflows/capital-p6-single-disposable-pg17-20261124.yml
+permissions:
+  contents: read
+concurrency:
+  group: capital-p6-single-disposable-pg17-20261124
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: "github.event.head_commit.message == 'ci(capital): one-shot P6 movement metadata PG17 qualification'"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 36
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic_p6_test_only
+          POSTGRES_DB: vbos_mvp_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vbos_mvp_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      CI: 'true'
+      P6_SOURCE_SHA: 3e19a20740047f0541dd5ec4885de2ee692af12c
+      TEST_DATABASE_URL: postgresql://postgres:synthetic_p6_test_only@127.0.0.1:5432/vbos_mvp_ci
+    steps:
+      - name: Checkout exact P6 application candidate
+        uses: actions/checkout@v4
+        with:
+          ref: 3e19a20740047f0541dd5ec4885de2ee692af12c
+          persist-credentials: false
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies without lifecycle scripts
+        id: install
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund
+      - name: Verify exact source and disposable PG17 boundary
+        id: boundary
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$P6_SOURCE_SHA"
+          node --input-type=module <<'NODE'
+          import pg from 'pg';
+          const u=new URL(process.env.TEST_DATABASE_URL);
+          if(u.protocol!=='postgresql:'||u.hostname!=='127.0.0.1'||u.pathname!=='/vbos_mvp_ci')throw Error('P6_DISPOSABLE_ONLY');
+          const c=new pg.Client({connectionString:process.env.TEST_DATABASE_URL,ssl:false});
+          await c.connect();
+          try{
+            const r=(await c.query("SELECT current_database() AS db, current_setting('server_version_num') AS version")).rows[0];
+            if(r.db!=='vbos_mvp_ci'||Number(r.version)<170000||Number(r.version)>=180000)throw Error('P6_WRONG_DB_OR_VERSION');
+            console.log('P6_DISPOSABLE_PG17_VERIFIED');
+          }finally{await c.end();}
+          NODE
+      - name: Source layout and changed JS syntax
+        id: source
+        run: |
+          set -euo pipefail
+          npm run verify:source
+          for f in server.mjs public/app.js domains/finance/capital-waterfall-plan.mjs domains/finance/capital-waterfall.mjs domains/finance/native-finance-writer.mjs domains/finance/finance-native-workspace-view.mjs domains/finance/capital-native-overview-view.mjs tests/finance-native-writer-pg.e2e.mjs domains/finance/finance-p4-native-entity-results.mjs domains/finance/finance-p4-native-entity-results-view.mjs tests/finance-p4-native-entity-results-pg.e2e.mjs; do node --check "$f"; done
+      - name: Focused capital movement, history and reversal form tests
+        id: focused
+        if: "!cancelled() && steps.boundary.outcome == 'success'"
+        run: node --test domains/finance/tests/capital-waterfall.test.mjs tests/finance-b18-workspace.test.mjs tests/capital-p2-native-overview.test.mjs domains/finance/tests/capital-movement.test.mjs tests/finance-p4-native-entity-results.test.mjs
+      - name: Full Node regression
+        id: unit
+        if: "!cancelled() && steps.boundary.outcome == 'success'"
+        run: npm test
+      - name: Complete disposable PostgreSQL E2E including P6 durable metadata and reversal history
+        id: pg
+        if: "!cancelled() && steps.boundary.outcome == 'success'"
+        run: npm run test:e2e
+      - name: Final exact-source receipt
+        if: always()
+        env:
+          BOUNDARY_RESULT: ${{ steps.boundary.outcome }}
+          SOURCE_RESULT: ${{ steps.source.outcome }}
+          FOCUSED_RESULT: ${{ steps.focused.outcome }}
+          UNIT_RESULT: ${{ steps.unit.outcome }}
+          PG_RESULT: ${{ steps.pg.outcome }}
+        run: |
+          echo "P6_SOURCE=$P6_SOURCE_SHA BOUNDARY=$BOUNDARY_RESULT SOURCE=$SOURCE_RESULT FOCUSED=$FOCUSED_RESULT UNIT=$UNIT_RESULT PG17=$PG_RESULT"
+          echo "P6_NO_HOSTED_WRITES_OR_DEPLOYMENT"
+          test "$BOUNDARY_RESULT/$SOURCE_RESULT/$FOCUSED_RESULT/$UNIT_RESULT/$PG_RESULT" = "success/success/success/success/success"
