@@ -21,7 +21,7 @@ assert.ok(footer && !footer.includes('id="themeToggle"') && footer.includes('id=
 assert.equal((html.match(/id="themeToggle"/g)||[]).length,1);
 assert.equal(footer.match(/id="logout"/g)?.length,1);
 assert.equal((html.match(/id="logout"/g)||[]).length,1);
-assert.equal((nav.match(/data-tab="/g)||[]).length,19);
+assert.equal((nav.match(/data-tab="/g)||[]).length,20);
 assert.ok(nav.includes('data-tab="finance"'),'Finance archive must be visible in original Clean menu');
 assert.ok(nav.includes('data-tab="capital"'),'Capital fund archive must be visible in original Clean menu');
 assert.ok(nav.indexOf('data-tab="finance"')<nav.indexOf('data-tab="capital"'),'Finance should precede Capital');
@@ -39,11 +39,11 @@ assert.ok(css.includes('min-height:0;overflow-y:auto'),'Drawer links must scroll
 assert.ok(css.includes('margin-top:auto;flex:0 0 auto'),'Drawer footer must stay at bottom');
 assert.ok(css.includes('html[data-theme] .card'),'Both themes must cover cards through shared tokens');
 assert.ok(css.includes('html[data-theme] input'),'Both themes must cover inputs through shared tokens');
-// Capacity remains inside Plan; original 17 routes stay unchanged and History CRM adds an 18th read-only route.
+// 20 routes: existing 19 destinations plus SOP quick entry; Capacity remains within Plan.
 const linksArea=nav.match(/<div class="drawer-links">([\s\S]*?)<div class="drawer-footer">/)?.[1];
 assert.ok(linksArea && html.includes('href="/menu-groups.css"'));
 const quickArea=linksArea.split('<details')[0];
-assert.deepEqual([...quickArea.matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]),['today','myWork','schedule','crm','orders']);
+assert.deepEqual([...quickArea.matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]),['today','myWork','knowledge','schedule','crm','orders']);
 const groups=[...linksArea.matchAll(/<details class="nav-group" name="vbos-nav-group">\s*<summary><span class="nav-group-label">([^<]+)<\/span><span class="nav-chevron" aria-hidden="true">▼<\/span><\/summary>\s*<div class="nav-submenu">([\s\S]*?)<\/div>\s*<\/details>/g)];
 assert.deepEqual(groups.map(x=>x[1]),['Клиенты и продажи','Исполнение и история','Финансы и отчёты','Инструменты']);
 const groupIds=[['clients','objects','catalog'],['workers','history','historyOrders','historyCrm'],['finance','capital','analytics','report'],['estimator','engineering','serviceReference']];
@@ -51,7 +51,8 @@ for(let i=0;i<groups.length;i++){
   assert.deepEqual([...groups[i][2].matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]),groupIds[i]);
 }
 const routeIds=[...linksArea.matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]);
-assert.equal(new Set(routeIds).size,19,'Exactly one navigation target per route, including Analytics, Estimator and read-only CRM history');
+assert.equal(new Set(routeIds).size,20,'Exactly one navigation target per route, including Analytics, Estimator and read-only CRM history');
+assert.equal(routeIds.filter(x=>x==='knowledge').length,1,'SOP must be independently reachable');
 assert.equal(routeIds.filter(x=>x==='analytics').length,1,'Analytics must have its own route');
 assert.equal(routeIds.filter(x=>x==='report').length,1,'Reports must remain independently reachable');
 assert.equal(routeIds.filter(x=>x==='estimator').length,1,'Calculator must remain reachable in Tools');

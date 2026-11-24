@@ -313,7 +313,20 @@ try{
  assert.equal((await request('/api/analytics/a1')).status,401);
  assert.equal((await request('/api/analytics/a1/export')).status,401);
  assert.equal((await fetch(base+'/analytics-a1-view.mjs')).status,200);
+ assert.equal((await request('/api/knowledge')).status,401);
+ assert.equal((await request('/api/knowledge/save',{payload:{title:'Synthetic SOP'},requestKey:randomUUID()})).status,401);
+ assert.equal((await fetch(base+'/knowledge.js')).status,200);
+ assert.equal((await fetch(base+'/knowledge.css')).status,200);
  const cookie=setup.cookie;
+ // S1 must not implicitly create SOP tables or enable its writer.
+ const sopMissing=await request('/api/knowledge',undefined,cookie);
+ assert.equal(sopMissing.status,409);
+ const sopPayload={payload:{title:'Synthetic SOP',fullText:'Регламент '.repeat(4000)},requestKey:randomUUID()};
+ assert.equal((await request('/api/knowledge/save',sopPayload,cookie)).status,409);
+ const foreignSop=await fetch(base+'/api/knowledge/save',{method:'POST',headers:{'Content-Type':'application/json','Origin':'https://foreign.invalid','Cookie':cookie},body:JSON.stringify(sopPayload)});
+ assert.equal(foreignSop.status,403);
+ assert.equal((await database.query("SELECT to_regclass('public.mvp_knowledge_authority') IS NULL AS absent")).rows[0].absent,true);
+ console.log('SOP_S1_HTTP_OWNER_ORIGIN_NO_IMPLICIT_MIGRATION_PASS');
  const badAnalytics=await request('/api/analytics/a1?monthKey=2042-13',undefined,cookie);
  assert.equal(badAnalytics.status,400);
  const analytics=await request('/api/analytics/a1?monthKey=2042-03',undefined,cookie);
