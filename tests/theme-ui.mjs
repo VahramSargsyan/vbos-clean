@@ -51,7 +51,9 @@ for(let i=0;i<groups.length;i++){
   assert.deepEqual([...groups[i][2].matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]),groupIds[i]);
 }
 const routeIds=[...linksArea.matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]);
-assert.equal(new Set(routeIds).size,18,'Exactly one navigation target per route, including Estimator and read-only CRM history');
+assert.equal(new Set(routeIds).size,19,'Exactly one navigation target per route, including Analytics, Estimator and read-only CRM history');
+assert.equal(routeIds.filter(x=>x==='analytics').length,1,'Analytics must have its own route');
+assert.equal(routeIds.filter(x=>x==='report').length,1,'Reports must remain independently reachable');
 assert.equal(routeIds.filter(x=>x==='estimator').length,1,'Calculator must remain reachable in Tools');
 assert.equal(routeIds.filter(x=>x==='catalog').length,1,'Search must remain reachable in Clients and Sales');
 assert.equal(quickArea.match(/data-tab="orders"/g)?.length,1,'Orders must be a quick destination');
