@@ -71,7 +71,7 @@ test('P2 renders exactly 3 current group totals, 8 funds, goal/share and no arch
   '10','Показать ещё']){ if(token!=='Показать ещё')assert.ok(html.includes(token),token);}
  assert.equal((html.match(/data-capital-p2-fund="/g)||[]).length,8);
  assert.equal((html.match(/class="capital-p2-total"/g)||[]).length,3);
- assert.equal((html.match(/data-capital-p2-action="/g)||[]).length,3);
+ assert.equal((html.match(/data-capital-p2-action="/g)||[]).length,4);
  assert.doesNotMatch(html,/data-b18-form|\/api\/finance\/post|data-capital-p2-manual-allocation/);
  assert.match(html,/отдельно ниже как архив/);
 });
@@ -125,9 +125,11 @@ test('P2 history can represent reversals and negative effects without a second w
 });
 
 
-test('P5 original action order and explicit blocked allocation',()=>{
+test('P5 original action order, linked investment source and loading gate',()=>{
  const html=nativeCapitalP2Html({data:source(),items:[],filters:blank()});
- assert.match(html,/<button type="button" disabled aria-describedby="capital-p5-allocation-blocked">\+ Распределить капитал/);
+ assert.match(html,/<button type="button" data-capital-p2-action="allocate" aria-describedby="capital-p5-allocation-note">\+ Распределить капитал/);
+ assert.match(nativeCapitalP2Html({loading:true}),/data-capital-p2-action="allocate"[^>]* disabled/);
+ assert.match(html,/новую связанную инвестицию/);
  assert.ok(html.indexOf('+ Распределить капитал')<html.indexOf('Переместить между фондами'));
  assert.ok(html.indexOf('Переместить между фондами')<html.indexOf('Расход из фонда'));
  assert.match(html,/Назначение по исходному стандарту/);

@@ -120,6 +120,7 @@ const files = {
  '/finance-capital-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-capital-view.mjs',import.meta.url))],
  '/finance-opening-preview-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-opening-preview-view.mjs',import.meta.url))],
  '/finance-native-workspace-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-native-workspace-view.mjs',import.meta.url))],
+ '/capital-waterfall-plan.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/capital-waterfall-plan.mjs',import.meta.url))],
  '/finance-native-summary-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-native-summary-view.mjs',import.meta.url))],
  '/finance-p3-transaction-editor-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-p3-transaction-editor-view.mjs',import.meta.url))],
  '/finance-p3-transaction-editor.css': ['text/css; charset=utf-8',readFileSync(new URL('./public/finance-p3-transaction-editor.css',import.meta.url))],

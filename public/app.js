@@ -2848,9 +2848,16 @@ async function mountCapitalP2(){
   capitalP2Panel=mod.mountNativeCapitalP2(root,{
    fetchPage:path=>api(path),
    // The B18 form and guarded B17 money writer remain the only POST authority.
-   // No synthetic capital allocation or fund-edit path is created here.
-   onAction:action=>{
-    if(!['transfer','spend','reverse'].includes(action)||tab!=='capital')return false;
+   // Allocation uses the same B18 pending queue and guarded FINANCE_CREATE.
+   onAction:(action,snapshot)=>{
+    if(!['allocate','transfer','spend','reverse'].includes(action)||tab!=='capital')return false;
+    if(action==='allocate'){
+     if(!financeNativePanel?.openAllocation?.(snapshot))return false;
+     const form=$('#financeNativeMount [data-b18-form="allocation"]');
+     form?.scrollIntoView?.({behavior:'smooth',block:'start'});
+     form?.elements?.amount?.focus?.({preventScroll:true});
+     return Boolean(form);
+    }
     if(action==='reverse'){
      const target=$('#financeNativeMount [data-b18-reverse]');
      if(!target||target.disabled)return false;

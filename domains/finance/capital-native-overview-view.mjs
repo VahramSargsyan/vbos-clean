@@ -124,10 +124,11 @@ export function nativeCapitalP2Html({data,items=[],filters=zero(),loading=false,
   '<h2>Текущий капитал · PostgreSQL</h2>'+
   '<p class="small muted">Нативные фонды и движения. Старый капитал Google отображается отдельно ниже как архив.</p>'+
   '<div class="capital-p2-actions" aria-label="Операции с капиталом">'+
-  '<button type="button" disabled aria-describedby="capital-p5-allocation-blocked">+ Распределить капитал</button>'+
+  '<button type="button" data-capital-p2-action="allocate" aria-describedby="capital-p5-allocation-note"'+
+   (!data||loading||error?' disabled':'')+'>+ Распределить капитал</button>'+
   '<button type="button" data-capital-p2-action="transfer">Переместить между фондами</button>'+
   '<button type="button" data-capital-p2-action="spend">Расход из фонда</button></div>'+
-  '<p id="capital-p5-allocation-blocked" class="small muted">Ручное распределение пока недоступно: источник суммы требует согласования. Инвестиция владельца в Finance распределяется автоматически.</p>'+
+  '<p id="capital-p5-allocation-note" class="small muted">Распределение оформляет новую связанную инвестицию из финансовой кассы. Уже распределённые деньги повторно не вносятся.</p>'+
   '<p role="status" data-capital-p2-action-status class="small"></p>'+
   '<h3>Обзор</h3><p class="small muted">Это управленческое распределение капитала, а не список банковских счетов.</p>'+
   summary+funds+
@@ -191,7 +192,8 @@ export function mountNativeCapitalP2(root,{fetchPage,onAction}={}){
   const b=e.target?.closest?.('button');if(!b||!active)return;
   const action=b.getAttribute('data-capital-p2-action');
   if(action){
-   const ok=onAction(action);
+   if(action==='allocate'&&(!data||busy||error))return;
+   const ok=onAction(action,data);
    if(!ok){
     const target=root.querySelector('[data-capital-p2-action-status]');
     if(target)target.textContent='Действие пока недоступно. Проверь загрузку форм PostgreSQL ниже.';

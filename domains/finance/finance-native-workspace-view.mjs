@@ -3,6 +3,7 @@
  * Render is read-only until independently signed server source readiness.
  * No historical Google row can ever appear in an editable action.
  */
+import {planCapitalWaterfall,planManualCapitalAllocation} from './capital-waterfall-plan.mjs';
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=x=>Number(x||0).toLocaleString('ru-RU',{maximumFractionDigits:2});
 const VALID_DAY=/^\d{4}-\d\d-\d\d$/;
@@ -76,6 +77,86 @@ export function capitalMovementUiCheck(req,funds){
  }
  return 'Подтвердить расход из фонда?';
 }
+// P5: both verified native reads must agree on all canonical funds.
+function allocationSources(snapshot,workspace){
+ if(!snapshot||snapshot.version!=='CAPITAL_P2_NATIVE_OVERVIEW_V1'||
+    snapshot.source!=='CLEAN_NATIVE_POST_CUTOVER_ONLY'||snapshot.readonly!==true||
+    snapshot.historicalIncluded!==false||snapshot.postingEnabled!==true||
+    !Array.isArray(snapshot.funds)||snapshot.funds.length!==8||
+    !workspace?.postingEnabled||workspace.phase!=='ACTIVE'||workspace.authority!=='POSTGRES'||
+    !workspace.ledger?.isCurrentFinanceBalance||workspace.funds?.length!==8)
+  throw Error('Обнови капитал: источник не подтверждён.');
+ const ids=new Set();
+ const rows=snapshot.funds.map(f=>{
+  const current=workspace.funds.find(x=>x.id===f.id);
+  if(!UUID.test(f.id)||ids.has(f.id)||!current||f.code!==current.code||
+     f.status!==current.status||capitalMicro(f.balanceBase)!==capitalMicro(current.balanceAMD))
+   throw Error('Фонды изменились. Обнови раздел перед распределением.');
+  ids.add(f.id);return f;
+ });
+ const sorted=rows.slice().sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
+ return {rows,funds:sorted.map(f=>({fundId:f.id,code:f.code,groupType:f.groupType,
+  status:f.status,targetAmountBase:f.targetBase,allocationSharePct:f.allocationSharePct})),
+  balances:sorted.map(f=>({fundId:f.id,balanceBase:f.balanceBase}))};
+}
+const allocationContext={sourceSnapshotVerified:true};
+function allocationRows(form,rows){
+ const allowed=new Set(rows.filter(f=>f.status==='active').map(f=>'allocation_'+f.id));
+ const lines=[];
+ for(const [key,value] of Object.entries(form)){
+  if(!key.startsWith('allocation_'))continue;
+  if(!allowed.has(key)||typeof value!=='string')throw Error('Недоступный фонд.');
+  if(capitalMicro(value)>0n)lines.push({fundId:key.slice(11),amountBase:value});
+ }
+ if([...allowed].some(k=>!Object.hasOwn(form,k)))throw Error('Список фондов неполный.');
+ return lines;
+}
+export function capitalAllocationUiAction(form,snapshot,workspace,today){
+ const sources=allocationSources(snapshot,workspace);
+ if(!dayValid(form.date,today)||!moneyValid(form.amount))throw Error('Укажи корректную дату и сумму.');
+ if(capitalMicro(form.amount)>capitalMicro(workspace.ledger.currentCashAMD))
+  throw Error('Недостаточно денег в финансовой кассе.');
+ const notes=String(form.notes??'');
+ if(notes.length>300)throw Error('Комментарий слишком длинный.');
+ const plan=planManualCapitalAllocation(form.amount,sources.funds,sources.balances,
+  allocationRows(form,sources.rows),allocationContext);
+ return {action:'FINANCE_CREATE',payload:{operationType:'OWNER_TRANSFER',ownerDirection:'investments',
+  currencyOriginal:'AMD',transactionDate:form.date,amountOriginal:form.amount,notes,
+  manualAllocations:plan.allocations}};
+}
+function allocationEditor(snapshot,workspace,today){
+ const {rows}=allocationSources(snapshot,workspace);
+ return '<form data-b18-form="allocation" class="capital-p5-allocation" autocomplete="off"><h3>Распределить капитал по фондам</h3>'+
+  '<label>Дата<input type="date" name="date" min="2026-10-01" max="'+esc(today)+'" value="'+esc(today)+'" required></label>'+
+  '<label>Источник<input type="text" value="Операционная прибыль — новая инвестиция" readonly></label>'+
+  '<label>Сумма для распределения, AMD<input name="amount" type="text" inputmode="decimal" maxlength="20" required></label>'+
+  '<p>Период источника: <span data-p5-period>'+esc(today.slice(0,7))+'</span> (месяц операции)</p>'+
+  '<p class="small muted">Доступно в финансовой кассе: '+esc(fmt(workspace.ledger.currentCashAMD))+' ֏</p>'+
+  '<button type="button" data-p5-waterfall>По политике 15 / 15 / 70</button>'+
+  '<p role="status" aria-live="polite" data-p5-sum>Распределено: 0 AMD</p>'+
+  rows.map(f=>'<label>'+esc(Object.hasOwn(fundNames,f.code)?fundNames[f.code]:f.code)+
+   (f.status==='active'?'<input name="allocation_'+esc(f.id)+'" type="text" inputmode="decimal" maxlength="20" value="0" required>':
+    '<input type="text" value="Недоступен" disabled>')+'</label>').join('')+
+  '<label>Комментарий<textarea name="notes" maxlength="300" rows="2"></textarea></label>'+
+  '<p class="small">Это новая инвестиция: указанная сумма будет один раз списана из финансовой кассы и зачислена в фонды. Заполни доли по политике или задай вручную. Не используй для денег, уже распределённых ранее. Отдельное сторно связанной инвестиции запрещено.</p>'+
+  '<div class="actions"><button type="submit" class="primary">Распределить</button><button type="button" data-p5-close-allocation>Отмена</button></div></form>';
+}
+function allocationReceiptMatches(answer,payload){
+ const batch=answer?.finCap;
+ if(answer?.operationType!=='OWNER_TRANSFER'||answer.financeTransactionId!==answer.sourceId||
+    !UUID.test(answer.sourceId??'')||!UUID.test(batch?.batchId??'')||
+    batch.clientRequestId!=='FINCAP|'+answer.sourceId||
+    !Array.isArray(batch.lines)||batch.lines.length!==payload.manualAllocations.length||
+    capitalMicro(batch.totalAmountBase)!==capitalMicro(payload.amountOriginal))return false;
+ const expected=new Map(payload.manualAllocations.map(x=>[x.fundId,capitalMicro(x.amountBase)]));
+ const ids=new Set(),movementIds=new Set();
+ for(const row of batch.lines){
+  if(ids.has(row.fundId)||!UUID.test(row.movementId??'')||movementIds.has(row.movementId)||
+     !expected.has(row.fundId)||expected.get(row.fundId)!==capitalMicro(row.amountBase))return false;
+  ids.add(row.fundId);movementIds.add(row.movementId);
+ }
+ return true;
+}
 function categoryChoices(type,selected){
  return options(CATEGORY[type]||[],selected);
 }
@@ -123,7 +204,7 @@ function fundEditor(funds,today){
   '<p class="small muted" data-b18-movement-hint>Перевод создаёт отдельное движение и не редактирует баланс вручную.</p>'+
   '<button type="submit" class="primary" data-b18-movement-submit>Переместить</button></form>';
 }
-export function nativeWorkspaceHtml(raw,mode,{today='2026-11-10',editingId=null}={}){
+export function nativeWorkspaceHtml(raw,mode,{today='2026-11-10',editingId=null,allocationSnapshot=null}={}){
  const data=check(raw);
  if(!['finance','capital'].includes(mode))throw Error('B18_MODE_INVALID');
  const writable=data.postingEnabled===true;
@@ -169,7 +250,8 @@ export function nativeWorkspaceHtml(raw,mode,{today='2026-11-10',editingId=null}
     (writable&&m.status==='active'&&['TRANSFER','SPEND'].includes(m.type)?
      '<button type="button" data-b18-reverse="'+esc(m.id)+'">Сторнировать</button>':'')+
     '</article>').join('');
-  if(writable)body+='<section class="card">'+fundEditor(data.funds,today)+'</section>';
+  if(writable)body+='<section class="card">'+fundEditor(data.funds,today)+'</section>'+
+   (allocationSnapshot?'<section class="card">'+allocationEditor(allocationSnapshot,data,today)+'</section>':'');
  }
  return '<section class="card" data-b18-root>'+intro+body+
   '<div role="status" aria-live="polite" data-b18-status></div>'+
@@ -230,8 +312,8 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
  if(!root||typeof root.addEventListener!=='function'||typeof fetchPage!=='function'||
     typeof postAction!=='function'||!['finance','capital'].includes(mode))
   throw Error('B18_CONFIGURATION_MISSING');
- let live=true,state=null,busy=false,editingId=null,pending=null;
- const show=()=>{if(live&&state)root.innerHTML=nativeWorkspaceHtml(state,mode,{today,editingId});};
+ let live=true,state=null,busy=false,editingId=null,pending=null,allocationSnapshot=null;
+ const show=()=>{if(live&&state)root.innerHTML=nativeWorkspaceHtml(state,mode,{today,editingId,allocationSnapshot});};
  const status=(msg,error=false)=>{
   const el=root.querySelector('[data-b18-status]');
   if(el){el.textContent=msg;el.classList.toggle('error',error);}
@@ -240,10 +322,12 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
   if(!live)return;
   try{
    const data=check(await fetchPage('/api/finance/native-workspace'));
-   if(!live)return;state=data;editingId=null;show();
+   if(!live)return false;state=data;editingId=null;allocationSnapshot=null;show();
    if(typeof onSource==='function')onSource({phase:data.phase,authority:data.authority});
+   return true;
   }catch{
    if(live){state=null;root.innerHTML='<section class="card"><h2>Новые операции · PostgreSQL</h2><p role="alert">Источник не прошёл проверку. Запись недоступна.</p><button data-b18-retry-load>Повторить загрузку</button></section>';}
+   return false;
   }
  };
  const act=async(req)=>{
@@ -259,14 +343,26 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
    if(!answer||answer.replayed!==false&&answer.replayed!==true||
       answer.synthetic!==false||!answer.sourceId)
     throw Error('B18_UNVERIFIED_WRITE_RECEIPT');
-   pending=null;await load();if(live)status('Сохранено в PostgreSQL. Результат перечитан с сервера.');
+   if(pending.payload?.manualAllocations&&!allocationReceiptMatches(answer,pending.payload))
+    throw Error('P5_UNVERIFIED_ALLOCATION_RECEIPT');
+   const wasAllocation=Boolean(pending.payload?.manualAllocations);
+   pending=null;const reloaded=await load();
+   if(live&&reloaded)status(wasAllocation?'Капитал распределён. Связанная инвестиция и фонды перечитаны.':'Сохранено в PostgreSQL. Результат перечитан с сервера.');
+   else if(live&&wasAllocation){
+    const msg=document.createElement('p');msg.setAttribute('role','status');
+    msg.textContent='Распределение подтверждено сервером. Повторно не сохраняй; обнови данные.';
+    root.append(msg);
+   }
   }catch(e){
    if(!live)return;
    const code=String(e?.message||'');
-   if(/REVISION_CONFLICT|STATUS_CONFLICT/.test(code)||Number(e?.httpStatus)===409){
+   const isManual=Boolean(pending?.payload?.manualAllocations);
+   const explicitManualRejection=Number(e?.httpStatus)===400&&
+    /^(CAPITAL_P5_|CAPITAL_B5_|P5_MANUAL_|B10_INSUFFICIENT_FINANCE_CASH|B10_MONEY_)/.test(code);
+   if(!isManual&&(/REVISION_CONFLICT|STATUS_CONFLICT/.test(code)||Number(e?.httpStatus)===409)){
     pending=null;await load();
     if(live)status('Запись уже изменилась. Проверь свежую версию.',true);
-   }else if([400,403,503].includes(Number(e?.httpStatus))){
+   }else if(explicitManualRejection||!isManual&&[400,403,503].includes(Number(e?.httpStatus))){
     // Explicit reject: no money was committed, allow correction after review.
     pending=null;
     if(Number(e.httpStatus)===503){await load();
@@ -281,12 +377,52 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
    }
   }finally{busy=false;}
  };
+ const updateAllocationSum=form=>{
+  const host=form?.querySelector('[data-p5-sum]');
+  if(!host)return;
+  try{
+   const s=allocationSources(allocationSnapshot,state);
+   const values=Object.fromEntries(new FormData(form));
+   const sum=allocationRows(values,s.rows).reduce((n,x)=>n+capitalMicro(x.amountBase),0n);
+   const total=values.amount?capitalMicro(values.amount):0n;
+   const exact=n=>String(n/1000000n)+'.'+String(n%1000000n).padStart(6,'0');
+   host.textContent='Распределено: '+exact(sum)+' / '+exact(total)+' AMD'+(sum===total&&total>0n?' — совпадает':' — проверь сумму');
+  }catch{host.textContent='Проверь суммы по фондам.';}
+ };
+ const allocationInput=e=>{
+  const form=e.target?.closest?.('[data-b18-form="allocation"]');
+  if(!form||!live||!allocationSnapshot)return;
+  const period=form.querySelector('[data-p5-period]');
+  if(period)period.textContent=String(form.elements.date?.value||'').slice(0,7);
+  updateAllocationSum(form);
+ };
+ const openAllocation=snapshot=>{
+  if(!live||mode!=='capital'||!state?.postingEnabled||busy||pending)return false;
+  try{allocationSources(snapshot,state);allocationSnapshot=snapshot;show();return true;}
+  catch(e){allocationSnapshot=null;status(String(e.message),true);return false;}
+ };
  const click=e=>{
   if(!live)return;
   const target=e.target?.closest?.('button');if(!target)return;
   if(target.hasAttribute('data-b18-retry-load')){void load();return;}
   if(target.hasAttribute('data-b18-retry-post')){void send();return;}
   if(!state?.postingEnabled||busy||pending)return;
+  if(target.hasAttribute('data-p5-close-allocation')){allocationSnapshot=null;show();return;}
+  if(target.hasAttribute('data-p5-waterfall')){
+   const form=target.closest('[data-b18-form="allocation"]');
+   if(!form||!allocationSnapshot)return;
+   try{
+    const s=allocationSources(allocationSnapshot,state);
+    const plan=planCapitalWaterfall(form.elements.amount.value,s.funds,s.balances,allocationContext);
+    const byId=new Map(plan.allocations.map(x=>[x.fundId,x.amountBase]));
+    for(const f of s.rows){
+     const field=form.elements.namedItem('allocation_'+f.id);
+     if(field)field.value=byId.get(f.id)||'0';
+    }
+    updateAllocationSum(form);
+   }catch(e){status(String(e.message||'Не удалось распределить сумму.'),true);}
+   return;
+  }
   if(target.hasAttribute('data-b18-cancel-editor')){editingId=null;show();return;}
   const id=target.dataset.b18Edit;
   if(id){const row=state.entries.find(x=>x.id===id&&x.status==='active');
@@ -340,6 +476,12 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
   const values=Object.fromEntries(new FormData(form));
   const row=values.nativeId?state.entries.find(x=>x.id===values.nativeId&&x.id===editingId):null;
   try{
+   if(form.getAttribute('data-b18-form')==='allocation'){
+    if(mode!=='capital'||!allocationSnapshot)throw Error('P5_ALLOCATION_FORM_UNAVAILABLE');
+    const req=capitalAllocationUiAction(values,allocationSnapshot,state,today);
+    if(!confirm('Списать '+req.payload.amountOriginal+' AMD из финансовой кассы и распределить по выбранным фондам? Связанную инвестицию нельзя отменить отдельно.'))return;
+    void act(req);return;
+   }
    if(values.nativeId&&!row)throw Error('B18_EDITOR_STATE_CHANGED');
    const req=nativeWorkspaceFormAction({mode,form:values,record:row,orders:state.orders||[],today});
    if(mode==='capital'&&!confirm(capitalMovementUiCheck(req,state.funds)))return;
@@ -349,8 +491,9 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
  };
  root.addEventListener('click',click);
  root.addEventListener('change',change);
+ root.addEventListener('input',allocationInput);
  root.addEventListener('submit',submit);
  void load();
- return {load,unmount(){live=false;root.removeEventListener('click',click);
-  root.removeEventListener('change',change);root.removeEventListener('submit',submit);}};
+ return {load,openAllocation,unmount(){live=false;root.removeEventListener('click',click);
+  root.removeEventListener('change',change);root.removeEventListener('input',allocationInput);root.removeEventListener('submit',submit);}};
 }
