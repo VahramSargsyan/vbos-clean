@@ -192,7 +192,9 @@ test('P5 source options allow paused positive funds; destination active only',()
  const destination=html.match(/name="toFundId" required>(.*?)<\/select>/s)[1];
  assert.ok(source.includes(state.funds[0].id));assert.ok(!destination.includes(state.funds[0].id));
  assert.ok(!source.includes(state.funds[4].id));
- assert.match(html,/Причина перемещения/);assert.match(html,/не сохраняются в истории PostgreSQL/);
+ assert.match(html,/Причина перемещения/);
+ assert.match(html,/Назначение и комментарий новой операции сохраняются в квитанции PostgreSQL и отображаются в истории капитала/);
+ assert.doesNotMatch(html,/не сохраняются в истории PostgreSQL/);
 });
 
 
