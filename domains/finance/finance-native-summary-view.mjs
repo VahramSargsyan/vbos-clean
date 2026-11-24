@@ -13,6 +13,7 @@ const names={INCOME:'Доход',EXPENSE:'Расход',WORKER_ACCRUAL:'Начи
 const actions=[['INCOME','+ Доход'],['EXPENSE','+ Расход'],['WORKER','+ Рабочий'],
  ['OWNER_TRANSFER','+ Вывод денег'],['INVEST','+ Инвестировать']];
 const empty=()=>({workOrderId:'',objectId:'',workerId:'',operationType:'',dateFrom:'',dateTo:'',q:''});
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function selectedOptions(items,selected,label){
  return '<option value="">Все</option>'+items.map(x=>'<option value="'+esc(x.id)+'"'+
   (selected===x.id?' selected':'')+'>'+esc(label(x))+'</option>').join('');
@@ -22,7 +23,7 @@ function metric(label,value,help){
   '</strong><small>'+esc(help)+'</small></article>';
 }
 export function nativeFinanceParityHtml(state){
- const {data,filters,items,loading,error}=state;
+ const {data,filters,items,loading,error,scopeSelection}=state;
  if(data&&(data.source!=='CLEAN_NATIVE_FINANCE_ONLY'||data.version!=='FINANCE_P1_NATIVE_READ_V1'||
    data.readonly!==true||data.historicalIncluded!==false))
   throw Error('FINANCE_P1_SOURCE_INVALID');
@@ -45,7 +46,14 @@ export function nativeFinanceParityHtml(state){
   '<p class="finance-p1-hint">Сводка накопительная по области «'+esc(namescope)+
    '». Даты, тип и текст фильтруют только историю ниже, не изменяя сводку.</p>':
   '<p role="status">Загружаю подтверждённый PostgreSQL-реестр…</p>';
- const opts=(list,k,label)=>selectedOptions(list,filters[k],label);
+ const opts=(list,k,label)=>{
+  const selected=filters[k];
+  const all=selected&&!list.some(x=>x.id===selected)?[...list,{
+   id:selected,name:scopeSelection?.id===selected?scopeSelection.label:selected,
+   title:scopeSelection?.id===selected?scopeSelection.label:selected
+  }]:list;
+  return selectedOptions(all,selected,label);
+ };
  const filtersHtml='<form data-finance-p1-filters class="finance-p1-filters" autocomplete="off">'+
   '<label>Заказ<select name="workOrderId">'+opts(refs.orders||[],'workOrderId',x=>x.title||x.id)+'</select></label>'+
   '<label>Объект<select name="objectId">'+opts(refs.objects||[],'objectId',x=>x.name||x.id)+'</select></label>'+
@@ -95,8 +103,8 @@ export function nativeFinanceParityHtml(state){
 export function mountNativeFinanceParity(root,{fetchPage,onQuickAction,onEditTransaction}={}){
  if(!root||typeof root.addEventListener!=='function'||typeof fetchPage!=='function'||
   typeof onQuickAction!=='function')throw Error('FINANCE_P1_MOUNT_INVALID');
- let active=true,seq=0,loading=false,data=null,items=[],filters=empty(),error='',queuedRefresh=false;
- const draw=()=>{if(active)root.innerHTML=nativeFinanceParityHtml({data,items,filters,error,loading});};
+ let active=true,seq=0,loading=false,data=null,items=[],filters=empty(),error='',queuedRefresh=false,scopeSelection=null;
+ const draw=()=>{if(active)root.innerHTML=nativeFinanceParityHtml({data,items,filters,error,loading,scopeSelection});};
  const load=async(more=false)=>{
   if(!active)return;
   if(loading){if(!more)queuedRefresh=true;return;}
@@ -137,7 +145,7 @@ export function mountNativeFinanceParity(root,{fetchPage,onQuickAction,onEditTra
    return;
   }
   if(b.hasAttribute('data-finance-p1-reset')){
-   filters=empty();data=null;items=[];void load();return;
+   filters=empty();scopeSelection=null;data=null;items=[];void load();return;
   }
   if(b.hasAttribute('data-finance-p1-more'))void load(true);
  };
@@ -155,12 +163,22 @@ export function mountNativeFinanceParity(root,{fetchPage,onQuickAction,onEditTra
   const v=Object.fromEntries(new FormData(f));
   const next=Object.fromEntries(Object.keys(filters).map(k=>[k,String(v[k]||'').trim()]));
   if(next.q&&next.q.length<2){error='Для поиска введи минимум два символа.';draw();return;}
-  filters=next;data=null;items=[];void load();
+  filters=next;scopeSelection=null;data=null;items=[];void load();
  };
  root.addEventListener('click',click);
  root.addEventListener('change',change);
  root.addEventListener('submit',submit);
  void load();
- return {load,unmount(){active=false;seq++;queuedRefresh=false;root.removeEventListener('click',click);
+ const focusScope=(kind,id,label='')=>{
+  if(!active||!['objects','workers'].includes(kind)||!UUID.test(id))return false;
+  // A new chosen scope supersedes even an in-flight old P1 page.
+  if(loading){seq++;loading=false;queuedRefresh=false;}
+  filters=empty();filters[kind==='objects'?'objectId':'workerId']=id;
+  scopeSelection={id,label:String(label||id).slice(0,160)};
+  data=null;items=[];error='';void load();
+  root.scrollIntoView?.({behavior:'smooth',block:'start'});
+  return true;
+ };
+ return {load,focusScope,unmount(){active=false;seq++;queuedRefresh=false;root.removeEventListener('click',click);
   root.removeEventListener('change',change);root.removeEventListener('submit',submit);}};
 }
