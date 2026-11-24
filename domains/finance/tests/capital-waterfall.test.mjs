@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
-import {planCapitalWaterfall,prepareNewFinanceInvestmentAllocation,
+import {planCapitalWaterfall,planManualCapitalAllocation,prepareNewFinanceInvestmentAllocation,
  CapitalWaterfallError} from '../capital-waterfall.mjs';
 const createFund=(id,code,groupType,allocationSharePct=0,targetAmountBase=0,status='active')=>
  Object.freeze({fundId:id,code,groupType,allocationSharePct,targetAmountBase,status});
@@ -198,4 +198,19 @@ test('does not mutate passed arrays, records, money balances or any datastore',(
  assert.equal(JSON.stringify([fs,bs,f]),original);
  assert.equal(p.totalAmountBase,'100000.000000');
  assert.ok(p.requiredWriterChecks.includes('ATOMIC_FINANCE_CAPITAL_LINES_BALANCES_AUDIT'));
+});
+
+test('P5 manual split is exact, active-only and uses existing new FINCAP proof',()=>{
+ const fs=funds(),bs=balances(),lines=[{fundId:fs[3].fundId,amountBase:'20.000001'},{fundId:fs[0].fundId,amountBase:'79.999999'}];
+ const p=planManualCapitalAllocation('100',fs,bs,lines,{sourceSnapshotVerified:true});
+ assert.deepEqual(amounts(p),[[fs[0].fundId,'79.999999'],[fs[3].fundId,'20.000001']]);
+ assert.equal(p.writerConnected,false);
+ const linked=prepareNewFinanceInvestmentAllocation(finance({amountBase:100}),fs,bs,newCtx({manualAllocations:lines}));
+ assert.equal(linked.clientRequestId,'FINCAP|FIN-2026-0100');
+ assert.deepEqual(amounts(linked),amounts(p));
+ bad(()=>planManualCapitalAllocation('100',fs,bs,[lines[0]],{sourceSnapshotVerified:true}),'CAPITAL_P5_SUM_NOT_EXACT');
+ bad(()=>planManualCapitalAllocation('100',fs,bs,[lines[0],lines[0]],{sourceSnapshotVerified:true}),'CAPITAL_P5_ALLOCATION_LINE_INVALID');
+ bad(()=>planManualCapitalAllocation('100',fs.map(f=>f.fundId===lines[0].fundId?{...f,status:'paused'}:f),bs,lines,{sourceSnapshotVerified:true}),'CAPITAL_P5_FUND_UNAVAILABLE');
+ bad(()=>planManualCapitalAllocation('100',fs,bs,lines,{}),'CAPITAL_B5_CANONICAL_SNAPSHOT_REQUIRED');
+ bad(()=>prepareNewFinanceInvestmentAllocation(finance({amountBase:100}),fs,bs,newCtx({manualAllocations:lines,existingFinCapBatchCount:1})),'CAPITAL_B5_FINCAP_BATCH_EXISTS_OR_UNKNOWN');
 });

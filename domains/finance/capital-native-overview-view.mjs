@@ -15,6 +15,18 @@ const names={
  TOOLS_CREW_KITS:'Инструменты и оснащение',RND_MATERIALS:'Материалы и исследования',
  DIGITAL_AI_VBOS:'Цифровизация и VBOS',INFRASTRUCTURE:'Инфраструктура'
 };
+// P5: legacy seed reference, not persisted user settings. Source: CapitalService.js, fe418f762011464cba0728af7ceda0c16abd5577.
+const purposes={
+ OPERATING_RESERVE:'Зарплаты, простой, кассовые разрывы, задержки оплаты и форс-мажоры.',
+ WARRANTY_RESERVE:'Диагностика, гарантийные выезды, исправления и подтверждённые обязательства.',
+ MARKETING_SALES:'Реклама, сайт, кейсы, контент, партнёрства и источники лидов.',
+ PEOPLE_TRAINING:'Пробные дни, обучение помощников, экзамены, допуски и наставничество.',
+ TOOLS_CREW_KITS:'Стандартизированное оснащение бригад, эргономика и контрольный инструмент.',
+ RND_MATERIALS:'Испытания труб, фитингов, шлангов, технологий, протоколы и стенды.',
+ DIGITAL_AI_VBOS:'AI, ПО, облако, домены, автоматизация, аналитика и данные.',
+ INFRASTRUCTURE:'Training Lab, склад, мастерская, стеллажи, крупные стенды и будущая база.'
+};
+const statusName={active:'Активен',paused:'Приостановлен',archived:'Архив'};
 const types=[['','Все движения'],['ALLOCATION','Распределение'],
  ['TRANSFER','Перевод'],['SPEND','Расход'],['REVERSAL','Сторно']];
 const states=[['','Все статусы'],['active','Активные'],['reversed','Сторнированные']];
@@ -37,13 +49,15 @@ function fundCard(f){
  const progress=goal?Math.max(0,Math.min(100,Number(f.targetProgressPct)||0)):null;
  return '<details class="capital-p2-fund" data-capital-p2-fund="'+esc(f.id)+'">'+
   '<summary><div class="capital-p2-fund-title"><strong>'+esc(name)+'</strong>'+
-  '<small>'+esc(f.code)+' · '+esc(f.status)+' · '+(f.groupType==='PROTECTIVE'?'Защитный':'Рост')+'</small>'+
+  '<small>'+esc(f.code)+' · '+esc(statusName[f.status]||f.status)+' · '+(f.groupType==='PROTECTIVE'?'Защитный':'Рост')+'</small>'+
   '</div><span class="capital-p2-fund-balance">'+esc(fmt(f.balanceBase))+'</span></summary>'+
   '<div class="capital-p2-fund-detail">'+
   (goal?'<p class="small">Цель '+esc(fmt(f.targetBase))+' · выполнено '+esc(f.targetProgressPct)+'%</p>'+
    '<div class="capital-p2-progress" role="progressbar" aria-label="'+esc(name)+'" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+esc(progress)+'"><div style="width:'+esc(progress)+'%"></div></div>':
    '<p class="small muted">Цель в PostgreSQL не задана; процент заполнения не рассчитывается.</p>')+
-  '<p class="small muted">Доля распределения: '+esc(f.allocationSharePct)+'%. Настройка фонда в этом блоке только для просмотра.</p>'+
+  '<p class="small muted">Доля распределения: '+esc(f.groupType==='PROTECTIVE'?15:f.allocationSharePct)+'%'+(f.groupType==='PROTECTIVE'?' базово, до цели':' от капитала роста')+'.</p>'+
+  (Object.hasOwn(purposes,f.code)?'<p class="small">Назначение по исходному стандарту: '+esc(purposes[f.code])+'</p>':'')+
+  '<p class="small muted">Настройки фонда только для просмотра; баланс меняется через движения.</p>'+
   line('Начальное состояние 30.09.2026',f.openingBase)+
   line('Получено распределением',f.allocatedBase)+
   line('Получено переводами',f.transferredInBase)+
@@ -109,20 +123,26 @@ export function nativeCapitalP2Html({data,items=[],filters=zero(),loading=false,
  return '<section class="capital-p2-root">'+
   '<h2>Текущий капитал · PostgreSQL</h2>'+
   '<p class="small muted">Нативные фонды и движения. Старый капитал Google отображается отдельно ниже как архив.</p>'+
-  summary+
-  '<div class="capital-p2-actions" aria-label="Действия с фондами">'+
-  '<button type="button" data-capital-p2-action="transfer">Перевести</button>'+
-  '<button type="button" data-capital-p2-action="spend">Расход из фонда</button>'+
-  '<button type="button" data-capital-p2-action="reverse">Сторнировать</button></div>'+
-  '<p class="small muted">Действия открывают существующую защищённую форму B18. Ручное распределение и изменение фонда здесь не включены.</p>'+
+  '<div class="capital-p2-actions" aria-label="Операции с капиталом">'+
+  '<button type="button" data-capital-p2-action="allocate" aria-describedby="capital-p5-allocation-note"'+
+   (!data||loading||error?' disabled':'')+'>+ Распределить капитал</button>'+
+  '<button type="button" data-capital-p2-action="transfer">Переместить между фондами</button>'+
+  '<button type="button" data-capital-p2-action="spend">Расход из фонда</button></div>'+
+  '<p id="capital-p5-allocation-note" class="small muted">Распределение оформляет новую связанную инвестицию из финансовой кассы. Уже распределённые деньги повторно не вносятся.</p>'+
   '<p role="status" data-capital-p2-action-status class="small"></p>'+
-  funds+
-  '<details class="capital-p2-history" open><summary><strong>История новых движений</strong></summary>'+
+  '<h3>Обзор</h3><p class="small muted">Это управленческое распределение капитала, а не список банковских счетов.</p>'+
+  summary+funds+
+  '<details class="capital-p2-history" open><summary><strong>История новых движений фондов</strong></summary>'+
+  '<button type="button" data-capital-p2-action="reverse">Сторнировать</button>'+
+  '<p class="small muted">Сторно доступно для перевода или расхода в существующем списке последних 50 движений. Связанное инвестиционное распределение защищено.</p>'+
   filterUi+
   (error?'<p role="alert">'+esc(error)+'</p>':'')+
   '<div class="capital-p2-records" aria-live="polite">'+records+'</div>'+
   (data?.hasMore?'<button type="button" data-capital-p2-more'+(loading?' disabled':'')+
-   '>Показать ещё</button>':'')+'</details></section>';
+   '>Показать ещё</button>':'')+'</details>'+
+  '<details class="capital-p2-history"><summary><strong>Как работает капитал</strong></summary>'+
+  '<p>15% — операционный резерв, 15% — гарантийный резерв, 70% — фонды роста. Защитные фонды получают средства до цели; освобождённая доля идёт в активные фонды роста. Доли приостановленных фондов перераспределяются.</p>'+
+  '<p class="small muted">Баланс фонда вручную не редактируется.</p></details></section>';
 }
 export function mountNativeCapitalP2(root,{fetchPage,onAction}={}){
  if(!root||typeof root.addEventListener!=='function'||typeof fetchPage!=='function'||
@@ -172,7 +192,8 @@ export function mountNativeCapitalP2(root,{fetchPage,onAction}={}){
   const b=e.target?.closest?.('button');if(!b||!active)return;
   const action=b.getAttribute('data-capital-p2-action');
   if(action){
-   const ok=onAction(action);
+   if(action==='allocate'&&(!data||busy||error))return;
+   const ok=onAction(action,data);
    if(!ok){
     const target=root.querySelector('[data-capital-p2-action-status]');
     if(target)target.textContent='Действие пока недоступно. Проверь загрузку форм PostgreSQL ниже.';

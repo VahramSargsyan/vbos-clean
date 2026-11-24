@@ -121,6 +121,7 @@ const files = {
  '/finance-capital-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-capital-view.mjs',import.meta.url))],
  '/finance-opening-preview-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-opening-preview-view.mjs',import.meta.url))],
  '/finance-native-workspace-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-native-workspace-view.mjs',import.meta.url))],
+ '/capital-waterfall-plan.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/capital-waterfall-plan.mjs',import.meta.url))],
  '/finance-native-summary-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-native-summary-view.mjs',import.meta.url))],
  '/finance-p4-native-entity-results-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-p4-native-entity-results-view.mjs',import.meta.url))],
  '/finance-p4-native-entity-results.css': ['text/css; charset=utf-8',readFileSync(new URL('./public/finance-p4-native-entity-results.css',import.meta.url))],

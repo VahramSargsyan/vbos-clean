@@ -2703,7 +2703,7 @@ function financeCapitalView(mode){
   '<section class="card"><div id="financeReviewAuditMount" role="region" aria-label="Журнал отметок проверки"><p class="muted">Загрузка журнала отметок…</p></div></section>'+
   '<section class="card"><div id="financeCorrectionMount" role="region" aria-label="Исправление описаний истории"><p class="muted">Загрузка исправлений…</p></div></section>'+
   '<section class="card"><div id="financeAuditMount" role="region" aria-label="Журнал исправлений истории"><p class="muted">Загрузка журнала…</p></div></section></details>';
- return '<h1>Капитал · фонды</h1>'+
+ return '<h1>Капитал</h1>'+
    '<section class="card" id="capitalP2Mount" role="region" aria-label="Текущие фонды и движения PostgreSQL"><p class="muted">Загрузка текущих фондов PostgreSQL…</p></section>'+
    '<section class="card" id="financeNativeMount" role="region" aria-label="Новые операции PostgreSQL"><p class="muted">Загрузка новых операций…</p></section>'+
   '<section id="financeOpeningMount" role="region" aria-label="Начальное состояние PostgreSQL и черновик операции"><p class="muted">Проверка начальных остатков…</p></section>'+
@@ -2867,9 +2867,16 @@ async function mountCapitalP2(){
   capitalP2Panel=mod.mountNativeCapitalP2(root,{
    fetchPage:path=>api(path),
    // The B18 form and guarded B17 money writer remain the only POST authority.
-   // No synthetic capital allocation or fund-edit path is created here.
-   onAction:action=>{
-    if(!['transfer','spend','reverse'].includes(action)||tab!=='capital')return false;
+   // Allocation uses the same B18 pending queue and guarded FINANCE_CREATE.
+   onAction:(action,snapshot)=>{
+    if(!['allocate','transfer','spend','reverse'].includes(action)||tab!=='capital')return false;
+    if(action==='allocate'){
+     if(!financeNativePanel?.openAllocation?.(snapshot))return false;
+     const form=$('#financeNativeMount [data-b18-form="allocation"]');
+     form?.scrollIntoView?.({behavior:'smooth',block:'start'});
+     form?.elements?.amount?.focus?.({preventScroll:true});
+     return Boolean(form);
+    }
     if(action==='reverse'){
      const target=$('#financeNativeMount [data-b18-reverse]');
      if(!target||target.disabled)return false;

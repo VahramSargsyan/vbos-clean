@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {nativeWorkspaceHtml,nativeWorkspaceFormAction} from
+import {nativeWorkspaceHtml,nativeWorkspaceFormAction,capitalMovementUiCheck,capitalAllocationUiAction} from
  '../domains/finance/finance-native-workspace-view.mjs';
 import {readNativeFinanceWorkspace,validateNativeWorkspaceSource,NativeFinanceWorkspaceError} from
  '../domains/finance/native-finance-workspace-read.mjs';
@@ -170,4 +170,61 @@ test('B18 form derives only server-approved actions; rejects invalid date/amount
  assert.throws(()=>nativeWorkspaceFormAction({mode:'capital',today:'2026-11-10',
   form:{date:'2026-10-02',amount:'40',action:'CAPITAL_TRANSFER',
    fromFundId:nativeFunds[0].fund_id,toFundId:nativeFunds[0].fund_id,purpose:'Резерв'}}));
+});
+
+
+test('P5 capital preflight uses exact funds and six-place balance',()=>{
+ const state=uiState(true);const [from,to]=state.funds;
+ from.status='paused';from.balanceAMD='1000.000001';
+ const request={action:'CAPITAL_TRANSFER',payload:{fromFundId:from.id,toFundId:to.id,amountBase:'1000.000001'}};
+ assert.match(capitalMovementUiCheck(request,state.funds),/Подтвердить/);
+ assert.throws(()=>capitalMovementUiCheck({...request,payload:{...request.payload,amountBase:'1000.000002'}},state.funds),/недостаточно/);
+ to.status='paused';assert.throws(()=>capitalMovementUiCheck(request,state.funds),/активный фонд/);
+ to.status='active';const growth=state.funds[2];
+ assert.match(capitalMovementUiCheck({...request,payload:{...request.payload,toFundId:growth.id}},state.funds),/защитного капитала/);
+ assert.match(capitalMovementUiCheck({action:'CAPITAL_SPEND',payload:{fromFundId:from.id,amountBase:'1'}},state.funds),/Подтвердить расход/);
+ from.status='archived';assert.throws(()=>capitalMovementUiCheck(request,state.funds),/недоступен/);
+});
+test('P5 source options allow paused positive funds; destination active only',()=>{
+ const state=uiState(true);state.funds[0].status='paused';
+ const html=nativeWorkspaceHtml(state,'capital');
+ const source=html.match(/name="fromFundId" required>(.*?)<\/select>/s)[1];
+ const destination=html.match(/name="toFundId" required>(.*?)<\/select>/s)[1];
+ assert.ok(source.includes(state.funds[0].id));assert.ok(!destination.includes(state.funds[0].id));
+ assert.ok(!source.includes(state.funds[4].id));
+ assert.match(html,/Причина перемещения/);assert.match(html,/не сохраняются в истории PostgreSQL/);
+});
+
+
+test('P5 permits a source balance at the B6 upper bound without expanding transaction amount policy',()=>{
+ const state=uiState(true);const [from,to]=state.funds;
+ from.balanceAMD='1000000000000.000000';
+ const req={action:'CAPITAL_TRANSFER',payload:{fromFundId:from.id,toFundId:to.id,amountBase:'1'}};
+ assert.match(capitalMovementUiCheck(req,state.funds),/Подтвердить/);
+ const html=nativeWorkspaceHtml(state,'capital');
+ assert.ok(html.match(/name="fromFundId" required>(.*?)<\/select>/s)[1].includes(from.id));
+ from.balanceAMD='1000000000000.000001';
+ assert.throws(()=>capitalMovementUiCheck(req,state.funds),/B18_INVALID_FUND_BALANCE/);
+});
+
+test('P5 allocation UI derives only linked AMD investment from a matching P2/B18 snapshot',()=>{
+ const ws=uiState(true),today='2026-11-24';
+ const snapshot={version:'CAPITAL_P2_NATIVE_OVERVIEW_V1',source:'CLEAN_NATIVE_POST_CUTOVER_ONLY',
+  readonly:true,historicalIncluded:false,postingEnabled:true,
+  funds:ws.funds.map((f,i)=>({id:f.id,code:f.code,status:f.status,balanceBase:f.balanceAMD,
+   groupType:i<2?'PROTECTIVE':'GROWTH',targetBase:i<2?'10000':'0',allocationSharePct:i<2?'0':'20'}))};
+ const form={date:today,amount:'40.000001',notes:'Тест'};
+ for(const f of ws.funds)form['allocation_'+f.id]='0';
+ form['allocation_'+ws.funds[0].id]='20.000000';
+ form['allocation_'+ws.funds[1].id]='20.000001';
+ const req=capitalAllocationUiAction(form,snapshot,ws,today);
+ assert.equal(req.action,'FINANCE_CREATE');assert.equal(req.payload.ownerDirection,'investments');
+ assert.equal(req.payload.currencyOriginal,'AMD');assert.equal(req.payload.manualAllocations.length,2);
+ const html=nativeWorkspaceHtml(ws,'capital',{today,allocationSnapshot:snapshot});
+ assert.match(html,/По политике 15 \/ 15 \/ 70/);assert.match(html,/один раз списана/);
+ assert.throws(()=>capitalAllocationUiAction({...form,amount:'40'},snapshot,ws,today),/SUM_NOT_EXACT/);
+ assert.throws(()=>capitalAllocationUiAction({...form,amount:'999999'},snapshot,ws,today),/Недостаточно/);
+ assert.throws(()=>capitalAllocationUiAction(form,{...snapshot,historicalIncluded:true},ws,today),/источник/);
+ ws.funds[0].status='paused';
+ assert.throws(()=>capitalAllocationUiAction(form,snapshot,ws,today),/изменились/);
 });
