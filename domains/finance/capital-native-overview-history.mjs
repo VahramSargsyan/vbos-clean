@@ -72,6 +72,16 @@ function historyWhere(f){
  if(f.dateTo)add(f.dateTo,'m.transaction_date_key<=?::date');
  return {args,sql:clause.length?clause.join(' AND '):'TRUE'};
 }
+// P6: immutable receipt metadata, not reconstructed history.
+export function capitalMovementMetadata(type,raw){
+ if(raw===null||raw===undefined)return null;
+ const validText=(s,max)=>typeof s==='string'&&s.length<=max&&!/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(s);
+ if(!raw||raw.version!==1||!validText(raw.purpose,type==='REVERSAL'?1008:1000)||!raw.purpose.trim()||
+    !validText(raw.notes,5000)||!['TRANSFER','SPEND','REVERSAL'].includes(type)||
+    (type==='REVERSAL'?(!validText(raw.reason,1000)||!raw.reason.trim()||raw.purpose!=='Сторно: '+raw.reason):raw.reason!==null))
+  fail(503,'CAPITAL_P6_METADATA_CONTRACT_DRIFT');
+ return {version:1,purpose:raw.purpose,notes:raw.notes,reason:raw.reason};
+}
 function fundRow(r,motion){
  if(!UUID.test(r.id)||!['PROTECTIVE','GROWTH'].includes(r.group_type)||
     !['active','paused','archived'].includes(r.status)||
@@ -162,8 +172,16 @@ export async function readNativeCapitalOverview(pool,params,{authorizeOwner}={})
   const sql='SELECT m.movement_id::text AS id,m.transaction_date_key::text AS date,'+
    'm.movement_type AS type,m.status,m.amount_base::text AS amount_base,'+
    'm.from_fund_id::text AS from_id,m.to_fund_id::text AS to_id,'+
-   'm.reversal_of::text AS reversal_of,m.created_at::text AS at '+
-   'FROM mvp_finance_native.fund_movements m WHERE '+where.sql+
+   'm.reversal_of::text AS reversal_of,m.created_at::text AS at,'+
+   'rv.movement_id::text AS reversed_by,rv.transaction_date_key::text AS reversed_date,'+
+   'orig.movement_type AS original_type,orig.transaction_date_key::text AS original_date,'+
+   "rr.response->'capitalMetadata' AS capital_metadata "+
+   'FROM mvp_finance_native.fund_movements m '+
+   'LEFT JOIN mvp_finance_native.fund_movements rv ON rv.reversal_of=m.movement_id '+
+   'LEFT JOIN mvp_finance_native.fund_movements orig ON orig.movement_id=m.reversal_of '+
+   'LEFT JOIN mvp_finance_native.request_receipts rr ON rr.request_key=m.request_key '+
+   "AND rr.response->>'sourceId'=m.movement_id::text AND rr.action=CASE WHEN m.movement_type='REVERSAL' THEN 'CAPITAL_REVERSE' ELSE 'CAPITAL_'||m.movement_type END "+
+   'WHERE '+where.sql+
    ' AND ('+at+'::timestamptz IS NULL OR '+
    '(m.created_at,m.movement_id)<('+at+'::timestamptz,'+id+'::uuid))'+
    ' ORDER BY m.created_at DESC,m.movement_id DESC LIMIT '+page;
@@ -180,7 +198,9 @@ export async function readNativeCapitalOverview(pool,params,{authorizeOwner}={})
    return {id:m.id,date:String(m.date),type:m.type,status:m.status,
     amountBase:fixed(amount),fromFundId:m.from_id||'',toFundId:m.to_id||'',
     fromCode:byId.get(m.from_id)?.code||'',toCode:byId.get(m.to_id)?.code||'',
-    reversalOf:m.reversal_of||'',createdAt:String(m.at)};
+    reversalOf:m.reversal_of||'',reversedBy:m.reversed_by||'',
+    reversedDate:m.reversed_date||'',originalType:m.original_type||'',originalDate:m.original_date||'',
+    metadata:capitalMovementMetadata(m.type,m.capital_metadata),createdAt:String(m.at)};
   });
   const ids=shown.map(m=>m.id);
   const lines=ids.length?(await c.query(

@@ -200,11 +200,28 @@ function fundEditor(funds,today){
   '<label>Сумма, ֏<input name="amount" type="text" inputmode="decimal" maxlength="20" required></label>'+
   '<label data-b18-purpose-label><span>Причина перемещения</span><textarea name="purpose" maxlength="300" rows="2" required></textarea></label>'+
   '<label>Комментарий<textarea name="notes" maxlength="300" rows="2"></textarea></label>'+
-  '<p class="small muted">Назначение и комментарий сейчас проверяются при вводе, но не сохраняются в истории PostgreSQL.</p>'+
+  '<p class="small muted">Назначение и комментарий новой операции сохраняются в квитанции PostgreSQL и отображаются в истории капитала.</p>'+
   '<p class="small muted" data-b18-movement-hint>Перевод создаёт отдельное движение и не редактирует баланс вручную.</p>'+
   '<button type="submit" class="primary" data-b18-movement-submit>Переместить</button></form>';
 }
-export function nativeWorkspaceHtml(raw,mode,{today='2026-11-10',editingId=null,allocationSnapshot=null}={}){
+export function capitalReversalUiAction(form,row,today){
+ const reason=String(form.reason??'').trim(),notes=String(form.notes??'').trim();
+ if(!row||!UUID.test(row.id)||row.status!=='active'||!['TRANSFER','SPEND'].includes(row.type)||
+    form.movementId!==row.id)throw Error('P6_REVERSAL_STATE_CHANGED');
+ if(!dayValid(form.date,today)||form.date<row.date||!reason||reason.length>300||notes.length>300||
+    /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(reason+notes))throw Error('Укажи действительную дату и причину сторно.');
+ return {action:'CAPITAL_REVERSE',payload:{fundTransactionId:row.id,transactionDateKey:form.date,reason,notes}};
+}
+function reversalEditor(row,today){
+ return '<form data-b18-form="reversal" autocomplete="off"><h3>Сторно движения · '+esc(fmt(row.amountAMD))+' ֏</h3>'+
+  '<input type="hidden" name="movementId" value="'+esc(row.id)+'">'+
+  '<label>Дата<input type="date" name="date" min="'+esc(row.date)+'" max="'+esc(today)+'" value="'+esc(today)+'" required></label>'+
+  '<label>Причина сторно<textarea name="reason" maxlength="300" rows="2" required></textarea></label>'+
+  '<label>Комментарий<textarea name="notes" maxlength="300" rows="2"></textarea></label>'+
+  '<p class="small muted">Исходное движение остаётся в истории; создаётся компенсирующая операция.</p>'+
+  '<button type="submit" class="primary">Подтвердить сторно</button> <button type="button" data-p6-close-reversal>Отмена</button></form>';
+}
+export function nativeWorkspaceHtml(raw,mode,{today='2026-11-10',editingId=null,allocationSnapshot=null,reversalId=null}={}){
  const data=check(raw);
  if(!['finance','capital'].includes(mode))throw Error('B18_MODE_INVALID');
  const writable=data.postingEnabled===true;
@@ -248,7 +265,8 @@ export function nativeWorkspaceHtml(raw,mode,{today='2026-11-10',editingId=null,
     esc(labels[m.type]||m.type)+' · '+fmt(m.amountAMD)+' ֏</strong>'+
     '<div class="muted">'+esc(m.date)+' · '+esc(m.status)+'</div>'+
     (writable&&m.status==='active'&&['TRANSFER','SPEND'].includes(m.type)?
-     '<button type="button" data-b18-reverse="'+esc(m.id)+'">Сторнировать</button>':'')+
+     '<button type="button" data-b18-reverse="'+esc(m.id)+'">Сторнировать</button>'+
+      (reversalId===m.id?reversalEditor(m,today):''):'')+
     '</article>').join('');
   if(writable)body+='<section class="card">'+fundEditor(data.funds,today)+'</section>'+
    (allocationSnapshot?'<section class="card">'+allocationEditor(allocationSnapshot,data,today)+'</section>':'');
@@ -312,8 +330,8 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
  if(!root||typeof root.addEventListener!=='function'||typeof fetchPage!=='function'||
     typeof postAction!=='function'||!['finance','capital'].includes(mode))
   throw Error('B18_CONFIGURATION_MISSING');
- let live=true,state=null,busy=false,editingId=null,pending=null,allocationSnapshot=null;
- const show=()=>{if(live&&state)root.innerHTML=nativeWorkspaceHtml(state,mode,{today,editingId,allocationSnapshot});};
+ let live=true,state=null,busy=false,editingId=null,pending=null,allocationSnapshot=null,reversalId=null;
+ const show=()=>{if(live&&state)root.innerHTML=nativeWorkspaceHtml(state,mode,{today,editingId,allocationSnapshot,reversalId});};
  const status=(msg,error=false)=>{
   const el=root.querySelector('[data-b18-status]');
   if(el){el.textContent=msg;el.classList.toggle('error',error);}
@@ -322,7 +340,7 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
   if(!live)return;
   try{
    const data=check(await fetchPage('/api/finance/native-workspace'));
-   if(!live)return false;state=data;editingId=null;allocationSnapshot=null;show();
+   if(!live)return false;state=data;editingId=null;allocationSnapshot=null;reversalId=null;show();
    if(typeof onSource==='function')onSource({phase:data.phase,authority:data.authority});
    return true;
   }catch{
@@ -407,6 +425,7 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
   if(target.hasAttribute('data-b18-retry-load')){void load();return;}
   if(target.hasAttribute('data-b18-retry-post')){void send();return;}
   if(!state?.postingEnabled||busy||pending)return;
+  if(target.hasAttribute('data-p6-close-reversal')){reversalId=null;show();return;}
   if(target.hasAttribute('data-p5-close-allocation')){allocationSnapshot=null;show();return;}
   if(target.hasAttribute('data-p5-waterfall')){
    const form=target.closest('[data-b18-form="allocation"]');
@@ -439,9 +458,8 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
   const reverse=target.dataset.b18Reverse;
   if(reverse){
    const m=state.movements.find(x=>x.id===reverse&&x.status==='active'&&['TRANSFER','SPEND'].includes(x.type));
-   if(!m||!confirm('Сторнировать движение фонда?'))return;
-   void act({action:'CAPITAL_REVERSE',payload:{fundTransactionId:m.id,
-    transactionDateKey:today,reason:'Исправление ошибочной операции',notes:''}});
+   if(!m)return;
+   reversalId=m.id;show();root.querySelector('[data-b18-form="reversal"]')?.scrollIntoView?.({block:'start'});
   }
  };
  const change=e=>{
@@ -476,6 +494,13 @@ export function mountFinanceNativeWorkspace(root,{mode,fetchPage,postAction,toda
   const values=Object.fromEntries(new FormData(form));
   const row=values.nativeId?state.entries.find(x=>x.id===values.nativeId&&x.id===editingId):null;
   try{
+   if(form.getAttribute('data-b18-form')==='reversal'){
+    if(mode!=='capital')throw Error('P6_REVERSAL_STATE_CHANGED');
+    const m=state.movements.find(x=>x.id===reversalId);
+    const req=capitalReversalUiAction(values,m,today);
+    if(!confirm('Сторнировать движение на '+m.amountAMD+' AMD? Исходная запись останется в истории.'))return;
+    void act(req);return;
+   }
    if(form.getAttribute('data-b18-form')==='allocation'){
     if(mode!=='capital'||!allocationSnapshot)throw Error('P5_ALLOCATION_FORM_UNAVAILABLE');
     const req=capitalAllocationUiAction(values,allocationSnapshot,state,today);

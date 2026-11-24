@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {nativeWorkspaceHtml,nativeWorkspaceFormAction,capitalMovementUiCheck,capitalAllocationUiAction} from
+import {nativeWorkspaceHtml,nativeWorkspaceFormAction,capitalMovementUiCheck,capitalAllocationUiAction,capitalReversalUiAction} from
  '../domains/finance/finance-native-workspace-view.mjs';
 import {readNativeFinanceWorkspace,validateNativeWorkspaceSource,NativeFinanceWorkspaceError} from
  '../domains/finance/native-finance-workspace-read.mjs';
@@ -192,7 +192,9 @@ test('P5 source options allow paused positive funds; destination active only',()
  const destination=html.match(/name="toFundId" required>(.*?)<\/select>/s)[1];
  assert.ok(source.includes(state.funds[0].id));assert.ok(!destination.includes(state.funds[0].id));
  assert.ok(!source.includes(state.funds[4].id));
- assert.match(html,/Причина перемещения/);assert.match(html,/не сохраняются в истории PostgreSQL/);
+ assert.match(html,/Причина перемещения/);
+ assert.match(html,/Назначение и комментарий новой операции сохраняются в квитанции PostgreSQL и отображаются в истории капитала/);
+ assert.doesNotMatch(html,/не сохраняются в истории PostgreSQL/);
 });
 
 
@@ -228,3 +230,15 @@ test('P5 allocation UI derives only linked AMD investment from a matching P2/B18
  ws.funds[0].status='paused';
  assert.throws(()=>capitalAllocationUiAction(form,snapshot,ws,today),/изменились/);
 });
+
+ test('P6 reversal requires real reason, date, active movement and explicit form',()=>{
+ const state=uiState(true),row={id:nativeFunds[0].fund_id,date:'2026-11-10',type:'SPEND',status:'active',amountAMD:'25'};
+ state.movements.push(row);
+ const today='2026-11-24',form={movementId:row.id,date:today,reason:'  Ошибка  ',notes:'  Тест  '};
+ assert.deepEqual(capitalReversalUiAction(form,row,today),{action:'CAPITAL_REVERSE',payload:{fundTransactionId:row.id,transactionDateKey:today,reason:'Ошибка',notes:'Тест'}});
+ assert.throws(()=>capitalReversalUiAction({...form,reason:' '},row,today));
+ assert.throws(()=>capitalReversalUiAction({...form,date:'2026-11-09'},row,today));
+ assert.throws(()=>capitalReversalUiAction(form,{...row,type:'ALLOCATION'},today));
+ const html=nativeWorkspaceHtml(state,'capital',{today,reversalId:row.id});
+ assert.match(html,/data-b18-form="reversal"/);assert.match(html,/name="reason"[^>]*required/);
+ });

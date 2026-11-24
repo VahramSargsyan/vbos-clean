@@ -82,7 +82,12 @@ function movementCard(row){
   '<p class="small muted">'+esc(row.date)+' · '+esc(row.status==='reversed'?'Сторнировано':'Активно')+'</p>'+
   '<p class="small">'+esc(direction)+'</p>'+
   '<p class="small muted">Эффект по фондам: '+detail+'</p>'+
-  (row.reversalOf?'<p class="small muted">Сторнирует операцию '+esc(row.reversalOf)+'</p>':'')+
+  (row.reversalOf?'<p class="small muted">Сторнирует операцию '+esc(row.reversalOf)+
+   (row.originalType?' · '+esc(Object.fromEntries(types)[row.originalType]||row.originalType)+' · '+esc(row.originalDate):'')+'</p>':'')+
+  (row.reversedBy?'<p class="small muted">Сторнировано операцией '+esc(row.reversedBy)+' · '+esc(row.reversedDate)+'</p>':'')+
+  (row.metadata?'<p class="small">'+(row.type==='REVERSAL'?'Причина сторно: '+esc(row.metadata.reason):'Назначение: '+esc(row.metadata.purpose))+'</p>'+
+   (row.metadata.notes?'<p class="small">Комментарий: '+esc(row.metadata.notes)+'</p>':''):
+   (row.type==='ALLOCATION'?'':'<p class="small muted">Назначение и комментарий не были сохранены в этой записи.</p>'))+
   '<small class="muted">PostgreSQL · '+esc(row.id)+'</small></article>';
 }
 export function nativeCapitalP2Html({data,items=[],filters=zero(),loading=false,error='' }={}){

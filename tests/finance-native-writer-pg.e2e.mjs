@@ -191,7 +191,13 @@ test('Finance B10: single synthetic native Finance + Capital writer on B9 schema
   let sourceTransfer,sourceSpend;
   await t.test('capital TRANSFER, SPEND, and REVERSAL share the same receipt and audit contract',async()=>{
    const cashBefore=await cash();
-   sourceTransfer=await invoke('CAPITAL_TRANSFER',transfer());
+   const key=uuid(),payload=transfer({notes:'  Комментарий P6  '});
+   sourceTransfer=await invoke('CAPITAL_TRANSFER',payload,key);
+   assert.deepEqual(sourceTransfer.capitalMetadata,{version:1,purpose:payload.purpose,notes:'Комментарий P6',reason:null});
+   const replay=await invoke('CAPITAL_TRANSFER',payload,key);
+   assert.equal(replay.replayed,true);assert.deepEqual(replay.capitalMetadata,sourceTransfer.capitalMetadata);
+   const stored=await pool.query('SELECT r.response,a.details FROM mvp_finance_native.request_receipts r JOIN mvp_finance_native.audit_events a ON a.request_key=r.request_key WHERE r.request_key=$1',[key]);
+   assert.equal(stored.rows.length,1);assert.deepEqual(stored.rows[0].response.capitalMetadata,sourceTransfer.capitalMetadata);assert.deepEqual(stored.rows[0].details.capitalMetadata,sourceTransfer.capitalMetadata);
    assert.equal(sourceTransfer.movementType,'TRANSFER');
    assert.equal(Number((await fundBalance('GROWTH_ALPHA')).current_balance_base),108);
    assert.equal(Number((await fundBalance('GROWTH_GAMMA')).current_balance_base),150);
@@ -203,6 +209,8 @@ test('Finance B10: single synthetic native Finance + Capital writer on B9 schema
     transactionDateKey:date,reason:'Сторнировать тестовое списание'
    });
    assert.equal(undone.reversalOf,sourceSpend.movementId);
+   assert.equal(undone.capitalMetadata.reason,'Сторнировать тестовое списание');
+   assert.equal(sourceSpend.capitalMetadata.purpose,'Синтетический расход');
    assert.equal(Number((await fundBalance('GROWTH_ALPHA')).current_balance_base),108);
    await assert.rejects(invoke('CAPITAL_REVERSE',{
     fundTransactionId:sourceSpend.movementId,
