@@ -1,4 +1,6 @@
 import {createServer} from 'node:http';
+import {readAnalyticsA1} from './domains/analytics/analytics-a1.mjs';
+import {AnalyticsError} from './domains/analytics/analytics-a1-model.mjs';
 import {leadConversionAction} from './crm-lead-conversion.mjs';
 import {crmWonOrderCreate} from './crm-won-order-handoff.mjs';
 import {leadTransferAction} from './crm-lead-transfer.mjs';
@@ -135,6 +137,7 @@ const files = {
  '/finance-object-result-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-object-result-view.mjs',import.meta.url))],
  '/menu-groups.css': ['text/css; charset=utf-8',readFileSync(new URL('./public/menu-groups.css',import.meta.url))],
  '/business-monthly-gains-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/business-monthly-gains-view.mjs',import.meta.url))],
+ '/analytics-a1-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/analytics-a1-view.mjs',import.meta.url))],
  '/finance-review-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-review-view.mjs',import.meta.url))],
  '/finance-review-audit-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-review-audit-view.mjs',import.meta.url))],
  '/finance-corrections-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-corrections-view.mjs',import.meta.url))],
@@ -523,6 +526,17 @@ async function handler(req,res){
     throw new AppError(403,'FINANCE_B12_ORIGIN_REJECTED');
    if(req.method==='POST')originCheck(req);
    if(pathname==='/api/logout'&&req.method==='POST'){cookie(res,req,true);return json(res,200,{ok:true});}
+   // A1: read-only owner analytics and privacy-projected AI TXT. Never a writer or backup route.
+   if((pathname==='/api/analytics/a1'||pathname==='/api/analytics/a1/export')&&req.method==='GET'){
+    try{
+     const key=new URL(req.url,'http://localhost').searchParams.get('monthKey');
+     const exporting=pathname.endsWith('/export');
+     const result=await readAnalyticsA1(pool,key,{authorizeOwner:()=>sessionValid(req),exportMode:exporting});
+     if(!exporting)return json(res,200,result);
+     res.writeHead(200,{'Content-Type':result.mimeType,'Content-Disposition':'attachment; filename="'+result.filename+'"',
+      'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(result.content);return;
+    }catch(error){if(error instanceof AnalyticsError)throw new AppError(error.status,error.code);throw error;}
+   }
    // Finance B13: read-only attested stock; inherits the real signed owner session.
    // No monetary action path is added or enabled by this endpoint.
    if(pathname==='/api/finance/opening-preview'&&req.method==='GET'){

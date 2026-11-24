@@ -5,6 +5,7 @@ const fmt=x=>Number(x||0).toLocaleString('ru-RU');
 const short=x=>String(x||'').slice(0,10);
 const when=x=>{try{return new Date(x).toLocaleString('ru-RU',{timeZone:'Asia/Yerevan',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}catch{return '';}}
 let data=null,tab='today',busy=false;
+let analyticsA1State={monthKey:''},analyticsA1Panel=null,analyticsA1ModulePromise=null;
 let crmClientLeadContext=null; // UI-only Client context; Object relation is a separate persisted feature
 let egModule=null,egLoading=false,egError='',egInputs={},egResult=null;
 let edModule=null,edLoading=false,edError='',edDraft=null,edAnchor=null,edResult=null,edMessage='';
@@ -2574,6 +2575,18 @@ async function loadCatalog(append=false){
  finally{catalog.loading=false;if(success)render();}
 }
 
+async function mountAnalyticsA1View(){
+ const root=$('#analyticsA1Mount');
+ if(!data||tab!=='analytics'||!root)return;
+ try{
+  const mod=await (analyticsA1ModulePromise??=import('/analytics-a1-view.mjs'));
+  if(!data||tab!=='analytics'||root!==$('#analyticsA1Mount'))return;
+  analyticsA1Panel=mod.mountAnalyticsA1(root,{state:analyticsA1State,fetchPage:api,
+   download:async path=>{const r=await fetch(path,{credentials:'same-origin',headers:{Accept:'text/plain'}});if(!r.ok)throw Error('TXT недоступен');return r.blob();},
+   navigate:next=>{if(['finance','capital','crm','myWork','history','schedule','workers'].includes(next))$('#tabs').querySelector('[data-tab="'+next+'"]')?.click();}
+  });
+ }catch{if(data&&tab==='analytics'&&root===$('#analyticsA1Mount'))root.textContent='Не удалось открыть аналитику. Обнови приложение.';}
+}
 function reportView(){
  const item=data.legacyReport, r=item?.report||{},g=r.monthly_business_gains_amd||{};
  let s='<h1>Отчёты</h1><div class="card"><h2>Новая база</h2><p class="muted">Текущие новые данные: '+data.leads.length+' лидов, '+data.clients.length+' клиентов, '+data.orders.length+' заказов, '+data.logs.length+' рабочих записей.</p><a class="download" href="/api/export">Сохранить резервную копию JSON</a></div>';
@@ -3050,6 +3063,7 @@ function scheduleRevealSection(selector){
  return true;
 }
 function render(){
+ if(analyticsA1Panel){analyticsA1Panel.unmount();analyticsA1Panel=null;}
  if(financeOpeningPanel){financeOpeningPanel.unmount();financeOpeningPanel=null;}
  if(financeNativePanel){financeNativePanel.unmount();financeNativePanel=null;}
  if(financeParityPanel){financeParityPanel.unmount();financeParityPanel=null;}
@@ -3073,7 +3087,7 @@ function render(){
  if(tab!=='finance')financeDraftIntent='';
  if(tab!=='crm'){estimateWorkspaceOpen=false;if(crmDetailId){crmDetailId=null;crmReminderEditorLeadId=null;}}
  $('#tabs').querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
- $('#content').innerHTML=tab==='today'?todayView():tab==='myWork'?myWorkView():tab==='schedule'?scheduleView():tab==='crm'?crmView():tab==='estimator'?estimatorView():tab==='clients'?clientsView():tab==='objects'?objectsView():tab==='orders'?ordersView():tab==='workers'?workersView():tab==='serviceReference'?serviceReferenceView():tab==='historyOrders'?historyOrdersView():tab==='historyCrm'?historyCrmView():tab==='history'?historyView():tab==='catalog'?catalogView():tab==='engineering'?engineeringView():tab==='finance'||tab==='capital'?financeCapitalView(tab):reportView();
+ $('#content').innerHTML=tab==='today'?todayView():tab==='myWork'?myWorkView():tab==='schedule'?scheduleView():tab==='crm'?crmView():tab==='estimator'?estimatorView():tab==='clients'?clientsView():tab==='objects'?objectsView():tab==='orders'?ordersView():tab==='workers'?workersView():tab==='serviceReference'?serviceReferenceView():tab==='historyOrders'?historyOrdersView():tab==='historyCrm'?historyCrmView():tab==='history'?historyView():tab==='catalog'?catalogView():tab==='engineering'?engineeringView():tab==='finance'||tab==='capital'?financeCapitalView(tab):tab==='analytics'?'<div id="analyticsA1Mount"><h1>Аналитика</h1><p class="muted">Загружаю…</p></div>':reportView();
  if(tab==='myWork'&&workFlowModalState.kind){
   // render() replaces #content; a recreated WorkLog must be owner-scoped again.
   // Never silently apply a saved draft: offer explicit recovery before input or replay.
@@ -3089,6 +3103,7 @@ function render(){
  if(tab==='crm'&&!crmDetailId&&!estimateWorkspaceOpen)void mountLegacyTransfers();
  if(tab==='historyOrders')void mountHistoricalOrders();
  if(tab==='historyCrm')void mountHistoricalCrm();
+ if(tab==='analytics')void mountAnalyticsA1View();
  if(tab==='report'||tab==='finance')void mountFinanceHistory();
  if(tab==='finance')void mountFinanceOrderResult();
  if(tab==='finance')void mountFinanceWorkerHistory();
@@ -4413,7 +4428,7 @@ $('#loginForm').addEventListener('submit',async e=>{
  catch(err){const el=e.target.querySelector('p');if(el)el.remove();const p=document.createElement('p');p.textContent=err.message;p.className='muted';e.target.append(p);}
  finally{btn.disabled=false;}
 });
-$('#logout').addEventListener('click',async()=>{try{await api('/api/logout',{});}finally{crmWonOrderClose(true);if(historicalOrdersPanel){historicalOrdersPanel.unmount();historicalOrdersPanel=null;}if(financeAuditPanel){financeAuditPanel.unmount();financeAuditPanel=null;}if(financeCorrectionPanel){financeCorrectionPanel.unmount();financeCorrectionPanel=null;}if(financeReviewPanel){financeReviewPanel.unmount();financeReviewPanel=null;}if(financeReviewAuditPanel){financeReviewAuditPanel.unmount();financeReviewAuditPanel=null;}if(financeWorkerPanel){financeWorkerPanel.unmount();financeWorkerPanel=null;}if(financeArchivePanel){financeArchivePanel.unmount();financeArchivePanel=null;}if(financeHistoryPanel){financeHistoryPanel.unmount();financeHistoryPanel=null;}if(referencePanel){referencePanel.unmount();referencePanel=null;}closePreviewSeq++;closePreviewState={id:null,loading:false,result:null,error:''};nativeCloseReceiptSeq++;nativeCloseReceipt={id:null,busy:false,result:null,error:''};tab='today';crmDetailId=null;crmReminderEditorLeadId=null;crmListScrollY=0;clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;crmInteractionState={entityType:'',entityId:'',items:[],hasMore:false,nextCursor:null,loaded:false,loading:false,error:''};crmFollowupState={loaded:false,loading:false,result:null,error:''};todayDashboard={date:'',loaded:false,loading:false,work:null,crm:null,plan:null,errors:{}};data=null;worklogDraftSetOwner('');dailyA1=null;workerBenchmarkCache={};benchmarkProposalState={loaded:false,loading:false,error:'',payload:null};schedule.loaded=false;schedule.items=[];schedule.dayFilter='all';schedule.error='';capacity={startDate:'',durationWorkingDays:3,result:null,loading:false,loaded:false,error:''};capacityWorkOrderContext=null;workOrderCapacityOpenSeq++;scheduleCapacityDraft=null;resetHourlyManual();ownerActivity.loaded=false;ownerActivity.active=null;ownerActivity.items=[];presence.loaded=false;presence.active=null;presence.items=[];myWork.snapshot=null;myWork.loaded=false;myWork.selectedOrderId='';myWork.error='';clearDrawingSession();setMenuOpen(false,{restoreFocus:false});$('#menuToggle').hidden=true;$('#loginPanel').hidden=false;$('#appPanel').hidden=true;$('#logout').hidden=true;}});
+$('#logout').addEventListener('click',async()=>{try{await api('/api/logout',{});}finally{if(analyticsA1Panel){analyticsA1Panel.unmount();analyticsA1Panel=null;}analyticsA1State={monthKey:''};crmWonOrderClose(true);if(historicalOrdersPanel){historicalOrdersPanel.unmount();historicalOrdersPanel=null;}if(financeAuditPanel){financeAuditPanel.unmount();financeAuditPanel=null;}if(financeCorrectionPanel){financeCorrectionPanel.unmount();financeCorrectionPanel=null;}if(financeReviewPanel){financeReviewPanel.unmount();financeReviewPanel=null;}if(financeReviewAuditPanel){financeReviewAuditPanel.unmount();financeReviewAuditPanel=null;}if(financeWorkerPanel){financeWorkerPanel.unmount();financeWorkerPanel=null;}if(financeArchivePanel){financeArchivePanel.unmount();financeArchivePanel=null;}if(financeHistoryPanel){financeHistoryPanel.unmount();financeHistoryPanel=null;}if(referencePanel){referencePanel.unmount();referencePanel=null;}closePreviewSeq++;closePreviewState={id:null,loading:false,result:null,error:''};nativeCloseReceiptSeq++;nativeCloseReceipt={id:null,busy:false,result:null,error:''};tab='today';crmDetailId=null;crmReminderEditorLeadId=null;crmListScrollY=0;clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;crmInteractionState={entityType:'',entityId:'',items:[],hasMore:false,nextCursor:null,loaded:false,loading:false,error:''};crmFollowupState={loaded:false,loading:false,result:null,error:''};todayDashboard={date:'',loaded:false,loading:false,work:null,crm:null,plan:null,errors:{}};data=null;worklogDraftSetOwner('');dailyA1=null;workerBenchmarkCache={};benchmarkProposalState={loaded:false,loading:false,error:'',payload:null};schedule.loaded=false;schedule.items=[];schedule.dayFilter='all';schedule.error='';capacity={startDate:'',durationWorkingDays:3,result:null,loading:false,loaded:false,error:''};capacityWorkOrderContext=null;workOrderCapacityOpenSeq++;scheduleCapacityDraft=null;resetHourlyManual();ownerActivity.loaded=false;ownerActivity.active=null;ownerActivity.items=[];presence.loaded=false;presence.active=null;presence.items=[];myWork.snapshot=null;myWork.loaded=false;myWork.selectedOrderId='';myWork.error='';clearDrawingSession();setMenuOpen(false,{restoreFocus:false});$('#menuToggle').hidden=true;$('#loginPanel').hidden=false;$('#appPanel').hidden=true;$('#logout').hidden=true;}});
 $('#setupForm').addEventListener('submit',async e=>{
  e.preventDefault();const f=e.target,btn=f.querySelector('button');if(!f.reportValidity())return;
  if(f.elements.password.value!==f.elements.confirmPassword.value){message('Пароли не совпадают.',true);return;}

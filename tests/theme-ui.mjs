@@ -21,7 +21,7 @@ assert.ok(footer && !footer.includes('id="themeToggle"') && footer.includes('id=
 assert.equal((html.match(/id="themeToggle"/g)||[]).length,1);
 assert.equal(footer.match(/id="logout"/g)?.length,1);
 assert.equal((html.match(/id="logout"/g)||[]).length,1);
-assert.equal((nav.match(/data-tab="/g)||[]).length,18);
+assert.equal((nav.match(/data-tab="/g)||[]).length,19);
 assert.ok(nav.includes('data-tab="finance"'),'Finance archive must be visible in original Clean menu');
 assert.ok(nav.includes('data-tab="capital"'),'Capital fund archive must be visible in original Clean menu');
 assert.ok(nav.indexOf('data-tab="finance"')<nav.indexOf('data-tab="capital"'),'Finance should precede Capital');
@@ -46,7 +46,7 @@ const quickArea=linksArea.split('<details')[0];
 assert.deepEqual([...quickArea.matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]),['today','myWork','schedule','crm','orders']);
 const groups=[...linksArea.matchAll(/<details class="nav-group" name="vbos-nav-group">\s*<summary><span class="nav-group-label">([^<]+)<\/span><span class="nav-chevron" aria-hidden="true">▼<\/span><\/summary>\s*<div class="nav-submenu">([\s\S]*?)<\/div>\s*<\/details>/g)];
 assert.deepEqual(groups.map(x=>x[1]),['Клиенты и продажи','Исполнение и история','Финансы и отчёты','Инструменты']);
-const groupIds=[['clients','objects','catalog'],['workers','history','historyOrders','historyCrm'],['finance','capital','report'],['estimator','engineering','serviceReference']];
+const groupIds=[['clients','objects','catalog'],['workers','history','historyOrders','historyCrm'],['finance','capital','analytics','report'],['estimator','engineering','serviceReference']];
 for(let i=0;i<groups.length;i++){
   assert.deepEqual([...groups[i][2].matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]),groupIds[i]);
 }
