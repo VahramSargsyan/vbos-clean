@@ -33,8 +33,9 @@ CREATE TABLE IF NOT EXISTS public.mvp_knowledge_items(
  sort_order numeric NOT NULL DEFAULT 0,
  priority text NOT NULL DEFAULT 'MEDIUM' CHECK(priority IN ('LOW','MEDIUM','HIGH','CRITICAL')),
  favorite boolean NOT NULL DEFAULT false,
- client_request_id text NOT NULL DEFAULT '',
- source_system text NOT NULL DEFAULT 'CLEAN_NATIVE' CHECK(source_system IN ('LEGACY_GOOGLE','CLEAN_NATIVE'))
+ client_request_id text DEFAULT '',
+ source_system text NOT NULL DEFAULT 'CLEAN_NATIVE' CHECK(source_system IN ('LEGACY_GOOGLE','LEGACY_SUPABASE','CLEAN_NATIVE')),
+ CHECK(source_system <> 'CLEAN_NATIVE' OR client_request_id IS NOT NULL)
 );
 CREATE INDEX IF NOT EXISTS mvp_knowledge_status_type_idx
  ON public.mvp_knowledge_items(status,type);
