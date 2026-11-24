@@ -10,6 +10,7 @@ import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import pg from 'pg';
 import {normalizeFinanceCreate} from '../domains/finance/finance-create-normalize.mjs';
+import {readBusinessMonthlyGain,saveBusinessMonthlyGain} from '../domains/finance/business-monthly-gains.mjs';
 import {readNativeFinanceHistory,NativeFinanceHistoryError} from '../domains/finance/finance-native-summary-history.mjs';
 
 const uri=process.env.TEST_DATABASE_URL||'';
@@ -217,6 +218,29 @@ test('Finance P1 actual PostgreSQL 17: signed synthetic source, exact metrics, U
    await Promise.all([run(),run(),run()]);
    const after=(await pool.query('SELECT count(*)::int AS n FROM mvp_finance_native.transactions')).rows[0].n;
    assert.equal(after,before);
+  });
+  await t.test('M1 separate monthly upsert leaves native ledger and summaries byte-equivalent',async()=>{
+   await pool.query(readFileSync(new URL('../migrations/0026_finance_monthly_gains_TEST_ONLY.sql',import.meta.url),'utf8'));
+   const fingerprint=async()=>{
+    const {rows}=await pool.query("SELECT table_name FROM information_schema.tables WHERE table_schema='mvp_finance_native' AND table_type='BASE TABLE' ORDER BY table_name");
+    assert.ok(rows.length>0);const out={};
+    for(const {table_name:name} of rows){
+     assert.match(name,/^[a-z_][a-z0-9_]*$/);
+     out[name]=(await pool.query("SELECT count(*)::int n,md5(coalesce(string_agg(to_jsonb(t)::text,chr(10) ORDER BY to_jsonb(t)::text),'')) fingerprint FROM mvp_finance_native."+name+" t")).rows[0];
+    }
+    return out;
+   };
+   const before=await fingerprint(),old=await run(),scope=await run({workOrderId:one});
+   const key='2036-07',owner={authorizeOwner:()=>true};
+   const initial=await readBusinessMonthlyGain(pool,key,owner);
+   const record=await saveBusinessMonthlyGain(pool,{monthKey:key,referralCommissionBase:'12.34',purchaseCommissionBase:'5.67',
+    requestKey:uid(),expectedRevision:initial.record.revision},owner);
+   assert.equal(record.record.totalBusinessGainsBase,'18.01');assert.equal(record.ledgerEffect,false);
+   await saveBusinessMonthlyGain(pool,{monthKey:key,referralCommissionBase:'20.01',requestKey:uid(),expectedRevision:record.record.revision},owner);
+   assert.deepEqual(await fingerprint(),before);
+   const after=await run(),afterScope=await run({workOrderId:one});
+   assert.deepEqual(after.summary,old.summary);assert.deepEqual(after.ledger,old.ledger);
+   assert.deepEqual(afterScope.summary,scope.summary);
   });
   console.log('FINANCE_P1_REAL_DISPOSABLE_PG17_SIGNED_SOURCE_FILTERS_SUMS_KEYSET_PASS');
  }finally{await pool.end();}

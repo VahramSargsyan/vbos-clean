@@ -12,6 +12,11 @@
 3. Apply only the reviewed `0026` SQL as a bounded, transactionally checked TEST migration with short `lock_timeout` and `statement_timeout`. Read back primary key, column definitions, sum expression, CHECK constraints, immutable legacy row counts/hash, and new table counts=0. Existing real finance records stay unchanged.
 4. Deploy exact verified source to existing authorized Clean TEST only under separate runtime release authorization. Verify owner authenticated form at / Finance: select month, enter five categories, see total, save; same request replay; edit with revision; wrong revision 409; old Google archive unchanged.
 
+## M1 revalidation — 2026-11-24
+- Current independent Clean main `ac99111e6bf846c600fa1fbed34b740d9155ea5e`; read-only occupied TEST preflight confirmed both 0026 tables present, month text PK, UUID receipt PK/FK, five numeric(15,2) amount checks, generated numeric(18,2) sum, revision/source/hash/notes constraints; native months and receipts both zero. No DDL needed, no SQL applied.
+- Old Google authority language above describes historical context only; isolated monthly source is PostgreSQL, ledger authority is not applicable. No posting, balance, funds, order profit, Business Result effect or historical reconciliation/import.
+- For fresh disposable DB only replay unchanged 0026 twice; M1 requires authorized Node22/PG17 plus full regression. On already-present TEST do not reapply SQL. Runtime rollback to prior P7 commit `1b590fc935b95f8eb42ea161450e32d535b0096e`; retain monthly tables and actual owner records/receipts.
+
 ## Rollback
 - If migration transaction fails: rollback transaction and read-back previous state. If code fails: redeploy exact pre-release Clean TEST commit; keep newly created tables (they contain no external authority and may later contain TEST records).
 - Never automatically DROP new tables or restore whole database if user-created TEST records exist; get owner approval first. If not deployed/applied: simply close or revert Draft PR on feature branch; no DB rollback.

@@ -898,6 +898,9 @@ async function handler(req,res){
      }
    }
    if(pathname==='/api/finance/monthly-gains'&&req.method==='POST'){
+     if(!financeStrictSameOrigin(req))throw new AppError(403,'FINANCE_M1_ORIGIN_REJECTED');
+     if(!verifyFinanceCsrfForValidatedSession(req.headers['x-finance-csrf'],getCookies(req).vbos_sid,COOKIE_KEY))
+      throw new AppError(403,'FINANCE_M1_CSRF_REJECTED');
      try{
        const payload=await readBody(req);
        return json(res,200,await saveBusinessMonthlyGain(pool,payload,{authorizeOwner:()=>sessionValid(req)}));

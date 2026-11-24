@@ -1,0 +1,94 @@
+# Owner authorized up to five M1 CI runs; this exact trigger is attempt 1.
+# Exact source, disposable localhost PG17, no deployment or hosted credentials.
+name: VBOS Clean Finance M1 one-shot exact Node and disposable PG17
+on:
+  push:
+    branches:
+      - feature/finance-m1-monthly-gains-20261124
+    paths:
+      - .github/workflows/finance-m1-disposable-pg17-20261124.yml
+permissions:
+  contents: read
+concurrency:
+  group: finance-m1-disposable-pg17-20261124
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: "github.event.head_commit.message == 'ci(finance): M1 exact source PG17 qualification attempt 1'"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 36
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic_m1_test_only
+          POSTGRES_DB: vbos_mvp_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vbos_mvp_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      CI: 'true'
+      M1_SOURCE_SHA: be2140d5499fdf882a1f925471c835b1a4505db1
+      TEST_DATABASE_URL: postgresql://postgres:synthetic_m1_test_only@127.0.0.1:5432/vbos_mvp_ci
+    steps:
+      - name: Checkout exact M1 application candidate
+        uses: actions/checkout@v4
+        with:
+          ref: be2140d5499fdf882a1f925471c835b1a4505db1
+          persist-credentials: false
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies without lifecycle scripts
+        id: install
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund
+      - name: Verify exact source and disposable PG17 boundary
+        id: boundary
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$M1_SOURCE_SHA"
+          node --input-type=module <<'NODE'
+          import pg from 'pg';
+          const u=new URL(process.env.TEST_DATABASE_URL);
+          if(u.protocol!=='postgresql:'||u.hostname!=='127.0.0.1'||u.pathname!=='/vbos_mvp_ci')throw Error('M1_DISPOSABLE_ONLY');
+          const c=new pg.Client({connectionString:process.env.TEST_DATABASE_URL,ssl:false});
+          await c.connect();
+          try{
+            const r=(await c.query("SELECT current_database() AS db, current_setting('server_version_num') AS version")).rows[0];
+            if(r.db!=='vbos_mvp_ci'||Number(r.version)<170000||Number(r.version)>=180000)throw Error('M1_WRONG_DB_OR_VERSION');
+            console.log('M1_DISPOSABLE_PG17_VERIFIED');
+          }finally{await c.end();}
+          NODE
+      - name: Source layout and changed JS syntax
+        id: source
+        run: |
+          set -euo pipefail
+          npm run verify:source
+          for f in server.mjs public/app.js domains/finance/business-monthly-gains.mjs domains/finance/business-monthly-gains-view.mjs domains/finance/tests/business-monthly-gains.test.mjs tests/business-monthly-gains.db.e2e.mjs tests/e2e.mjs tests/finance-p1-native-summary-pg.e2e.mjs; do node --check "$f"; done
+      - name: Focused monthly gain and affected Finance/Capital tests
+        id: focused
+        if: "!cancelled() && steps.boundary.outcome == 'success'"
+        run: node --test domains/finance/tests/business-monthly-gains.test.mjs tests/finance-b20-hosted-route.test.mjs tests/finance-b18-workspace.test.mjs tests/finance-b23-order-result.test.mjs tests/finance-p1-native-summary.test.mjs tests/finance-p3-transaction-parity.test.mjs tests/finance-p4-native-entity-results.test.mjs tests/capital-p2-native-overview.test.mjs domains/finance/tests/capital-waterfall.test.mjs domains/finance/tests/capital-movement.test.mjs
+      - name: Full Node regression
+        id: unit
+        if: "!cancelled() && steps.boundary.outcome == 'success'"
+        run: npm test
+      - name: Complete disposable PostgreSQL E2E including M1 create/update, concurrency and ledger isolation
+        id: pg
+        if: "!cancelled() && steps.boundary.outcome == 'success'"
+        run: npm run test:e2e
+      - name: Final exact-source receipt
+        if: always()
+        env:
+          BOUNDARY_RESULT: ${{ steps.boundary.outcome }}
+          SOURCE_RESULT: ${{ steps.source.outcome }}
+          FOCUSED_RESULT: ${{ steps.focused.outcome }}
+          UNIT_RESULT: ${{ steps.unit.outcome }}
+          PG_RESULT: ${{ steps.pg.outcome }}
+        run: |
+          echo "M1_SOURCE=$M1_SOURCE_SHA BOUNDARY=$BOUNDARY_RESULT SOURCE=$SOURCE_RESULT FOCUSED=$FOCUSED_RESULT UNIT=$UNIT_RESULT PG17=$PG_RESULT"
+          echo "M1_NO_HOSTED_WRITES_OR_DEPLOYMENT"
+          test "$BOUNDARY_RESULT/$SOURCE_RESULT/$FOCUSED_RESULT/$UNIT_RESULT/$PG_RESULT" = "success/success/success/success/success"
