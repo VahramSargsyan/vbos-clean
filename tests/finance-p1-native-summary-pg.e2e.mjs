@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import pg from 'pg';
+import {readAnalyticsA1} from '../domains/analytics/analytics-a1.mjs';
 import {normalizeFinanceCreate} from '../domains/finance/finance-create-normalize.mjs';
 import {readBusinessMonthlyGain,saveBusinessMonthlyGain} from '../domains/finance/business-monthly-gains.mjs';
 import {readNativeFinanceHistory,NativeFinanceHistoryError} from '../domains/finance/finance-native-summary-history.mjs';
@@ -241,6 +242,62 @@ test('Finance P1 actual PostgreSQL 17: signed synthetic source, exact metrics, U
    const after=await run(),afterScope=await run({workOrderId:one});
    assert.deepEqual(after.summary,old.summary);assert.deepEqual(after.ledger,old.ledger);
    assert.deepEqual(afterScope.summary,scope.summary);
+  });
+  await t.test('A1 native month combines canonical P1 profit and M1 once; export excludes archive and private fields',async()=>{
+   const owner={authorizeOwner:()=>true},key='2026-11',old=await run();
+   const initial=await readBusinessMonthlyGain(pool,key,owner);
+   await saveBusinessMonthlyGain(pool,{monthKey:key,referralCommissionBase:'12.34',purchaseCommissionBase:'5.67',
+    organizationMarginBase:'0',taxOptimizationSavingsBase:'0',otherBusinessIncomeBase:'0',
+    requestKey:uid(),expectedRevision:initial.record.revision},owner);
+   const a=await readAnalyticsA1(pool,key,owner);
+   assert.equal(a.finance.attested,true,JSON.stringify(a.warnings));
+   assert.equal(a.finance.month.financeProfitBase,old.summary.profitBase);
+   assert.equal(a.finance.month.businessResultBase,'1171.010000');
+   assert.equal(a.finance.month.businessGainsBase,'18.010000');
+   assert.equal(a.finance.month.activeFinanceTransactionCount,8);
+   assert.equal(a.finance.currentCashBalanceBase,old.ledger.currentCashBase);
+   assert.equal(a.finance.historicalIncluded,false);
+   assert.equal(a.finance.ytd.businessResultBase,null);
+   const x=await readAnalyticsA1(pool,key,{...owner,exportMode:true});
+   assert.equal(x.filename,'VBOS_2026-11_AI_EXPORT.txt');
+   const payload=JSON.parse(x.content);
+   assert.equal(payload.datasets.FinanceTransactions.length,8);
+   assert.equal(payload.datasets.BusinessMonthlyGains.length,1);
+   for(const secret of [clientId,objectId,workerId,one,two,'P1_SYNTHETIC','P1 unique materials purchase'])assert.ok(!x.content.includes(secret));
+   const after=await run();assert.deepEqual(after.summary,old.summary);assert.deepEqual(after.ledger,old.ledger);
+  });
+  await t.test('A1 actual PG native CRM events, Yerevan boundary, WorkLog, overlapping owner time and WorkerTask',async()=>{
+   const owner={authorizeOwner:()=>true},key='2042-03',d=key+'-01',dayId=uid(),workerDay=uid();
+   const leads=[uid(),uid(),uid(),uid(),uid()];
+   for(let i=0;i<leads.length;i++)await pool.query(
+    'INSERT INTO public.mvp_leads(id,request_key,title,status,created_at) VALUES($1,$2,$3,$4,$5)',
+    [leads[i],uid(),'A1_PRIVATE_LEAD',['won','new','won','transferred','new'][i],
+     ['2042-02-28T20:00:00Z','2042-03-01T06:00:00Z','2042-02-01T06:00:00Z','2042-02-02T06:00:00Z','2042-03-31T20:00:00Z'][i]]);
+   for(const i of [0,2])await pool.query('INSERT INTO public.mvp_crm_lead_client_links(lead_id,client_id,object_id,request_key,created_at) VALUES($1,$2,$3,$4,$5)',[leads[i],clientId,objectId,uid(),'2042-03-02T06:00:00Z']);
+   await pool.query('INSERT INTO public.mvp_crm_lead_transfers(lead_id,request_key,payload_sha256,recipient_name,reason,transferred_at) VALUES($1,$2,$3,$4,$5,$6)',[leads[3],uid(),'a'.repeat(64),'A1_PRIVATE_RECIPIENT','no_time','2042-03-03T06:00:00Z']);
+   await pool.query('INSERT INTO public.mvp_work_days(id,day_date,status,opened_at,closed_at) VALUES($1,$2,$3,$4,$5)',[dayId,d,'closed',d+'T09:00:00+04:00',d+'T12:00:00+04:00']);
+   for(let i=0;i<2;i++){
+    const id=uid();
+    await pool.query('INSERT INTO public.mvp_work_logs(id,request_key,day_date,order_id,title,minutes,quantity,unit,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[id,uid(),d,one,'A1_PRIVATE_LOG',50,2,'м','A1_PRIVATE_NOTES']);
+    await pool.query('INSERT INTO public.mvp_work_log_details(work_log_id,payload_sha256,work_day_id,performer_mode,start_clock,end_clock,location,work_type,complexity,clean_minutes,loss_minutes,loss_reason,rework_status,rework_reason,rework_minutes,points,meters,gap_reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)',
+     [id,'b'.repeat(64),dayId,'OWNER',i?'10:30':'09:00',i?'11:30':'10:00','A1_PRIVATE_LOCATION','work',1,50,10,'materials','yes','repair',5,2,4,i?'lunch':'']);
+   }
+   await pool.query('INSERT INTO public.mvp_object_presence(day_id,day_date,object_id,order_id,status,arrived_at,departed_at,departure_recorded_at) VALUES($1,$2,$3,$4,$5,$6,$7,$7)',[dayId,d,objectId,one,'closed',d+'T09:00:00+04:00',d+'T12:00:00+04:00']);
+   for(const [kind,start,end] of [['ORGANIZATION','09:30','10:30'],['BUSINESS_SYSTEM','11:00','12:00']])await pool.query(
+    'INSERT INTO public.mvp_owner_activities(day_date,status,activity_class,start_at,end_at,duration_minutes,work_day_id,ended_recorded_at,summary) VALUES($1,$2,$3,$4,$5,60,$6,$5,$7)',[d,'completed',kind,d+'T'+start+':00+04:00',d+'T'+end+':00+04:00',dayId,'A1_PRIVATE_ACTIVITY']);
+   await pool.query('INSERT INTO public.mvp_schedule_items(schedule_date,start_at,end_at,object_id,order_id,title) VALUES($1,$2,$3,$4,$5,$6)',[d,d+'T09:00:00+04:00',d+'T12:00:00+04:00',objectId,one,'A1_PRIVATE_PLAN']);
+   await pool.query('INSERT INTO public.mvp_worker_days(id,worker_id,day_date,arrival_at) VALUES($1,$2,$3,$4)',[workerDay,workerId,d,d+'T09:00']);
+   await pool.query('INSERT INTO public.mvp_worker_tasks(worker_day_id,worker_id,order_id,object_id,day_date,status,task_type,start_at,end_at,duration_minutes,management_minutes,outcome,rework,rework_minutes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,60,10,$10,true,5)',[workerDay,workerId,one,objectId,d,'completed','work',d+'T09:00',d+'T10:00','COMPLETED']);
+   const a=await readAnalyticsA1(pool,key,owner);
+   assert.ok(a.crm&&a.field&&a.owner&&a.workers,JSON.stringify(a.warnings));
+   assert.equal(a.crm.total,2);assert.equal(a.crm.conversionEvents,2);assert.equal(a.crm.transferEvents,1);assert.equal(a.crm.conversionPercent,50);
+   assert.equal(a.field.cleanMinutes,100);assert.equal(a.field.lossMinutes,20);assert.equal(a.field.reworkMinutes,10);
+   assert.equal(a.field.presenceMinutes,180);assert.equal(a.field.breakMinutes,30);assert.equal(a.field.planFact.plannedMinutes,180);
+   assert.equal(a.owner.fieldTrackedMinutes,120);assert.equal(a.owner.uniqueMinutes,180);assert.equal(a.owner.overlapMinutes,60);
+   assert.equal(a.workers.rows[0].completedCount,1);assert.equal(a.workers.rows[0].durationMinutes,60);assert.equal(a.workers.rows[0].averageScore,null);
+   const x=await readAnalyticsA1(pool,key,{...owner,exportMode:true});assert.ok(!x.content.includes('A1_PRIVATE'));
+   const data=JSON.parse(x.content).datasets;assert.equal(data.WorkLogs.length,2);assert.equal(data.WorkerTasks.length,1);
+   assert.equal(data.Leads.length,2);assert.equal(data.OwnerActivityLogs.length,2);
   });
   console.log('FINANCE_P1_REAL_DISPOSABLE_PG17_SIGNED_SOURCE_FILTERS_SUMS_KEYSET_PASS');
  }finally{await pool.end();}
