@@ -116,12 +116,13 @@ export async function mastersAction({pool,type,p,key,uuid,safeRevision,AppError}
  }catch(e){await db.query('ROLLBACK').catch(()=>{});throw e;}
  finally{db.release();}
 }
-// MS1 reference links are snapshot-only; never grant write authority here.
+// MS1/MS3: legacy snapshot until shared activation; then canonical price links.
 const effectivePrice="p.status='active' AND coalesce(p.valid_from,(p.created_at AT TIME ZONE 'Asia/Yerevan')::date)<=(now() AT TIME ZONE 'Asia/Yerevan')::date";
-async function masterReference(pool){
+async function masterReference(pool,live){
+ if(live){const options=await pool.query('SELECT service_id AS "serviceId",category,service_name AS "serviceName",default_unit AS "defaultUnit" FROM public.mvp_services_catalog WHERE status=\'active\' ORDER BY category,service_name,service_id');return {readonly:false,sourceModifiedAt:null,services:options.rows};}
  const verified=await pool.query("SELECT 1 AS verified FROM public.mvp_service_reference_batches b WHERE b.batch_id=$1 AND b.source_system='LEGACY_GOOGLE_VBOS' AND b.status='VERIFIED' AND b.manifest_sha256=$2 AND b.source_modified_at=$3::timestamptz AND b.services_count=37 AND b.prices_count=1 AND (SELECT count(*) FROM public.mvp_services_reference s WHERE s.batch_id=b.batch_id)=b.services_count AND (SELECT count(*) FROM public.mvp_master_prices_reference p WHERE p.batch_id=b.batch_id)=b.prices_count",[REFERENCE_BATCH,REFERENCE_SOURCE_MANIFEST,REFERENCE_SOURCE_MODIFIED]);
  if(verified.rows.length!==1)return null;
- const options=await pool.query("SELECT service_id AS \"serviceId\",category,service_name AS \"serviceName\" FROM public.mvp_services_reference WHERE batch_id=$1 AND status='active' ORDER BY category,service_name,service_id",[REFERENCE_BATCH]);
+ const options=await pool.query("SELECT service_id AS \"serviceId\",category,service_name AS \"serviceName\",default_unit AS \"defaultUnit\" FROM public.mvp_services_reference WHERE batch_id=$1 AND status='active' ORDER BY category,service_name,service_id",[REFERENCE_BATCH]);
  return {batchId:REFERENCE_BATCH,sourceModifiedAt:REFERENCE_SOURCE_MODIFIED,readonly:true,services:options.rows};
 }
 export async function mastersRead({pool,url,AppError}){
@@ -154,7 +155,10 @@ export async function mastersRead({pool,url,AppError}){
    cursor=x.slice(-2);
   }catch{invalid(AppError,'Неверная страница мастеров.');}
  }
- const reference=wantReference?await masterReference(pool):null;
+ const authority=wantAuthority?await mastersServicesAuthority(pool):null;
+ if(wantReference&&authority?.phase==='CLEAN'&&!authority.writeEnabled)throw new AppError(503,'Право чтения текущих связей не подтверждено.');
+ const live=authority?.writeEnabled===true;
+ const reference=wantReference?await masterReference(pool,live):null;
  if((category||serviceId)&&!reference)throw new AppError(503,'Снимок связей мастеров и услуг не подтверждён.');
  if(category&&!reference.services.some(s=>s.category===category))invalid(AppError,'Категория отсутствует в подтверждённом снимке.');
  if(serviceId&&!reference.services.some(s=>s.serviceId===serviceId&&(!category||s.category===category)))invalid(AppError,'Услуга отсутствует в выбранной категории.');
@@ -163,7 +167,10 @@ export async function mastersRead({pool,url,AppError}){
  if(status==='available')where.push("status<>'archived'");
  else if(status){args.push(status);where.push('status=$'+args.length);}
  if(masterId){args.push(masterId);where.push('id=$'+args.length+'::uuid');}
- if(category||serviceId){
+ if((category||serviceId)&&live){
+  args.push(category,serviceId);const i=args.length-1;
+  where.push("EXISTS(SELECT 1 FROM public.mvp_master_prices_catalog p JOIN public.mvp_services_catalog s ON s.service_id=p.service_id WHERE p.master_id=m.id AND s.status='active' AND "+effectivePrice+" AND ($"+i+"='' OR s.category=$"+i+") AND ($"+(i+1)+"='' OR s.service_id=$"+(i+1)+"))");
+ }else if(category||serviceId){
   args.push(REFERENCE_BATCH,category,serviceId);
   const i=args.length-2;
   where.push("m.source_system='LEGACY_GOOGLE' AND EXISTS(SELECT 1 FROM public.mvp_master_prices_reference p JOIN public.mvp_services_reference s ON s.batch_id=p.batch_id AND s.service_id=p.service_id WHERE p.batch_id=$"+i+" AND p.master_id=m.source_master_id AND s.status='active' AND "+effectivePrice+" AND ($"+(i+1)+"='' OR s.category=$"+(i+1)+") AND ($"+(i+2)+"='' OR s.service_id=$"+(i+2)+"))");
@@ -182,10 +189,11 @@ export async function mastersRead({pool,url,AppError}){
  for(const x of items)delete x.cursor_at;
  if(masterId&&!items.length)throw new AppError(404,'Мастер не найден.');
  let linkedServices=[];
- if(masterId&&reference&&items[0]?.source_system==='LEGACY_GOOGLE'){
+ if(masterId&&reference&&live){
+  const got=await pool.query('SELECT DISTINCT s.service_id AS "serviceId",s.category,s.service_name AS "serviceName" FROM public.mvp_master_prices_catalog p JOIN public.mvp_services_catalog s ON s.service_id=p.service_id '+"WHERE p.master_id=$1::uuid AND s.status='active' AND "+effectivePrice+' ORDER BY s.category,s.service_name,s.service_id',[masterId]);linkedServices=got.rows;
+ }else if(masterId&&reference&&items[0]?.source_system==='LEGACY_GOOGLE'){
   const got=await pool.query('SELECT DISTINCT s.service_id AS "serviceId",s.category,s.service_name AS "serviceName" FROM public.mvp_master_prices_reference p JOIN public.mvp_services_reference s ON s.batch_id=p.batch_id AND s.service_id=p.service_id '+"WHERE p.batch_id=$1 AND p.master_id=$2 AND s.status='active' AND "+effectivePrice+' ORDER BY s.category,s.service_name,s.service_id',[REFERENCE_BATCH,items[0].source_master_id]);
   linkedServices=got.rows;
  }
- const authority=wantAuthority?await mastersServicesAuthority(pool):null;
  return {items,nextCursor,hasMore,limit,q,status,source:'CLEAN_CRM25_MASTERS',...(wantReference?{category,serviceId,reference,linkedServices}:{}),...(wantAuthority?{authority}: {})};
 }

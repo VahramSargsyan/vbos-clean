@@ -113,7 +113,7 @@ test('MS1 filters use verified snapshot and exact source IDs; cursor binds every
  const id=randomUUID(), date='2026-11-09T08:02:03.123456Z',calls=[];
  const options=[{serviceId:'SVC-1',category:'A',serviceName:'Монтаж'},{serviceId:'SVC-2',category:'B',serviceName:'Ремонт'}];
  const pool={async query(sql,args){calls.push({sql,args});
-  if(sql.includes('FROM public.mvp_masters_services_authority'))return {rows:[activeAuthority]};
+  if(sql.includes('FROM public.mvp_masters_services_authority'))return {rows:[{phase:'LEGACY'}]};
   if(sql.includes('SELECT 1 AS verified'))return {rows:[{verified:1}]};
   if(sql.includes('FROM public.mvp_services_reference WHERE'))return {rows:options};
   return {rows:[{id,cursor_at:date,source_system:'LEGACY_GOOGLE',source_master_id:'MST-1'},{id:randomUUID(),cursor_at:date}]};
@@ -155,7 +155,7 @@ test('MS1 standalone navigation and session scope preserve existing CRM recipien
  const html=file('../public/index.html');
  assert.equal((html.match(/data-tab="masters"/g)||[]).length,1);
  assert.match(ui,/tab==='masters'\?ms1View\(\)/);assert.match(ui,/function ms1ResetSession\(\)/);
- assert.match(ui,/ms1!==state\|\|state\.seq!==seq/);assert.match(ui,/if\(crmMasters!==state\)return/);assert.match(ui,/ms1=ms1Initial\(\);crmMasters=crmMastersInitial\(\)/);assert.match(ui,/knowledgeResetSession\(\);ms1ResetSession\(\)/);
+ assert.match(ui,/ms1!==state\|\|state\.seq!==seq/);assert.match(ui,/if\(crmMasters!==state\)return/);assert.match(ui,/ms1=ms1Initial\(\);crmMasters=crmMastersInitial\(\)/);assert.match(ui,/if\(ms3Panel\)\{ms3Panel\.unmount\(\);ms3Panel=null;/);assert.match(ui,/knowledgeResetSession\(\);ms1ResetSession\(\)/);
  assert.match(ui,/data-ms1-directory/);assert.match(ui,/data-ms1-back/);assert.match(ui,/data-ms1-reset/);
  assert.match(ui,/function ms1Detail/);assert.match(ui,/ms1\.writeEnabled===true/);
  assert.match(ui,/function crmLeadTransferCard/);assert.match(ui,/data-crm-master-load/);
@@ -231,4 +231,20 @@ test('MS1 activation gate precedes all writes, and imported provenance is not re
  const mutation=calls.find(x=>x.sql.startsWith('UPDATE'));
  assert.doesNotMatch(mutation.sql.split(' WHERE ')[0],/source_master_id|source_system|legacy_receipt_id|row_sha256|source_client_request_id/);
  assert.ok(calls.some(x=>x.sql.includes('FROM public.mvp_masters_services_authority')&&x.sql.endsWith(' FOR SHARE')));
+});
+
+test('MS3 activated master filters and card links use canonical UUID/price/service rather than legacy snapshot',async()=>{
+ const id=randomUUID(),calls=[],service={serviceId:'SRV-2026-0001',category:'A',serviceName:'Монтаж',defaultUnit:'item'};
+ const pool={async query(sql,args){calls.push({sql,args});
+ if(sql.includes('FROM public.mvp_masters_services_authority'))return {rows:[activeAuthority]};
+ if(sql.includes('FROM public.mvp_services_catalog WHERE'))return {rows:[service]};
+ if(sql.startsWith('SELECT DISTINCT'))return {rows:[service]};
+ return {rows:[{id,source_system:'CLEAN_NATIVE'}]};}};
+ const read=q=>mastersRead({pool,AppError,url:new URL('http://local/api/crm/masters?'+q)});
+ const page=await read('reference=1&category=A&serviceId=SRV-2026-0001');
+ assert.equal(page.reference.readonly,false);assert.equal(page.items.length,1);
+ assert.match(calls.find(x=>x.sql.includes('EXISTS(')).sql,/p\.master_id=m\.id/);
+ const detail=await read('reference=1&masterId='+id);assert.equal(detail.linkedServices.length,1);
+ assert.deepEqual(calls.find(x=>x.sql.startsWith('SELECT DISTINCT')).args,[id]);
+ assert.equal(calls.some(x=>x.sql.includes('mvp_master_prices_reference')),false);
 });

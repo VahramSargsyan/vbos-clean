@@ -73,6 +73,7 @@ import {financeCsrfForValidatedSession,verifyFinanceCsrfForValidatedSession} fro
 import {financeB12CutoverReadiness,FinanceB12ReadinessError} from './domains/finance/finance-cutover-readiness.mjs';
 import {referenceCatalogPage,ReferenceCatalogError} from './service-reference.mjs';
 import {servicesCatalogRead,servicesCatalogSave} from './services-catalog.mjs';
+import {masterPricesRead,masterPriceSave} from './master-prices.mjs';
 
 const isolatedCiDatabase = process.env.NODE_ENV==='test' && process.env.MVP_DATABASE_SSL==='disable';
 const pool = new Pool({connectionString:process.env.DATABASE_URL, ssl:isolatedCiDatabase?false:{rejectUnauthorized:false}, max:4, connectionTimeoutMillis:10000, idleTimeoutMillis:10000});
@@ -147,6 +148,7 @@ const files = {
  '/finance-corrections-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-corrections-view.mjs',import.meta.url))],
  '/finance-correction-audit-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-correction-audit-view.mjs',import.meta.url))],
  '/history-orders-view.css': ['text/css; charset=utf-8',readFileSync(new URL('./domains/finance/history-orders-view.css',import.meta.url))],
+ '/master-prices-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/master-prices-view.mjs',import.meta.url))],
  '/services-catalog-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/services-catalog-view.mjs',import.meta.url))],
  '/service-reference-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/service-reference-view.mjs',import.meta.url))],
  '/crm-legacy-transfers-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/crm-legacy-transfers-view.mjs',import.meta.url))],
@@ -775,6 +777,13 @@ async function handler(req,res){
    if(pathname==='/api/worker-tasks'&&req.method==='GET')return json(res,200,await workerTasksRead(pool,new URL(req.url,'http://localhost'),{uuid,safeDate,AppError}));
     if(pathname==='/api/worker-benchmarks'&&req.method==='GET')return json(res,200,await workerBenchmarksRead(pool,new URL(req.url,'http://localhost'),{uuid,safeDate,dayYerevan,AppError}));
     if(pathname==='/api/benchmark-proposals'&&req.method==='GET')return json(res,200,await benchmarkProposalsRead(pool,{AppError}));
+   // MS3: owner-only master-specific reference prices, not finance.
+   if(pathname==='/api/masters/prices'&&req.method==='GET')return json(res,200,await masterPricesRead({pool,url:new URL(req.url,'http://localhost'),AppError}));
+   if(pathname==='/api/masters/prices/save'&&req.method==='POST'){
+    if(!financeStrictSameOrigin(req))throw new AppError(403,'Запрос отклонён.');
+    req.setEncoding('utf8');const body=await readBody(req,30000);
+    return json(res,200,await masterPriceSave({pool,p:body.payload,key:body.requestKey,AppError}));
+   }
    // MS2: owner catalog; legacy reference remains unchanged.
    if(pathname==='/api/masters/services'&&req.method==='GET')return json(res,200,await servicesCatalogRead({pool,url:new URL(req.url,'http://localhost'),AppError}));
    if(pathname==='/api/masters/services/save'&&req.method==='POST'){

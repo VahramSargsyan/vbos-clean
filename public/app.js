@@ -91,7 +91,7 @@ let financeReviewPanel=null,financeReviewModulePromise=null;
 let financeReviewAuditPanel=null,financeReviewAuditModulePromise=null;
 let financeCorrectionPanel=null,financeCorrectionModulePromise=null;
 let financeAuditPanel=null,financeAuditModulePromise=null;
-let referencePanel=null,referenceModulePromise=null;
+let referencePanel=null,referenceModulePromise=null,ms3Panel=null;
 let closePreviewModulePromise=null,closePreviewModule=null,closePreviewState={id:null,loading:false,result:null,error:''},closePreviewSeq=0;
 let nativeCloseViewPromise=null,nativeCloseView=null,nativeCloseReceipt={id:null,busy:false,result:null,error:''},nativeCloseReceiptSeq=0;
 let catalog={entity:'clients',q:'',status:'',tier:'',referral:'',items:[],nextCursor:null,hasMore:false,loaded:false,loading:false};
@@ -99,7 +99,7 @@ const crmMastersInitial=()=>({items:[],loaded:false,loading:false,error:'',q:'',
 let crmMasters=crmMastersInitial();
 const ms1Initial=()=>({q:'',status:'available',category:'',serviceId:'',items:[],loaded:false,loading:false,error:'',nextCursor:null,hasMore:false,reference:null,openId:'',detail:null,linkedServices:[],newOpen:false,writeEnabled:false,seq:0});
 let ms1=ms1Initial();
-function ms1ResetSession(){ms1=ms1Initial();crmMasters=crmMastersInitial();}
+function ms1ResetSession(){if(ms3Panel){ms3Panel.unmount();ms3Panel=null;}ms1=ms1Initial();crmMasters=crmMastersInitial();}
 let crmTransferOpenLeadId=null;
 let myWork={snapshot:null,loading:false,loaded:false,selectedOrderId:'',error:''};
 let dailyA1=null;
@@ -1875,8 +1875,8 @@ function ms1Detail(m){
  if(ms1.writeEnabled===true){
   out+='<details><summary>Редактировать мастера</summary><form class="grid" data-act="crm_master_update"><input type="hidden" name="masterId" value="'+esc(m.id)+'"><input type="hidden" name="revision" value="'+esc(m.revision)+'">'+crmMasterFields(m)+'<button type="submit" class="primary wide">Сохранить мастера</button></form></details>';
  }else out+='<p class="muted small">Редактирование заблокировано до совместного перехода права записи.</p>';
- return out+'</section><section class="card"><h2>Связанные услуги</h2><p class="muted small">Только подтверждённый снимок действующих связей старого прайса; не полный текущий каталог. Цены здесь не редактируются.</p>'+
- (!ms1.reference?'<p class="error">Снимок связей не подтверждён.</p>':ms1.linkedServices.length?ms1.linkedServices.map(s=>'<p>'+esc(s.category+' · '+s.serviceName)+'</p>').join(''):'<p class="muted">В снимке нет действующих связей.</p>')+'</section>';
+ return out+'</section><section class="card"><h2>Связанные услуги</h2><p class="muted small">Связи из действующих индивидуальных расценок. Источник показан в прайсе ниже.</p>'+
+ (!ms1.reference?'<p class="error">Снимок связей не подтверждён.</p>':ms1.linkedServices.length?ms1.linkedServices.map(s=>'<p>'+esc(s.category+' · '+s.serviceName)+'</p>').join(''):'<p class="muted">Нет действующих связей.</p>')+'</section><div id="ms3Mount" role="region" aria-label="Расценки мастера"></div>';
 }
 function ms1View(){
  const error=ms1.error?'<p class="error" role="alert">'+esc(ms1.error)+'</p>':'';
@@ -1884,7 +1884,7 @@ function ms1View(){
  if(ms1.openId)return '<button type="button" class="compact" data-ms1-back>← К списку мастеров</button>'+error+loading+
   (ms1.detail?ms1Detail(ms1.detail):(!ms1.loading?'<button type="button" class="compact" data-ms1-refresh>Повторить</button>':''));
  const services=ms1.reference?.services||[],categories=[...new Set(services.map(s=>s.category))].map(s=>[s,s]);
- const snapshot=ms1.reference?'<p class="muted small">Категории и услуги: проверенный снимок от '+esc(ms1.reference.sourceModifiedAt.slice(0,10))+'. Связи определяются по исходному ID мастера, не по имени.</p>':ms1.loaded?'<p class="error">Снимок связей не подтверждён; фильтры услуг недоступны.</p>':'';
+ const snapshot=ms1.reference?(ms1.reference.readonly?'<p class="muted small">Категории и услуги: проверенный снимок от '+esc(ms1.reference.sourceModifiedAt.slice(0,10))+'.</p>':'<p class="muted small">Категории и услуги: действующий каталог Clean.</p>'):ms1.loaded?'<p class="error">Снимок связей не подтверждён; фильтры услуг недоступны.</p>':'';
  return '<h1>Мастера</h1><p class="muted">Внутренняя база внешних мастеров. Исполнители компании остаются отдельным справочником.</p>'+
  '<div class="actions"><button type="button" class="primary" data-ms1-new'+(ms1.writeEnabled?'':' disabled')+'>+ Новый мастер</button><button type="button" class="compact" data-ms1-refresh'+(ms1.loading?' disabled':'')+'>Обновить</button></div>'+
  (!ms1.writeEnabled?'<p class="muted small">Запись пока заблокирована; просмотр и поиск доступны.</p>':'')+
@@ -1894,6 +1894,7 @@ function ms1View(){
  '<label>Категория услуги<select name="category"'+(!ms1.reference?' disabled':'')+'>'+ms1Options(categories,ms1.category,'Все категории')+'</select></label>'+
  '<label>Услуга<select name="serviceId"'+(!ms1.reference||!ms1.category?' disabled':'')+'>'+ms1ServiceOptions(ms1.category,ms1.serviceId)+'</select></label>'+
  '<button type="submit" class="compact"'+(ms1.loading?' disabled':'')+'>Найти</button><button type="button" class="compact" data-ms1-reset>Сбросить</button></form>'+snapshot+'</section>'+error+loading+
+ (ms1.reference?'<div id="ms3Mount" role="region" aria-label="Сравнение мастеров"></div>':'')+
  (ms1.loaded?(ms1.items.length?ms1.items.map(ms1Card).join(''):'<p class="muted">Мастеров по выбранным фильтрам нет.</p>'):'')+
  (ms1.hasMore?'<button type="button" class="compact" data-ms1-more'+(ms1.loading?' disabled':'')+'>Показать ещё</button>':'');
 }
@@ -1914,6 +1915,14 @@ async function loadMs1(append=false){
   else{state.items=append?state.items.concat(result.items):result.items;state.loaded=true;state.hasMore=result.hasMore;state.nextCursor=result.nextCursor;}
  }catch(err){if(ms1===state&&state.seq===seq)state.error=err.message;}
  finally{if(ms1===state&&state.seq===seq){state.loading=false;if(tab==='masters')render();}}
+}
+async function mountMs3(){
+ const root=$('#ms3Mount'),state=ms1,masterId=state.openId||'';
+ if(!data||tab!=='masters'||!root||!state.reference)return;
+ try{const mod=await import('/master-prices-view.mjs');
+ if(!data||tab!=='masters'||ms1!==state||state.openId!==masterId||root!==$('#ms3Mount'))return;
+ ms3Panel=mod.mountPrices(root,{masterId,services:state.reference.services,fetchPage:path=>api(path),save:(path,payload)=>api(path,payload),onSaved:()=>{if(ms1===state&&tab==='masters'&&state.openId===masterId){message('Расценка сохранена.');void loadMs1(false);}}});
+ }catch{if(root===$('#ms3Mount'))root.textContent='Экран расценок недоступен.';}
 }
 function ms1Open(){tab='masters';ms1.openId='';ms1.newOpen=false;setMenuOpen(false);message('');void loadMs1(false);}
 
@@ -3140,6 +3149,7 @@ function scheduleRevealSection(selector){
  return true;
 }
 function render(){
+ if(ms3Panel){ms3Panel.unmount();ms3Panel=null;}
  if(analyticsA1Panel){analyticsA1Panel.unmount();analyticsA1Panel=null;}
  if(financeOpeningPanel){financeOpeningPanel.unmount();financeOpeningPanel=null;}
  if(financeNativePanel){financeNativePanel.unmount();financeNativePanel=null;}
@@ -3193,6 +3203,7 @@ function render(){
  if(tab==='capital')void mountCapitalP2();
  if(tab==='finance'||tab==='capital'){void mountFinanceOpening();void mountFinanceNative();void mountFinanceCapitalArchive();void mountFinanceReview();void mountFinanceReviewAudit();void mountFinanceCorrections();void mountFinanceAudit();}
  if(tab==='serviceReference')void mountServiceReference();
+ if(tab==='masters')void mountMs3();
  if(clientDetailId&&(tab==='clients'||(tab==='catalog'&&catalog.entity==='clients'))){
   void loadClientPortfolio(clientDetailId,'objects');
   void loadClientPortfolio(clientDetailId,'orders');
