@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {randomUUID} from 'node:crypto';
-import {masterPayload,mastersRead,mastersAction} from '../crm-masters.mjs';
+import {randomUUID,createHash} from 'node:crypto';
+import {masterPayload,mastersRead,mastersAction,normalizeMasterPhone} from '../crm-masters.mjs';
 import {leadTransferAction} from '../crm-lead-transfer.mjs';
 class AppError extends Error{constructor(status,message){super(message);this.status=status;}}
 const uuid=x=>{if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(x)))throw new AppError(400,'ID');return x;};
@@ -56,7 +56,7 @@ test('CRM25 master read filters are SQL-bound and cursor is scope-bound',async()
 });
 test('CRM25 native master create is idempotent and updates validate source/canonical revision',async()=>{
  const id=randomUUID(),key=randomUUID(),calls=[],item={id,source_system:'CLEAN_NATIVE',revision:1};
- const db={async query(sql,args){calls.push({sql,args});if(sql.startsWith('INSERT INTO public.mvp_crm_masters'))return {rows:[item]};return {rows:[]};},release(){}};
+ const db={async query(sql,args){calls.push({sql,args});if(sql.startsWith('INSERT INTO public.mvp_crm_masters'))return {rows:[item]};if(sql.startsWith('SELECT source_system,revision'))return {rows:[item]};if(sql.startsWith('UPDATE'))return {rows:[{...item,revision:2}]};return {rows:[]};},release(){}};
  const pool={async connect(){return db;},async query(sql,args){
   calls.push({sql,args}); if(sql.startsWith('UPDATE'))return {rows:[{...item,revision:2}]};return {rows:[]};
  }};
@@ -139,6 +139,7 @@ test('MS1 direct card preserves source ID, native revision and historical write 
   if(sql.includes('SELECT source_system,revision'))return {rows:[{source_system:'LEGACY_GOOGLE',revision:1}]};
   return {rows:[{id,source_system:'LEGACY_GOOGLE',source_master_id:'MST-1'}]};
  }};
+ pool.connect=async()=>({query:pool.query.bind(pool),release(){}});
  const detail=await mastersRead({pool,AppError,url:new URL('http://local/api/crm/masters?reference=1&masterId='+id)});
  assert.equal(detail.items[0].id,id);assert.equal(detail.linkedServices.length,1);assert.equal(calls.at(-1).args[1],'MST-1');
  await assert.rejects(mastersAction({pool,type:'crm_master_update',p:{...good,masterId:id,revision:1},key:randomUUID(),uuid,safeRevision,AppError}),e=>e.status===409);
@@ -154,4 +155,43 @@ test('MS1 standalone navigation and session scope preserve existing CRM recipien
  assert.match(ui,/data-ms1-directory/);assert.match(ui,/data-ms1-back/);assert.match(ui,/data-ms1-reset/);
  assert.match(ui,/function ms1Detail/);assert.match(ui,/source_system==='CLEAN_NATIVE'/);
  assert.match(ui,/function crmLeadTransferCard/);assert.match(ui,/data-crm-master-load/);
+});
+
+
+test('MS1.2 strict phone normalization matches M8B2 forms and rejects malformed input',()=>{
+ for(const v of ['099 123456','37499123456','+374 (99) 123-456','00374 99 123456'])
+  assert.equal(normalizeMasterPhone(v,AppError),'+37499123456');
+ assert.equal(normalizeMasterPhone('',AppError),'');
+ assert.equal(normalizeMasterPhone('+1 202 555 0100',AppError),'+12025550100');
+ for(const bad of ['123456','09912345','+374099123456','abc','+12','+3740 1234567'])
+  assert.throws(()=>normalizeMasterPhone(bad,AppError),e=>e.status===400);
+});
+test('MS1.2 duplicate check is serialized; same-key replay precedes duplicate lookup',async()=>{
+ const calls=[],id=randomUUID(),key=randomUUID(),raw={...good,phone:'099123456'};
+ let previous=null,duplicate=true,old={id,source_system:'CLEAN_NATIVE',revision:1};
+ const db={async query(sql,args){calls.push({sql,args});
+  if(sql.startsWith('SELECT * FROM public.mvp_crm_masters WHERE request_key'))return {rows:previous?[previous]:[]};
+  if(sql.startsWith('SELECT source_system,revision'))return {rows:[old]};
+  if(sql.startsWith('SELECT id FROM public.mvp_crm_masters'))return {rows:duplicate?[{id:randomUUID()}]:[]};
+  if(sql.startsWith('INSERT'))return {rows:[{id,phone:args[3]}]};
+  if(sql.startsWith('UPDATE'))return {rows:[{id,revision:2,phone:args[3]}]};
+  return {rows:[]};},release(){}};
+ const pool={async connect(){return db;}};
+ const create=p=>mastersAction({pool,type:'crm_master_create',p,key,uuid,safeRevision,AppError});
+ await assert.rejects(create(raw),e=>e.status===409);
+ assert.ok(calls.findIndex(x=>x.sql.startsWith('LOCK TABLE'))<calls.findIndex(x=>x.sql.startsWith('SELECT id FROM')));
+ assert.equal(calls.some(x=>x.sql.startsWith('INSERT')),false);
+ assert.ok(calls.some(x=>x.sql==='ROLLBACK'));
+ previous={id,payload_sha256:createHash('sha256').update(JSON.stringify(masterPayload(raw,AppError))).digest('hex')};
+ calls.length=0;
+ assert.equal((await create(raw)).deduplicated,true);
+ assert.equal(calls.some(x=>x.sql.startsWith('SELECT id FROM')),false);
+ await assert.rejects(create({...raw,name:'Другой'}),e=>e.status===409);
+ previous=null;duplicate=false;
+ assert.equal((await create(raw)).item.phone,'+37499123456');
+ const update=()=>mastersAction({pool,type:'crm_master_update',p:{...raw,masterId:id,revision:1},key,uuid,safeRevision,AppError});
+ assert.equal((await update()).item.revision,2);
+ assert.deepEqual(calls.filter(x=>x.sql.startsWith('SELECT id FROM')).at(-1).args,['+37499123456',id]);
+ old={...old,source_system:'LEGACY_GOOGLE'};
+ await assert.rejects(update(),e=>e.status===409);
 });
