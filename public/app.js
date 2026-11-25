@@ -2724,7 +2724,7 @@ function drawingRecalculate(){
  catch(e){edResult={status:'INVALID',invalidInputs:[String(e.message)]};}
 }
 function serviceReferenceView(){
- return '<section class="card"><div id="serviceReferenceMount" role="region" aria-label="Справочник услуг"><p class="muted">Загрузка справочника…</p></div></section>';
+ return '<section class="card"><div id="ms2CatalogMount" role="region" aria-label="Каталог услуг"><p class="muted">Загрузка каталога…</p></div></section><details class="card"><summary>Исторический снимок услуг и расценок</summary><div id="serviceReferenceMount" role="region" aria-label="Исторический справочник"><p class="muted">Загрузка справочника…</p></div></details>';
 }
 async function mountServiceReference(){
  const root=$('#serviceReferenceMount');
@@ -2732,7 +2732,12 @@ async function mountServiceReference(){
  try{
   const mod=await (referenceModulePromise??=import('/service-reference-view.mjs'));
   if(!data||tab!=='serviceReference'||root!==$('#serviceReferenceMount'))return;
-  referencePanel=mod.mountReferencePanel(root,{fetchPage:path=>api(path)});
+  const catalogRoot=$('#ms2CatalogMount');
+  const catalog=await import('/services-catalog-view.mjs');
+  if(!data||tab!=='serviceReference'||root!==$('#serviceReferenceMount')||catalogRoot!==$('#ms2CatalogMount'))return;
+  const legacyPanel=mod.mountReferencePanel(root,{fetchPage:path=>api(path)});
+  const currentPanel=catalog.mountServiceCatalog(catalogRoot,{fetchPage:path=>api(path),save:(path,payload)=>api(path,payload)});
+  referencePanel={unmount(){currentPanel.unmount();legacyPanel.unmount();}};
  }catch{
   if(data&&tab==='serviceReference'&&root===$('#serviceReferenceMount'))
    root.textContent='Экран справочника услуг пока недоступен.';
