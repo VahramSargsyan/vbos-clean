@@ -4,6 +4,7 @@
  * read-only until the owner authorizes external-master authority cutover.
  */
 import {createHash} from 'node:crypto';
+import {REFERENCE_BATCH,REFERENCE_SOURCE_MANIFEST,REFERENCE_SOURCE_MODIFIED} from './service-reference.mjs';
 export const MASTER_STATUS=Object.freeze(['active','unavailable','archived']);
 export const MASTER_QUALITY=Object.freeze(['','good','normal','problematic']);
 export const MASTER_MESSENGER=Object.freeze(['whatsapp','viber','telegram','other','none']);
@@ -78,39 +79,74 @@ export async function mastersAction({pool,type,p,key,uuid,safeRevision,AppError}
  }
  throw new AppError(400,'Неизвестное действие со справочником мастеров.');
 }
+// MS1 reference links are snapshot-only; never grant write authority here.
+const effectivePrice="p.status='active' AND coalesce(p.valid_from,(p.created_at AT TIME ZONE 'Asia/Yerevan')::date)<=(now() AT TIME ZONE 'Asia/Yerevan')::date";
+async function masterReference(pool){
+ const verified=await pool.query("SELECT 1 AS verified FROM public.mvp_service_reference_batches b WHERE b.batch_id=$1 AND b.source_system='LEGACY_GOOGLE_VBOS' AND b.status='VERIFIED' AND b.manifest_sha256=$2 AND b.source_modified_at=$3::timestamptz AND b.services_count=37 AND b.prices_count=1 AND (SELECT count(*) FROM public.mvp_services_reference s WHERE s.batch_id=b.batch_id)=b.services_count AND (SELECT count(*) FROM public.mvp_master_prices_reference p WHERE p.batch_id=b.batch_id)=b.prices_count",[REFERENCE_BATCH,REFERENCE_SOURCE_MANIFEST,REFERENCE_SOURCE_MODIFIED]);
+ if(verified.rows.length!==1)return null;
+ const options=await pool.query("SELECT service_id AS \"serviceId\",category,service_name AS \"serviceName\" FROM public.mvp_services_reference WHERE batch_id=$1 AND status='active' ORDER BY category,service_name,service_id",[REFERENCE_BATCH]);
+ return {batchId:REFERENCE_BATCH,sourceModifiedAt:REFERENCE_SOURCE_MODIFIED,readonly:true,services:options.rows};
+}
 export async function mastersRead({pool,url,AppError}){
  const params=url.searchParams;
  const q=plain(params.get('q')??'',80,AppError,{label:'Поиск'}).toLocaleLowerCase('ru');
  const status=params.get('status')??'';
- if(status&&!MASTER_STATUS.includes(status))invalid(AppError,'Неизвестный статус мастера.');
+ if(status&&status!=='available'&&!MASTER_STATUS.includes(status))invalid(AppError,'Неизвестный статус мастера.');
+ const category=plain(params.get('category')??'',180,AppError,{label:'Категория'});
+ const serviceId=plain(params.get('serviceId')??'',128,AppError,{label:'Услуга'});
+ const masterId=params.get('masterId')??'';
+ if(masterId&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(masterId))invalid(AppError,'Неверный ID мастера.');
+ if(serviceId&&!/^[A-Za-z0-9_-]{3,128}$/.test(serviceId))invalid(AppError,'Неверная услуга.');
+ if(masterId&&(q||status||category||serviceId||params.get('cursor')))invalid(AppError,'Карточка не совмещается с фильтрами списка.');
+ const catalog=params.get('reference')??'';
+ if(catalog&&catalog!=='1')invalid(AppError,'Неизвестный режим справочника.');
+ const wantReference=catalog==='1'||Boolean(category||serviceId);
+ const scope=wantReference||masterId?[q,status,category,serviceId,masterId,catalog]:[q,status];
  const limit=Number(params.get('limit')||50);
  if(!Number.isInteger(limit)||limit<1||limit>100)invalid(AppError,'Размер страницы — от 1 до 100.');
  const raw=params.get('cursor');
  let cursor=null;
  if(raw){
-  if(raw.length>600||!/^[A-Za-z0-9_-]+$/.test(raw))invalid(AppError,'Неверная страница мастеров.');
+  if(raw.length>1400||!/^[A-Za-z0-9_-]+$/.test(raw))invalid(AppError,'Неверная страница мастеров.');
   try{
    const x=JSON.parse(Buffer.from(raw,'base64url').toString('utf8'));
-   if(!Array.isArray(x)||x.length!==4||x[0]!==q||x[1]!==status||
-      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(x[2])||
-      !/^[0-9a-f-]{36}$/i.test(x[3]))throw Error('cursor');
-   cursor=[x[2],x[3]];
+   if(!Array.isArray(x)||x.length!==scope.length+2||scope.some((v,i)=>x[i]!==v)||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(x.at(-2))||
+      !/^[0-9a-f-]{36}$/i.test(x.at(-1)))throw Error('cursor');
+   cursor=x.slice(-2);
   }catch{invalid(AppError,'Неверная страница мастеров.');}
  }
+ const reference=wantReference?await masterReference(pool):null;
+ if((category||serviceId)&&!reference)throw new AppError(503,'Снимок связей мастеров и услуг не подтверждён.');
+ if(category&&!reference.services.some(s=>s.category===category))invalid(AppError,'Категория отсутствует в подтверждённом снимке.');
+ if(serviceId&&!reference.services.some(s=>s.serviceId===serviceId&&(!category||s.category===category)))invalid(AppError,'Услуга отсутствует в выбранной категории.');
  const args=[],where=[];
- if(q){args.push(q);where.push("strpos(lower(concat_ws(' ',name,phone,service_area)),lower($"+args.length+"))>0");}
- if(status){args.push(status);where.push('status=$'+args.length);}
+ if(q){args.push(q);where.push("strpos(lower(concat_ws(' ',name,phone,service_area,email,notes,source_master_id,id::text)),lower($"+args.length+"))>0");}
+ if(status==='available')where.push("status<>'archived'");
+ else if(status){args.push(status);where.push('status=$'+args.length);}
+ if(masterId){args.push(masterId);where.push('id=$'+args.length+'::uuid');}
+ if(category||serviceId){
+  args.push(REFERENCE_BATCH,category,serviceId);
+  const i=args.length-2;
+  where.push("m.source_system='LEGACY_GOOGLE' AND EXISTS(SELECT 1 FROM public.mvp_master_prices_reference p JOIN public.mvp_services_reference s ON s.batch_id=p.batch_id AND s.service_id=p.service_id WHERE p.batch_id=$"+i+" AND p.master_id=m.source_master_id AND s.status='active' AND "+effectivePrice+" AND ($"+(i+1)+"='' OR s.category=$"+(i+1)+") AND ($"+(i+2)+"='' OR s.service_id=$"+(i+2)+"))");
+ }
  if(cursor){args.push(...cursor);const i=args.length-1;where.push('(created_at,id)<($'+i+'::timestamptz,$'+(i+1)+'::uuid)');}
  args.push(limit+1);
  const sql='SELECT id,source_system,source_master_id,name,phone,email,service_area,notes,status,'+
    'quality_tier,messenger_type,messenger_contact,revision,created_at,updated_at,'+
    'to_char(created_at AT TIME ZONE '+String.fromCharCode(39)+'UTC'+String.fromCharCode(39)+
    ','+String.fromCharCode(39)+'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'+String.fromCharCode(39)+') AS cursor_at '+
-   'FROM public.mvp_crm_masters'+(where.length?' WHERE '+where.join(' AND '):'')+
+   'FROM public.mvp_crm_masters m'+(where.length?' WHERE '+where.join(' AND '):'')+
    ' ORDER BY created_at DESC,id DESC LIMIT $'+args.length;
  const result=await pool.query(sql,args),items=result.rows.slice(0,limit),hasMore=result.rows.length>limit;
  const last=items.at(-1);
- const nextCursor=hasMore&&last?Buffer.from(JSON.stringify([q,status,last.cursor_at,last.id])).toString('base64url'):null;
+ const nextCursor=hasMore&&last?Buffer.from(JSON.stringify([...scope,last.cursor_at,last.id])).toString('base64url'):null;
  for(const x of items)delete x.cursor_at;
- return {items,nextCursor,hasMore,limit,q,status,source:'CLEAN_CRM25_MASTERS'};
+ if(masterId&&!items.length)throw new AppError(404,'Мастер не найден.');
+ let linkedServices=[];
+ if(masterId&&reference&&items[0]?.source_system==='LEGACY_GOOGLE'){
+  const got=await pool.query('SELECT DISTINCT s.service_id AS "serviceId",s.category,s.service_name AS "serviceName" FROM public.mvp_master_prices_reference p JOIN public.mvp_services_reference s ON s.batch_id=p.batch_id AND s.service_id=p.service_id '+"WHERE p.batch_id=$1 AND p.master_id=$2 AND s.status='active' AND "+effectivePrice+' ORDER BY s.category,s.service_name,s.service_id',[REFERENCE_BATCH,items[0].source_master_id]);
+  linkedServices=got.rows;
+ }
+ return {items,nextCursor,hasMore,limit,q,status,source:'CLEAN_CRM25_MASTERS',...(wantReference?{category,serviceId,reference,linkedServices}:{})};
 }

@@ -105,3 +105,53 @@ test('CRM25 no Worker substitution; owner API/UI integration is explicit',()=>{
  assert.match(ui,/receiver\.disabled=Boolean\(masterSelector\.value\)/);
  assert.doesNotMatch(file('../crm-masters.mjs'),/mvp_workers|GoogleSheets|SpreadsheetApp|googleapis/);
 });
+
+
+test('MS1 filters use verified snapshot and exact source IDs; cursor binds every filter',async()=>{
+ const id=randomUUID(), date='2026-11-09T08:02:03.123456Z',calls=[];
+ const options=[{serviceId:'SVC-1',category:'A',serviceName:'Монтаж'},{serviceId:'SVC-2',category:'B',serviceName:'Ремонт'}];
+ const pool={async query(sql,args){calls.push({sql,args});
+  if(sql.includes('SELECT 1 AS verified'))return {rows:[{verified:1}]};
+  if(sql.includes('FROM public.mvp_services_reference WHERE'))return {rows:options};
+  return {rows:[{id,cursor_at:date,source_system:'LEGACY_GOOGLE',source_master_id:'MST-1'},{id:randomUUID(),cursor_at:date}]};
+ }};
+ const make=query=>mastersRead({pool,AppError,url:new URL('http://local/api/crm/masters?'+query)});
+ const got=await make('reference=1&status=available&category=A&serviceId=SVC-1&limit=1');
+ assert.equal(got.reference.readonly,true);assert.equal(got.reference.services.length,2);assert.equal(got.hasMore,true);
+ const filtered=calls.at(-1);
+ assert.match(filtered.sql,/p\.master_id=m\.source_master_id/);assert.match(filtered.sql,/m\.source_system='LEGACY_GOOGLE'/);
+ assert.match(filtered.sql,/status<>'archived'/);assert.match(filtered.sql,/Asia\/Yerevan/);assert.match(filtered.sql,/p\.valid_from/);
+ assert.deepEqual(filtered.args.slice(-3),['A','SVC-1',2]);
+ const before=calls.length;
+ await assert.rejects(make('reference=1&status=available&category=B&serviceId=SVC-2&limit=1&cursor='+got.nextCursor),e=>e.status===400);
+ assert.equal(calls.length,before);
+ await assert.rejects(make('reference=1&category=A&serviceId=SVC-2'),e=>e.status===400);
+ const next=await make('reference=1&status=available&category=A&serviceId=SVC-1&limit=1&cursor='+got.nextCursor);
+ assert.equal(next.items.length,1);assert.match(calls.at(-1).sql,/\(created_at,id\)</);
+});
+test('MS1 direct card preserves source ID, native revision and historical write fence',async()=>{
+ const id=randomUUID(),calls=[];
+ const pool={async query(sql,args){calls.push({sql,args});
+  if(sql.includes('SELECT 1 AS verified'))return {rows:[{verified:1}]};
+  if(sql.includes('FROM public.mvp_services_reference WHERE'))return {rows:[]};
+  if(sql.includes('SELECT DISTINCT'))return {rows:[{serviceId:'SVC-1',category:'A',serviceName:'Монтаж'}]};
+  if(sql.startsWith('UPDATE public.mvp_crm_masters'))return {rows:[]};
+  if(sql.includes('SELECT source_system,revision'))return {rows:[{source_system:'LEGACY_GOOGLE',revision:1}]};
+  return {rows:[{id,source_system:'LEGACY_GOOGLE',source_master_id:'MST-1'}]};
+ }};
+ const detail=await mastersRead({pool,AppError,url:new URL('http://local/api/crm/masters?reference=1&masterId='+id)});
+ assert.equal(detail.items[0].id,id);assert.equal(detail.linkedServices.length,1);assert.equal(calls.at(-1).args[1],'MST-1');
+ await assert.rejects(mastersAction({pool,type:'crm_master_update',p:{...good,masterId:id,revision:1},key:randomUUID(),uuid,safeRevision,AppError}),e=>e.status===409);
+ await assert.rejects(mastersRead({pool,AppError,url:new URL('http://local/api/crm/masters?masterId='+id+'&q=other')}),e=>e.status===400);
+ const noReceipt={async query(){return {rows:[]};}};
+ await assert.rejects(mastersRead({pool:noReceipt,AppError,url:new URL('http://local/api/crm/masters?reference=1&category=A')}),e=>e.status===503);
+});
+test('MS1 standalone navigation and session scope preserve existing CRM recipient route',()=>{
+ const html=file('../public/index.html');
+ assert.equal((html.match(/data-tab="masters"/g)||[]).length,1);
+ assert.match(ui,/tab==='masters'\?ms1View\(\)/);assert.match(ui,/function ms1ResetSession\(\)/);
+ assert.match(ui,/ms1!==state\|\|state\.seq!==seq/);assert.match(ui,/knowledgeResetSession\(\);ms1ResetSession\(\)/);
+ assert.match(ui,/data-ms1-directory/);assert.match(ui,/data-ms1-back/);assert.match(ui,/data-ms1-reset/);
+ assert.match(ui,/function ms1Detail/);assert.match(ui,/source_system==='CLEAN_NATIVE'/);
+ assert.match(ui,/function crmLeadTransferCard/);assert.match(ui,/data-crm-master-load/);
+});
