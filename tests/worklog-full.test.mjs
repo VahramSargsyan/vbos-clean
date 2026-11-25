@@ -153,7 +153,8 @@ test('UI behavior: invalid fields retain data; only acknowledged save clears ent
 
 
 test('WorkLog legacy taxonomy Category → Action → Service preserves canonical serviceId',()=>{
- assert.match(server,/SELECT service_id,service_name,category,action_code,status FROM public\.mvp_services_reference/);
+ assert.match(server,/readWorkLogServiceReferences\(pool,AppError\)/);
+ assert.match(writer,/requireActiveWorkLogServiceTx\(client,f\.serviceId,AppError\)/);
  assert.match(ui,/data-full-worklog-tax-category/);
  assert.match(ui,/data-full-worklog-tax-action/);
  assert.match(ui,/Фактическая работа/);
@@ -170,6 +171,7 @@ test('WorkLog legacy taxonomy Category → Action → Service preserves canonica
  const choices=vm.runInContext("fullWorkLogTaxServices(fullWorkLogTaxRows(''),'Сантехника','MOUNT','')",context);
  assert.match(choices,/Трубы/);
  assert.doesNotMatch(choices,/Радиатор|Проводка|Архивная/);
+ assert.match(vm.runInContext("fullWorkLogTaxServices([],'','','SRV-2026-9999')",context),/value="SRV-2026-9999" selected/);
  const actions=vm.runInContext("fullWorkLogTaxActions(fullWorkLogTaxRows(''),'Сантехника')",context);
  assert.deepEqual(Array.from(actions,row=>Array.from(row)[0]),['MOUNT','INSTALL']);
  const categorySelect={value:'',innerHTML:''},actionSelect={value:'',innerHTML:''},serviceSelect={value:'',innerHTML:''};

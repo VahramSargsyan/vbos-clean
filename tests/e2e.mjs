@@ -6,7 +6,7 @@ import pg from 'pg';
 
 const {Client}=pg;
 const connectionString=process.env.TEST_DATABASE_URL;
-if(!connectionString || !/localhost|127\.0\.0\.1/.test(new URL(connectionString).hostname)) {
+if(!connectionString || !['localhost','127.0.0.1','[::1]'].includes(new URL(connectionString).hostname)) {
  throw Error('E2E_DISPOSABLE_LOCAL_DATABASE_ONLY');
 }
 const database=new Client({connectionString,ssl:false});
@@ -536,16 +536,16 @@ try{
  const refBatch='SERVICES_MASTERPRICES_V12_TEST_20261105_R1';
  await database.query("INSERT INTO public.mvp_service_reference_batches(batch_id,source_system,source_modified_at,services_count,prices_count,manifest_sha256,verified_at,status) VALUES ($1,'LEGACY_GOOGLE_VBOS','2026-11-03T19:06:09.263Z',37,1,$2,now(),'VERIFIED')",[refBatch,'fc85e0e51751b50c689fceaba8d6c273706a25e577e798df3e886deef3a8d674']);
  await database.query(`INSERT INTO public.mvp_services_reference(batch_id,service_id,created_at,updated_at,status,category,service_name,default_unit,notes,action_code)
-  SELECT $1,'SRV-TEST-'||lpad(n::text,4,'0'), '2026-11-05T00:00:00Z','2026-11-05T00:00:00Z','active','Сантехника',
+  SELECT $1,'SRV-2026-'||lpad(n::text,4,'0'), '2026-11-05T00:00:00Z','2026-11-05T00:00:00Z','active','Сантехника',
   'Пробная услуга '||n,'item','',CASE WHEN n=37 THEN NULL ELSE 'INSTALL' END
   FROM generate_series(1,37) n`,[refBatch]);
- await database.query("INSERT INTO public.mvp_master_prices_reference(batch_id,master_price_id,created_at,updated_at,status,master_id,service_id,price_type,price_from,price_to,currency,unit,valid_from) VALUES ($1,'MPR-TEST-0001','2026-11-05T00:00:00Z','2026-11-05T00:00:00Z','active','MST-TEST-0001','SRV-TEST-0001','range',3000,5000,'AMD','item','2026-08-16')",[refBatch]);
+ await database.query("INSERT INTO public.mvp_master_prices_reference(batch_id,master_price_id,created_at,updated_at,status,master_id,service_id,price_type,price_from,price_to,currency,unit,valid_from) VALUES ($1,'MPR-2026-0001','2026-11-05T00:00:00Z','2026-11-05T00:00:00Z','active','MST-2026-0001','SRV-2026-0001','range',3000,5000,'AMD','item','2026-08-16')",[refBatch]);
  const refFirst=await request('/api/reference/services?limit=20',undefined,cookie);
  assert.equal(refFirst.status,200,refFirst.body.error);
  assert.equal(refFirst.body.readonly,true);
  assert.equal(refFirst.body.items.length,20);
  assert.equal(refFirst.body.hasMore,true);
- assert.equal(refFirst.body.items[0].masterPrices[0].masterId,'MST-TEST-0001');
+ assert.equal(refFirst.body.items[0].masterPrices[0].masterId,'MST-2026-0001');
  assert.equal(refFirst.body.items[0].masterPrices[0].priceFrom,'3000.0000');
  assert.equal(refFirst.body.items[0].masterPrices[0].priceTo,'5000.0000');
  const refSecond=await request('/api/reference/services?limit=20&cursor='+refFirst.body.nextCursor,undefined,cookie);
@@ -555,7 +555,7 @@ try{
  const refSearch=await request('/api/reference/services?q=0007',undefined,cookie);
  assert.equal(refSearch.status,200);
  assert.equal(refSearch.body.items.length,1);
- assert.equal(refSearch.body.items[0].serviceId,'SRV-TEST-0007');
+ assert.equal(refSearch.body.items[0].serviceId,'SRV-2026-0007');
  const refMissingAction=await request('/api/reference/services?action=unclassified',undefined,cookie);
  assert.equal(refMissingAction.status,200);
  assert.equal(refMissingAction.body.items.length,1);
@@ -563,7 +563,7 @@ try{
  assert.equal((await request('/api/reference/services?limit=51',undefined,cookie)).status,400);
  assert.equal((await request('/api/reference/services?action=FAKE',undefined,cookie)).status,400);
  assert.equal((await request('/api/reference/services?cursor=%3Cbad%3E',undefined,cookie)).status,400);
- await assert.rejects(database.query("UPDATE public.mvp_services_reference SET service_name='altered' WHERE service_id='SRV-TEST-0001'"),e=>e.code==='55000');
+ await assert.rejects(database.query("UPDATE public.mvp_services_reference SET service_name='altered' WHERE service_id='SRV-2026-0001'"),e=>e.code==='55000');
  assert.equal((await database.query("SELECT count(*)::int AS n FROM public.mvp_services_reference")).rows[0].n,37);
  console.log('V12_SERVICE_MASTERPRICE_REAL_HTTP_OWNER_SEARCH_PAGE_IMMUTABLE_PASS');
  assert.equal((await request('/api/bootstrap')).body.setupRequired,false);
@@ -2965,11 +2965,62 @@ try{
  {
   assert.equal((await request('/api/crm/masters')).status,401);
   const createKey=randomUUID();
-  const ownerMaster={name:'CRM25 Synthetic external master',phone:'000000001',email:'',
+  const ownerMaster={name:'CRM25 Synthetic external master',phone:'094 123456',email:'',
    serviceArea:'TEST area',notes:'Synthetic only',status:'active',qualityTier:'good',
    messengerType:'telegram',messengerContact:'@synthetic',requestKey:createKey};
   assert.equal((await request('/api/action',{type:'crm_master_create',payload:{...ownerMaster,name:' '}},cookie)).status,400);
   assert.equal((await request('/api/action',{type:'crm_master_create',payload:{...ownerMaster,qualityTier:'VIP'}},cookie)).status,400);
+  // MS1–MS3 synthetic fixture only: preserve IDs, verify additive migration and LEGACY gate.
+  assert.equal((await request('/api/action',{type:'crm_master_create',payload:ownerMaster},cookie)).status,503);
+  await database.query("INSERT INTO public.mvp_crm_masters(source_system,source_master_id,name,status,quality_tier,messenger_type) SELECT 'LEGACY_GOOGLE','MST-2026-'||lpad(n::text,4,'0'),'Synthetic migration master '||n,'active','normal','none' FROM generate_series(1,5) n");
+  const beforeMasters=(await database.query("SELECT id,source_master_id FROM public.mvp_crm_masters ORDER BY source_master_id")).rows;
+  assert.equal(beforeMasters.length,5);
+  const beforeServices=(await database.query("SELECT service_id FROM public.mvp_services_reference ORDER BY service_id")).rows;
+  const beforePrices=(await database.query("SELECT master_price_id FROM public.mvp_master_prices_reference ORDER BY master_price_id")).rows;
+  const msSql=['ms1_masters_services_authority','ms2_services_catalog','ms3_master_prices'].map(name=>readFileSync(new URL('../migrations/'+name+'_CANDIDATE_TEST_ONLY.sql',import.meta.url),'utf8'));
+  // Rollback rehearsal: DDL and seed are transactional. Original IDs must remain unchanged.
+  await database.query('BEGIN');
+  try{for(const sql of msSql)await database.query(sql);}finally{await database.query('ROLLBACK');}
+  assert.equal((await database.query("SELECT to_regclass('public.mvp_services_catalog') IS NULL AS absent")).rows[0].absent,true);
+  await database.query('BEGIN');
+  try{for(const sql of msSql)await database.query(sql);await database.query('COMMIT');}catch(err){await database.query('ROLLBACK');throw err;}
+  assert.deepEqual((await database.query("SELECT id,source_master_id FROM public.mvp_crm_masters ORDER BY source_master_id")).rows,beforeMasters);
+  assert.deepEqual((await database.query("SELECT service_id FROM public.mvp_services_catalog ORDER BY service_id")).rows,beforeServices);
+  assert.deepEqual((await database.query("SELECT master_price_id FROM public.mvp_master_prices_catalog ORDER BY master_price_id")).rows,beforePrices);
+  assert.equal((await database.query("SELECT master_id FROM public.mvp_master_prices_catalog")).rows[0].master_id,beforeMasters[0].id);
+  assert.equal((await request('/api/action',{type:'crm_master_create',payload:ownerMaster},cookie)).status,409);
+  const serviceFixture={category:'MS TEST',serviceName:'MS synthetic new service',defaultUnit:'item',status:'active',actionCode:'INSTALL'};
+  const priceFixture={masterId:beforeMasters[0].id,serviceId:beforeServices[0].service_id,priceType:'fixed',priceFrom:'123.4567',currency:'AMD',unit:'item',status:'active',validFrom:'2026-01-01'};
+  const saveService=(payload,key=randomUUID())=>request('/api/masters/services/save',{payload,requestKey:key},cookie);
+  const savePrice=(payload,key=randomUUID())=>request('/api/masters/prices/save',{payload,requestKey:key},cookie);
+  assert.equal((await saveService(serviceFixture)).status,409);
+  assert.equal((await savePrice(priceFixture)).status,409);
+  const legacyState=await request('/api/state',undefined,cookie);
+  assert.equal(legacyState.status,200);assert.equal(legacyState.body.workLogServiceReferences.length,37);
+  // Synthetic local test receipts are NOT live cutover evidence.
+  await database.query("UPDATE public.mvp_masters_services_authority SET phase='CLEAN',master_snapshot_hash=$1,dependency_receipt_hash=$2 WHERE id=1",['a'.repeat(64),'b'.repeat(64)]);
+  const svcKey=randomUUID(),svc=await saveService(serviceFixture,svcKey);
+  assert.equal(svc.status,200,svc.body.error);
+  const svcId=svc.body.entityId;
+  assert.ok(/^SRV-[0-9]{4}-[0-9]{4,}$/.test(svcId));assert.ok(!beforeServices.some(x=>x.service_id===svcId));
+  assert.deepEqual((await saveService(serviceFixture,svcKey)).body,svc.body);
+  assert.equal((await saveService(serviceFixture)).status,409);
+  assert.equal((await request('/api/state',undefined,cookie)).body.workLogServiceReferences.some(x=>x.service_id===svcId&&x.status==='active'),true);
+  const priceKey=randomUUID(),price=await savePrice({...priceFixture,serviceId:svcId},priceKey);
+  assert.equal(price.status,200,price.body.error);
+  assert.deepEqual((await savePrice({...priceFixture,serviceId:svcId},priceKey)).body,price.body);
+  const priceId=price.body.entityId;
+  const revised=await savePrice({...priceFixture,serviceId:svcId,masterPriceId:priceId,revision:1,priceFrom:'9999999999999999.1234'});
+  assert.equal(revised.status,200,revised.body.error);
+  assert.equal((await savePrice({...priceFixture,serviceId:svcId,masterPriceId:priceId,revision:1})).status,409);
+  const hist=await request('/api/masters/prices?masterId='+beforeMasters[0].id+'&historyId='+priceId,undefined,cookie);
+  assert.equal(hist.status,200,hist.body.error);assert.equal(hist.body.items[0].priceFrom,'123.4567');
+  assert.equal((await saveService({...serviceFixture,serviceId:svcId,revision:1,status:'archived'})).status,200);
+  const cleanState=await request('/api/state',undefined,cookie);
+  assert.equal(cleanState.body.workLogServiceReferences.some(x=>x.service_id===svcId&&x.status==='archived'),true);
+  assert.equal((await request('/api/masters/prices?serviceId='+svcId,undefined,cookie)).body.items.length,0);
+  assert.deepEqual((await database.query("SELECT service_id FROM public.mvp_services_reference ORDER BY service_id")).rows,beforeServices);
+  assert.deepEqual((await database.query("SELECT master_price_id FROM public.mvp_master_prices_reference ORDER BY master_price_id")).rows,beforePrices);
   const first=await request('/api/action',{type:'crm_master_create',payload:ownerMaster},cookie);
   assert.equal(first.status,200,first.body.error);
   const master=first.body.item;
@@ -2997,8 +3048,14 @@ try{
    "INSERT INTO public.mvp_crm_masters(source_system,source_master_id,name,status,quality_tier,messenger_type) "+
    "VALUES('LEGACY_GOOGLE','SYNTHETIC-LEGACY-MASTER-0001','Imported synthetic master','active','normal','none')");
   const old=(await database.query("SELECT id FROM public.mvp_crm_masters WHERE source_master_id='SYNTHETIC-LEGACY-MASTER-0001'")).rows[0];
+  // Duplicate phone remains rejected; a different phone permits updating the imported UUID under CLEAN.
   assert.equal((await request('/api/action',{type:'crm_master_update',payload:{
    ...ownerMaster,masterId:old.id,revision:1,requestKey:randomUUID()}},cookie)).status,409);
+  const importedUpdate=await request('/api/action',{type:'crm_master_update',payload:{
+   ...ownerMaster,phone:'095 123456',masterId:old.id,revision:1,requestKey:randomUUID()}},cookie);
+  assert.equal(importedUpdate.status,200,importedUpdate.body.error);
+  assert.equal(importedUpdate.body.item.id,old.id);
+  assert.equal(importedUpdate.body.item.source_master_id,'SYNTHETIC-LEGACY-MASTER-0001');
   const lead=await create('lead_create',{title:'CRM25 linked external master',phone:'000000002'},cookie);
   const payload={leadId:lead.id,revision:lead.revision,masterId:master.id,
    reason:'no_time',comment:'from directory',confirm:'TRANSFER_LEAD',requestKey:randomUUID()};
@@ -3024,7 +3081,7 @@ try{
    reason:'other',confirm:'TRANSFER_LEAD',requestKey:randomUUID()}},cookie)).status,409);
   assert.equal((await database.query('SELECT count(*)::int n FROM public.mvp_crm_lead_transfers WHERE lead_id=$1',
    [archiveLead.id])).rows[0].n,0);
-  console.log('CRM25_MASTERS_REAL_PG_AUTH_CREATE_REPLAY_UPDATE_LEGACY_READONLY_TRANSFER_ARCHIVE_PASS');
+  console.log('MS1_MS2_MS3_REAL_PG_MIGRATION_LEGACY_DENIAL_CLEAN_CATALOG_HISTORY_CRM_TRANSFER_ARCHIVE_PASS');
  }
 
  // CRM26A — immutable old Google LeadTransfers archive. Fake source rows, disposable PostgreSQL only.

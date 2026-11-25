@@ -4,6 +4,7 @@
  * Date/clock are Yerevan wall time, never inferred from UTC event timestamps.
  */
 import {createHash} from 'node:crypto';
+import {requireActiveWorkLogServiceTx} from './worklog-service-source.mjs';
 const PERFORMERS=['OWNER','WORKER','JOINT'];
 const REWORK=['no','yes','disputed'];
 const REASONS=['','lunch','materials','tool','chasing','waiting','call','helper','project','reschedule','coordination','travel','coffee','other'];
@@ -132,9 +133,7 @@ async function workerGateTx(client,f,AppError){
  if(!open.rowCount)throw new AppError(409,'У помощника должна быть открыта смена по этому заказу и дате.');
 }
 async function referenceGateTx(client,f,AppError){
- if(!f.serviceId)return;
- const r=await client.query("SELECT service_id FROM public.mvp_services_reference WHERE service_id=$1 AND status='active' LIMIT 1",[f.serviceId]);
- if(!r.rowCount)throw new AppError(409,'Услуга не найдена в активном проверенном справочнике.');
+ await requireActiveWorkLogServiceTx(client,f.serviceId,AppError);
 }
 async function lockWorkdayTx(client,f,AppError){
  const order=await client.query('SELECT id,status FROM public.mvp_orders WHERE id=$1',[f.orderId]);
