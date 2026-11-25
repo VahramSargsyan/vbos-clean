@@ -155,7 +155,7 @@ test('MS1 standalone navigation and session scope preserve existing CRM recipien
  const html=file('../public/index.html');
  assert.equal((html.match(/data-tab="masters"/g)||[]).length,1);
  assert.match(ui,/tab==='masters'\?ms1View\(\)/);assert.match(ui,/function ms1ResetSession\(\)/);
- assert.match(ui,/ms1!==state\|\|state\.seq!==seq/);assert.match(ui,/knowledgeResetSession\(\);ms1ResetSession\(\)/);
+ assert.match(ui,/ms1!==state\|\|state\.seq!==seq/);assert.match(ui,/if\(crmMasters!==state\)return/);assert.match(ui,/ms1=ms1Initial\(\);crmMasters=crmMastersInitial\(\)/);assert.match(ui,/knowledgeResetSession\(\);ms1ResetSession\(\)/);
  assert.match(ui,/data-ms1-directory/);assert.match(ui,/data-ms1-back/);assert.match(ui,/data-ms1-reset/);
  assert.match(ui,/function ms1Detail/);assert.match(ui,/ms1\.writeEnabled===true/);
  assert.match(ui,/function crmLeadTransferCard/);assert.match(ui,/data-crm-master-load/);

@@ -95,10 +95,11 @@ let referencePanel=null,referenceModulePromise=null;
 let closePreviewModulePromise=null,closePreviewModule=null,closePreviewState={id:null,loading:false,result:null,error:''},closePreviewSeq=0;
 let nativeCloseViewPromise=null,nativeCloseView=null,nativeCloseReceipt={id:null,busy:false,result:null,error:''},nativeCloseReceiptSeq=0;
 let catalog={entity:'clients',q:'',status:'',tier:'',referral:'',items:[],nextCursor:null,hasMore:false,loaded:false,loading:false};
-let crmMasters={items:[],loaded:false,loading:false,error:'',q:'',status:'',nextCursor:null,hasMore:false,opened:false,writeEnabled:false};
+const crmMastersInitial=()=>({items:[],loaded:false,loading:false,error:'',q:'',status:'',nextCursor:null,hasMore:false,opened:false,writeEnabled:false});
+let crmMasters=crmMastersInitial();
 const ms1Initial=()=>({q:'',status:'available',category:'',serviceId:'',items:[],loaded:false,loading:false,error:'',nextCursor:null,hasMore:false,reference:null,openId:'',detail:null,linkedServices:[],newOpen:false,writeEnabled:false,seq:0});
 let ms1=ms1Initial();
-function ms1ResetSession(){ms1=ms1Initial();}
+function ms1ResetSession(){ms1=ms1Initial();crmMasters=crmMastersInitial();}
 let crmTransferOpenLeadId=null;
 let myWork={snapshot:null,loading:false,loaded:false,selectedOrderId:'',error:''};
 let dailyA1=null;
@@ -1837,17 +1838,19 @@ function crmMastersDirectory(){
  return out;
 }
 async function loadCrmMasters(append=false){
- if(crmMasters.loading)return;
- crmMasters.loading=true;crmMasters.error='';crmMasters.writeEnabled=false;
+ const state=crmMasters;
+ if(state.loading)return;
+ state.loading=true;state.error='';state.writeEnabled=false;
  try{
-  const params=new URLSearchParams({limit:'50',q:crmMasters.q,status:crmMasters.status,authority:'1'});
-  if(append&&crmMasters.nextCursor)params.set('cursor',crmMasters.nextCursor);
+  const params=new URLSearchParams({limit:'50',q:state.q,status:state.status,authority:'1'});
+  if(append&&state.nextCursor)params.set('cursor',state.nextCursor);
   const result=await api('/api/crm/masters?'+params.toString());
-  crmMasters.writeEnabled=result.authority?.writeEnabled===true;
-  crmMasters.items=append?crmMasters.items.concat(result.items):result.items;
-  crmMasters.hasMore=result.hasMore;crmMasters.nextCursor=result.nextCursor;crmMasters.loaded=true;
- }catch(err){crmMasters.error=err.message;}
- finally{crmMasters.loading=false;if(tab==='crm')render();}
+  if(crmMasters!==state)return;
+  state.writeEnabled=result.authority?.writeEnabled===true;
+  state.items=append?state.items.concat(result.items):result.items;
+  state.hasMore=result.hasMore;state.nextCursor=result.nextCursor;state.loaded=true;
+ }catch(err){if(crmMasters===state)state.error=err.message;}
+ finally{if(crmMasters===state){state.loading=false;if(tab==='crm')render();}}
 }
 
 /* MS1 external Masters: independent view, existing CRM25 writer and exact reference IDs. */
