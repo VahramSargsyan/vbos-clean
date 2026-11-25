@@ -80,3 +80,21 @@ test('bridge writer denied before ledger or DML under LEGACY; offline import rej
  assert.match(manifest.sha256,/^[a-f0-9]{64}$/);
  await assert.rejects(()=>importEstimatorBridgeSnapshotTx({query(){throw Error('unexpected query');}},manifest.canonical,'0'.repeat(64),E),e=>e.status===409);
 });
+
+test('exact import replay verifies canonical projection and source, not just stored snapshot',async()=>{
+ const rows=[{estimatorServiceBridgeId:'ESB-2026-9001',cardKey:'BATH',actionType:'FIXTURE_INSTALL',serviceId:'SRV-2026-9001',quantityRule:'ITEM_QUANTITY',status:'active',relationKey:'BATH|FIXTURE_INSTALL',notes:'synthetic'}];
+ const m=bridgeSnapshotManifest(rows,E),base=sourceDb('LEGACY'),original=base.query;
+ const projected={bridge_id:rows[0].estimatorServiceBridgeId,card_key:'BATH',action_type:'FIXTURE_INSTALL',service_id:rows[0].serviceId,quantity_rule:'ITEM_QUANTITY',status:'active',source_system:'LEGACY_RECONCILED',source_snapshot:m.canonical[0],source_manifest_sha256:m.sha256,archived_at:null};
+ let stored=[projected];
+ base.query=async(sql,args)=>{
+  if(sql.startsWith('LOCK TABLE'))return {rows:[]};
+  if(sql.startsWith('SELECT bridge_id,card_key'))return {rows:stored};
+  if(sql.startsWith('INSERT INTO'))throw Error('replay must not write');
+  return original(sql,args);
+ };
+ assert.deepEqual(await importEstimatorBridgeSnapshotTx(base,rows,m.sha256,E),{imported:0,deduplicated:true});
+ for(const change of [{card_key:'WC'},{action_type:'WATER'},{service_id:'SRV-2026-9002'},{quantity_rule:'WATER_POINT_TOTAL'},{status:'archived'},{source_system:'CLEAN_NATIVE'},{archived_at:'2026-01-01'},{source_manifest_sha256:'0'.repeat(64)},{source_snapshot:{...projected.source_snapshot,notes:'changed'}}]){
+  stored=[{...projected,...change}];
+  await assert.rejects(()=>importEstimatorBridgeSnapshotTx(base,rows,m.sha256,E),e=>e.status===409);
+ }
+});

@@ -212,9 +212,15 @@ export async function importEstimatorBridgeSnapshotTx(db,rows,expectedHash,E){
  const source=await verifiedServiceSourceTx(db,E);
  if(source!=='LEGACY')bad(E,'Источник импорта не подтверждён.',409);
  await db.query('LOCK TABLE public.mvp_estimator_service_bridges IN SHARE ROW EXCLUSIVE MODE');
- const existing=(await db.query('SELECT bridge_id,source_snapshot,source_manifest_sha256 FROM public.mvp_estimator_service_bridges ORDER BY bridge_id')).rows;
+ const existing=(await db.query('SELECT bridge_id,card_key,action_type,service_id,quantity_rule,status,source_system,source_snapshot,source_manifest_sha256,archived_at FROM public.mvp_estimator_service_bridges ORDER BY bridge_id')).rows;
  if(existing.length){
-  if(existing.length===canonical.length&&existing.every((r,i)=>r.source_manifest_sha256===expectedHash&&r.bridge_id===canonical[i].estimatorServiceBridgeId&&same(r.source_snapshot,canonical[i],E)))return {imported:0,deduplicated:true};
+  if(existing.length===canonical.length&&existing.every((r,i)=>{
+   const c=canonical[i];
+   return r.source_manifest_sha256===expectedHash&&r.source_system==='LEGACY_RECONCILED'&&
+    r.bridge_id===c.estimatorServiceBridgeId&&r.card_key===cardId(c.cardKey,E)&&
+    r.action_type===c.actionType&&r.service_id===c.serviceId&&r.quantity_rule===c.quantityRule&&
+    r.status===c.status&&r.archived_at===null&&same(r.source_snapshot,c,E);
+  }))return {imported:0,deduplicated:true};
   bad(E,'Таблица связей уже содержит данные. Нужна адресная сверка.',409);
  }
  const ids=new Set(),active=new Set();

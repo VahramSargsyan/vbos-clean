@@ -538,7 +538,7 @@ try{
  await database.query("INSERT INTO public.mvp_service_reference_batches(batch_id,source_system,source_modified_at,services_count,prices_count,manifest_sha256,verified_at,status) VALUES ($1,'LEGACY_GOOGLE_VBOS','2026-11-03T19:06:09.263Z',37,1,$2,now(),'VERIFIED')",[refBatch,'fc85e0e51751b50c689fceaba8d6c273706a25e577e798df3e886deef3a8d674']);
  await database.query(`INSERT INTO public.mvp_services_reference(batch_id,service_id,created_at,updated_at,status,category,service_name,default_unit,notes,action_code)
   SELECT $1,'SRV-2026-'||lpad(n::text,4,'0'), '2026-11-05T00:00:00Z','2026-11-05T00:00:00Z','active','Сантехника',
-  'Пробная услуга '||CASE WHEN n IN (3,5,7) THEN n-1 ELSE n END,'item','',CASE WHEN n=37 THEN NULL ELSE 'INSTALL' END
+  'Пробная услуга '||CASE WHEN n IN (3,5,7) THEN n-1 ELSE n END,CASE WHEN n IN (35,36) THEN 'point' ELSE 'item' END,'',CASE WHEN n=37 THEN NULL WHEN n IN (35,36) THEN 'CONNECT' ELSE 'INSTALL' END
   FROM generate_series(1,37) n`,[refBatch]);
  await database.query("INSERT INTO public.mvp_master_prices_reference(batch_id,master_price_id,created_at,updated_at,status,master_id,service_id,price_type,price_from,price_to,currency,unit,valid_from) VALUES ($1,'MPR-2026-0001','2026-11-05T00:00:00Z','2026-11-05T00:00:00Z','active','MST-2026-0001','SRV-2026-0001','range',3000,5000,'AMD','item','2026-08-16')",[refBatch]);
  const refFirst=await request('/api/reference/services?limit=20',undefined,cookie);
@@ -3112,8 +3112,42 @@ try{
   const bridgePayload={cardKey,actionType,serviceId,expectedBridgeId:'',requestKey:randomUUID()};
   assert.equal((await request('/api/action',{type:'estimator_bridge_set',payload:bridgePayload})).status,401);
   await database.query("UPDATE public.mvp_masters_services_authority SET phase='LEGACY' WHERE id=1");
-  try{assert.equal((await request('/api/action',{type:'estimator_bridge_set',payload:bridgePayload},cookie)).status,409);}
-  finally{await database.query("UPDATE public.mvp_masters_services_authority SET phase='CLEAN' WHERE id=1");}
+  try{
+   assert.equal((await request('/api/action',{type:'estimator_bridge_set',payload:bridgePayload},cookie)).status,409);
+   const {bridgeSnapshotManifest,importEstimatorBridgeSnapshotTx}=await import('../estimate-service-links.mjs');
+   class E extends Error{constructor(status,msg){super(msg);this.status=status;}}
+   const rows=[['FIXTURE_INSTALL','ITEM_QUANTITY','SRV-2026-0034'],['WATER','WATER_POINT_TOTAL','SRV-2026-0035'],['SEWER','SEWER_POINT_COUNT','SRV-2026-0036']].map(([actionType,quantityRule,serviceId],i)=>({
+    estimatorServiceBridgeId:'ESB-2026-900'+(i+1),cardKey:'WC',actionType,quantityRule,serviceId,status:'active',relationKey:'WC|'+actionType,
+    notes:'synthetic only',createdAt:'2026-01-01T00:00:00Z',updatedAt:'2026-01-01T00:00:00Z',clientRequestId:'fixture-'+i
+   }));
+   const manifest=bridgeSnapshotManifest(rows,E);
+   const importTx=async (input=rows,sha=manifest.sha256)=>{
+    await database.query('BEGIN');
+    try{const r=await importEstimatorBridgeSnapshotTx(database,input,sha,E);await database.query('COMMIT');return r;}
+    catch(e){await database.query('ROLLBACK');throw e;}
+   };
+   await assert.rejects(()=>importTx(rows,'0'.repeat(64)),e=>e.status===409);
+   assert.equal((await database.query('SELECT count(*)::int n FROM public.mvp_estimator_service_bridges')).rows[0].n,0);
+   const invalid=[...rows.slice(0,2),{...rows[2],serviceId:rows[0].serviceId}];
+   await assert.rejects(()=>importTx(invalid,bridgeSnapshotManifest(invalid,E).sha256),e=>e.status===409);
+   assert.equal((await database.query('SELECT count(*)::int n FROM public.mvp_estimator_service_bridges')).rows[0].n,0);
+   assert.deepEqual(await importTx(),{imported:3,deduplicated:false});
+   assert.deepEqual(await importTx([...rows].reverse()),{imported:0,deduplicated:true});
+   const read=await request('/api/estimator/service-bridges?cardKey=WC',undefined,cookie);
+   assert.equal(read.status,200,read.body.error);assert.equal(read.body.writeEnabled,false);assert.equal(read.body.items.length,3);
+   const actual=(await database.query('SELECT bridge_id,service_id,source_snapshot FROM public.mvp_estimator_service_bridges ORDER BY bridge_id')).rows;
+   assert.deepEqual(actual.map(r=>r.bridge_id),rows.map(r=>r.estimatorServiceBridgeId));
+   assert.deepEqual(actual.map(r=>r.service_id),rows.map(r=>r.serviceId));
+   assert.deepEqual(actual.map(r=>r.source_snapshot),rows);
+   // Mutate only disposable fixture in a rolled-back transaction; exact replay must deny drift.
+   await database.query('BEGIN');
+   try{
+    await database.query("UPDATE public.mvp_estimator_service_bridges SET status='archived',service_id=$2 WHERE bridge_id=$1",[rows[0].estimatorServiceBridgeId,rows[1].serviceId]);
+    await assert.rejects(()=>importEstimatorBridgeSnapshotTx(database,rows,manifest.sha256,E),e=>e.status===409);
+   }finally{await database.query('ROLLBACK');}
+   assert.deepEqual(await importTx(),{imported:0,deduplicated:true});
+   console.log('EST_BRIDGE_IMPORT_THREE_IDS_ATOMIC_FAILURE_REPLAY_PROJECTION_DRIFT_PASS');
+  }finally{await database.query("UPDATE public.mvp_masters_services_authority SET phase='CLEAN' WHERE id=1");}
   const linked=await request('/api/action',{type:'estimator_bridge_set',payload:bridgePayload},cookie);
   assert.equal(linked.status,200,linked.body.error);
   assert.equal((await request('/api/action',{type:'estimator_bridge_set',payload:bridgePayload},cookie)).body.deduplicated,true);
