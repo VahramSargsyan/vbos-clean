@@ -3103,6 +3103,48 @@ try{
   console.log('MS1_MS2_MS3_REAL_PG_MIGRATION_LEGACY_DENIAL_CLEAN_CATALOG_HISTORY_CRM_TRANSFER_ARCHIVE_PASS');
  }
 
+ // EST-SAVED-LINK: isolated synthetic MS1-MS3 catalog, never occupied TEST.
+ {
+  const sql=readFileSync(new URL('../migrations/estimator_saved_estimate_service_link_CANDIDATE_TEST_ONLY.sql',import.meta.url),'utf8');
+  await database.query('BEGIN');
+  try{await database.query(sql);await database.query(sql);await database.query('COMMIT');}catch(e){await database.query('ROLLBACK');throw e;}
+  const cardKey='BATH',actionType='FIXTURE_INSTALL',serviceId=msWorklogService.serviceId;
+  const bridgePayload={cardKey,actionType,serviceId,expectedBridgeId:'',requestKey:randomUUID()};
+  assert.equal((await request('/api/action',{type:'estimator_bridge_set',payload:bridgePayload})).status,401);
+  await database.query("UPDATE public.mvp_masters_services_authority SET phase='LEGACY' WHERE id=1");
+  try{assert.equal((await request('/api/action',{type:'estimator_bridge_set',payload:bridgePayload},cookie)).status,409);}
+  finally{await database.query("UPDATE public.mvp_masters_services_authority SET phase='CLEAN' WHERE id=1");}
+  const linked=await request('/api/action',{type:'estimator_bridge_set',payload:bridgePayload},cookie);
+  assert.equal(linked.status,200,linked.body.error);
+  assert.equal((await request('/api/action',{type:'estimator_bridge_set',payload:bridgePayload},cookie)).body.deduplicated,true);
+  const lead=await create('lead_create',{title:'Structured Estimate fixture'},cookie);
+  const draft=await request('/api/action',{type:'estimate_create',payload:{leadId:lead.id,title:'Synthetic structured estimate',requestKey:randomUUID()}},cookie);
+  assert.equal(draft.status,200,draft.body.error);
+  const batch={id:randomUUID(),mode:'BATCH',sourcePackageSha256:'a'.repeat(64),inputSnapshot:{tariff:'ECONOM',cards:{BATH:{quantity:'2'}},config:{BATH:{install:true}}}};
+  const line={lineKey:randomUUID(),kind:'WORK',description:'Synthetic install',quantity:'2.000',unit:'шт',unitPriceAMD:'500',calculation:{batchId:batch.id,cardKey,sourceAction:actionType,original:{description:'Synthetic install',quantity:'2.000',unit:'шт',unitPriceAMD:'500',priceMode:'OWNER_ENTERED'}}};
+  const payload={estimateId:draft.body.item.id,revision:draft.body.item.revision,title:'Structured estimate',notes:'',lines:[line],calculationBatches:[batch],requestKey:randomUUID()};
+  assert.equal((await request('/api/estimates/save',{type:'estimate_save',payload})).status,401);
+  const saved=await request('/api/estimates/save',{type:'estimate_save',payload},cookie);
+  assert.equal(saved.status,200,saved.body.error);assert.equal(saved.body.lines[0].serviceId,serviceId);
+  assert.equal(saved.body.lines[0].actionCode,'INSTALL');assert.equal(saved.body.totals.knownTotalAMD,'1000.000');
+  assert.equal((await request('/api/estimates/save',{type:'estimate_save',payload},cookie)).body.deduplicated,true);
+  const reopened=await request('/api/estimates?leadId='+lead.id,undefined,cookie);
+  assert.equal(reopened.body.lines[0].calculation.cardKey,cardKey);
+  assert.equal(reopened.body.lines[0].serviceId,serviceId);
+  assert.deepEqual(reopened.body.calculationBatches,[batch]);
+  const archived=await request('/api/action',{type:'estimator_bridge_set',payload:{...bridgePayload,expectedBridgeId:linked.body.bridgeId,serviceId:'',requestKey:randomUUID()}},cookie);
+  assert.equal(archived.status,200,archived.body.error);
+  const edit={...payload,revision:saved.body.item.revision,lines:[{...line,serviceId,unitPriceAMD:'700'}],requestKey:randomUUID()};
+  const edited=await request('/api/estimates/save',{type:'estimate_save',payload:edit},cookie);
+  assert.equal(edited.status,200,edited.body.error);assert.equal(edited.body.lines[0].serviceId,serviceId);
+  assert.deepEqual(edited.body.lines[0].serviceSnapshot,saved.body.lines[0].serviceSnapshot);
+  const v=(await database.query('SELECT snapshot FROM public.mvp_estimate_versions WHERE estimate_id=$1 AND revision=$2',[payload.estimateId,saved.body.item.revision])).rows[0].snapshot;
+  assert.equal(v.lines[0].unitPriceAMD,'500');assert.equal(v.lines[0].serviceId,serviceId);
+  assert.equal((await request('/api/estimates/save',{type:'estimate_save',payload:{...edit,revision:edited.body.item.revision,lines:[{...line,unit:'м',serviceId}],requestKey:randomUUID()}},cookie)).status,409);
+  assert.equal((await request('/api/estimates/save',{type:'estimate_save',payload:{...edit,revision:edited.body.item.revision,calculationBatches:[{...batch,inputSnapshot:{tariff:'VIP',cards:batch.inputSnapshot.cards,config:batch.inputSnapshot.config}}],requestKey:randomUUID()}},cookie)).status,409);
+  console.log('EST_SAVED_LINK_SYNTHETIC_PG_ROUNDTRIP_HISTORY_BRIDGE_ARCHIVE_PASS');
+ }
+
  // CRM26A — immutable old Google LeadTransfers archive. Fake source rows, disposable PostgreSQL only.
  {
   const {TRANSFER_HEADER,LEAD_EVIDENCE_HEADER,prepareLegacyTransfers,importPreparedLegacyTransfers}=

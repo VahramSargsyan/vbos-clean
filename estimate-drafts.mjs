@@ -5,6 +5,7 @@
  * Finance writes, price inference, or legacy Google writes.
  */
 import {createHash} from 'node:crypto';
+import {normalizeCalculationBatches,normalizeLineCalculation,validateCalculationBatches,resolveEstimateLineLinks} from './estimate-service-links.mjs';
 
 const sha=o=>createHash('sha256').update(JSON.stringify(o)).digest('hex');
 const textField=(raw,max,label,AppError,required=false)=>{
@@ -41,8 +42,9 @@ function normalizeLines(raw,{uuid,AppError}){
   const unit=textField(line.unit,24,'Единица',AppError,true);
   const qty=quantity(line.quantity,AppError);
   const unitPrice=price(line.unitPriceAMD,AppError);
-  return {lineKey,position:index+1,kind,description,quantity:qty,unit,
+  const normalized={lineKey,position:index+1,kind,description,quantity:qty,unit,
    unitPriceAMD:unitPrice,priceSource:unitPrice===null?'UNPRICED':'OWNER_ENTERED'};
+  return {...normalized,...normalizeLineCalculation(line,normalized,{uuid,AppError})};
  });
 }
 function withTotals(estimate,rows){
@@ -62,7 +64,8 @@ function withTotals(estimate,rows){
   }
   return {lineKey:line.line_key,kind:line.kind,description:line.description,
    position:line.position,quantity:qty,unit:line.unit,unitPriceAMD:line.unit_price_amd,
-   priceSource:line.price_source,lineTotalAMD:lineTotal};
+   priceSource:line.price_source,lineTotalAMD:lineTotal,
+   ...(line.calculation_context?{calculation:line.calculation_context,serviceId:line.service_id||null,actionCode:line.action_code||null,serviceSnapshot:line.service_snapshot||null}:{})};
  });
  return {estimate:{id:estimate.id,sourceLeadId:estimate.source_lead_id,
   status:estimate.status,currency:estimate.currency,title:estimate.title,
@@ -73,7 +76,7 @@ function withTotals(estimate,rows){
   totals:{laborKnownAMD:fmtScaled(work),materialsKnownAMD:fmtScaled(material),
     knownTotalAMD:fmtScaled(work+material),unpricedCount:unpriced,
     lineCount:lines.length,pricingComplete:lines.length>0&&unpriced===0},
-  readonly:estimate.status==='accepted'};
+  readonly:estimate.status==='accepted',...(estimate.calculation_batches?.length?{calculationBatches:estimate.calculation_batches}:{})};
 }
 function fmtScaled(n){
  return (n/1000n).toString()+'.'+(n%1000n).toString().padStart(3,'0');
@@ -82,7 +85,7 @@ async function loadEstimateTx(client,leadId){
  const e=(await client.query('SELECT * FROM public.mvp_estimates WHERE source_lead_id=$1',[leadId])).rows[0]||null;
  if(!e)return withTotals(null,[]);
  const rows=(await client.query(
-  'SELECT line_key,position,kind,description,quantity,unit,unit_price_amd,price_source FROM public.mvp_estimate_lines WHERE estimate_id=$1 AND archived_at IS NULL ORDER BY position',[e.id])).rows;
+  'SELECT line_key,position,kind,description,quantity,unit,unit_price_amd,price_source,to_jsonb(l)->\'calculation_context\' AS calculation_context,to_jsonb(l)->>\'service_id\' AS service_id,to_jsonb(l)->>\'action_code\' AS action_code,to_jsonb(l)->\'service_snapshot\' AS service_snapshot FROM public.mvp_estimate_lines l WHERE estimate_id=$1 AND archived_at IS NULL ORDER BY position',[e.id])).rows;
  return withTotals(e,rows);
 }
 export async function estimateRead({pool,url,uuid,AppError}){
@@ -92,7 +95,7 @@ export async function estimateRead({pool,url,uuid,AppError}){
   if(!lead)throw new AppError(404,'Обращение не найдено.');
   return {...await loadEstimateTx(pool,leadId),sourceLeadId:leadId,source:'CRM05A_INTERNAL_MANUAL_AMD'};
  }catch(e){
-  if(e.code==='42P01')throw new AppError(503,'Сметы пока не подготовлены в этой TEST-базе.');
+  if(['42P01','42703'].includes(e.code))throw new AppError(503,'Сметы пока не подготовлены в этой TEST-базе.');
   throw e;
  }
 }
@@ -103,8 +106,10 @@ export async function estimateDraftAction({pool,type,p,key,uuid,safeRevision,App
  const revision=type==='estimate_save'?safeRevision(p.revision):null;
  const title=textField(p.title,180,'Название сметы',AppError,true);
  const notes=textField(p.notes??'',4000,'Примечание',AppError);
- const lines=type==='estimate_save'?normalizeLines(p.lines,{uuid,AppError}):[];
- const normalized={type,leadId,estimateId,revision,title,notes,lines};
+ let lines=type==='estimate_save'?normalizeLines(p.lines,{uuid,AppError}):[];
+ const batches=type==='estimate_save'?normalizeCalculationBatches(p.calculationBatches,{uuid,AppError}):[];
+ validateCalculationBatches(lines,batches,[],AppError);
+ const normalized={type,leadId,estimateId,revision,title,notes,lines,...(batches.length?{calculationBatches:batches}:{})};
  const hash=sha(normalized);
  const db=await pool.connect();
  try{
@@ -134,11 +139,22 @@ export async function estimateDraftAction({pool,type,p,key,uuid,safeRevision,App
    if(!estimate)throw new AppError(404,'Смета не найдена.');
    if(estimate.status!=='draft')throw new AppError(409,'Изменять можно только черновик.');
    if(estimate.revision!==revision)throw new AppError(409,'Смета была изменена. Обнови данные перед повторным сохранением.');
+   const previous=(await db.query("SELECT line_key,to_jsonb(l)->'calculation_context' AS calculation_context,to_jsonb(l)->>'service_id' AS service_id,to_jsonb(l)->'service_snapshot' AS service_snapshot FROM public.mvp_estimate_lines l WHERE estimate_id=$1 AND archived_at IS NULL",[estimateId])).rows;
+   validateCalculationBatches(lines,batches,estimate.calculation_batches||[],AppError);
+   lines=await resolveEstimateLineLinks(db,lines,previous,AppError);
    await db.query('UPDATE public.mvp_estimate_lines SET archived_at=now() WHERE estimate_id=$1 AND archived_at IS NULL',[estimateId]);
    estimate=(await db.query(
     'UPDATE public.mvp_estimates SET title=$2,notes=$3,revision=revision+1,updated_at=now() WHERE id=$1 RETURNING *',
     [estimateId,title,notes])).rows[0];
+   if(batches.length||estimate.calculation_batches?.length){
+    estimate=(await db.query('UPDATE public.mvp_estimates SET calculation_batches=$2::jsonb WHERE id=$1 RETURNING *',[estimateId,JSON.stringify(batches)])).rows[0];
+   }
    for(const line of lines){
+    if(line.calculation){
+     await db.query('INSERT INTO public.mvp_estimate_lines(estimate_id,line_key,estimate_revision,position,kind,description,quantity,unit,unit_price_amd,price_source,calculation_context,service_id,action_code,service_snapshot) VALUES($1,$2,$3,$4,$5,$6,$7::numeric,$8,$9::numeric,$10,$11::jsonb,$12,$13,$14::jsonb)',
+      [estimateId,line.lineKey,estimate.revision,line.position,line.kind,line.description,line.quantity,line.unit,line.unitPriceAMD,line.priceSource,JSON.stringify(line.calculation),line.serviceId,line.actionCode,line.serviceSnapshot?JSON.stringify(line.serviceSnapshot):null]);
+     continue;
+    }
     await db.query(
      'INSERT INTO public.mvp_estimate_lines(estimate_id,line_key,estimate_revision,position,kind,description,quantity,unit,unit_price_amd,price_source) VALUES($1,$2,$3,$4,$5,$6,$7::numeric,$8,$9::numeric,$10)',
      [estimateId,line.lineKey,estimate.revision,line.position,line.kind,line.description,line.quantity,line.unit,line.unitPriceAMD,line.priceSource]);
@@ -146,9 +162,9 @@ export async function estimateDraftAction({pool,type,p,key,uuid,safeRevision,App
   }
   await db.query(
    'INSERT INTO public.mvp_estimate_versions(estimate_id,revision,snapshot) VALUES($1,$2,$3::jsonb)',
-   [estimate.id,estimate.revision,JSON.stringify({title,notes,currency:'AMD',lines,sourceLeadId:estimate.source_lead_id})]);
+   [estimate.id,estimate.revision,JSON.stringify({title,notes,currency:'AMD',lines,sourceLeadId:estimate.source_lead_id,...(batches.length?{calculationBatches:batches}:{})})]);
   const out=await loadEstimateTx(db,estimate.source_lead_id);
-  const result={saved:true,item:out.estimate,lines:out.lines,totals:out.totals,source:'CRM05A_INTERNAL_MANUAL_AMD'};
+  const result={saved:true,item:out.estimate,lines:out.lines,totals:out.totals,...(out.calculationBatches?{calculationBatches:out.calculationBatches}:{}),source:'CRM05A_INTERNAL_MANUAL_AMD'};
   await db.query(
    'UPDATE public.mvp_estimate_mutation_requests SET response=$2::jsonb WHERE request_key=$1',
    [key,JSON.stringify(result)]);
@@ -157,7 +173,7 @@ export async function estimateDraftAction({pool,type,p,key,uuid,safeRevision,App
  }catch(e){
   await db.query('ROLLBACK').catch(()=>{});
   if(e.code==='23505')throw new AppError(409,'Смета или строка уже существует. Обнови карточку перед сохранением.');
-  if(e.code==='42P01')throw new AppError(503,'Сметы пока не подготовлены в этой TEST-базе.');
+  if(['42P01','42703'].includes(e.code))throw new AppError(503,'Сметы пока не подготовлены в этой TEST-базе.');
   throw e;
  }finally{db.release();}
 }

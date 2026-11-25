@@ -26,7 +26,7 @@ function renderEstimator(subtab='calculator',state={}){
  const context={estimatorSubtab:subtab,data:picker,estimateUI:{leadId:null},plumbingUI:{module:moduleRef},
   plumbingWorkspace:l=>'<section data-bound-lead="'+esc(l.id)+'"></section>',
   plumbingWizardMarkup:()=>'<section data-plumbing-wizard>Мастер</section>',
-  estimateAMD:x=>String(x)+' AMD',esc,label:{qualified:'В работе'},...state};
+  estimateAMD:x=>String(x)+' AMD',esc,label:{qualified:'В работе'},estimatorBridgeMarkup:()=>'',...state};
  return runInNewContext(script+';estimatorView()',context);
 }
 function resultPreview(bound){

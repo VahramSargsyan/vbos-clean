@@ -99,7 +99,7 @@ const crmMastersInitial=()=>({items:[],loaded:false,loading:false,error:'',q:'',
 let crmMasters=crmMastersInitial();
 const ms1Initial=()=>({q:'',status:'available',category:'',serviceId:'',items:[],loaded:false,loading:false,error:'',nextCursor:null,hasMore:false,reference:null,openId:'',detail:null,linkedServices:[],newOpen:false,writeEnabled:false,seq:0});
 let ms1=ms1Initial();
-function ms1ResetSession(){if(ms3Panel){ms3Panel.unmount();ms3Panel=null;}ms1=ms1Initial();crmMasters=crmMastersInitial();}
+function ms1ResetSession(){if(ms3Panel){ms3Panel.unmount();ms3Panel=null;}ms1=ms1Initial();crmMasters=crmMastersInitial();estimatorBridgePanel=null;}
 let crmTransferOpenLeadId=null;
 let myWork={snapshot:null,loading:false,loaded:false,selectedOrderId:'',error:''};
 let dailyA1=null;
@@ -1107,6 +1107,46 @@ function estimatorSaveVisibleWizard(){
  }
  estimateCaptureForm();
 }
+// Existing Estimator card/action bridge editor; no writes while LEGACY.
+var estimatorBridgePanel=null;
+async function openEstimatorBridges(cardKey){
+ const panel={cardKey,loading:true,error:'',result:null,requests:{},saving:false};estimatorBridgePanel=panel;
+ render();
+ try{panel.result=await api('/api/estimator/service-bridges?cardKey='+encodeURIComponent(cardKey));}
+ catch(error){panel.error=String(error.message||error);}
+ finally{panel.loading=false;if(estimatorBridgePanel===panel&&tab==='estimator'&&estimatorSubtab==='cards')render();}
+}
+function estimatorBridgeMarkup(){
+ const p=estimatorBridgePanel;if(!p)return '';
+ const head='<section class="card"><h3>Связи услуг · '+esc(p.cardKey)+'</h3><button type="button" data-est-bridge-close>Закрыть</button>';
+ if(!p.result)return head+'<p class="muted">'+esc(p.error||'Загружаю связи…')+'</p></section>';
+ const r=p.result;
+ return head+(!r.writeEnabled?'<p class="muted">Связи доступны для чтения. Изменение разрешится только после перехода authority в CLEAN.</p>':'')+
+  (r.truncated?'<p class="muted small">Показаны первые 200 кандидатов; можно ввести точный SRV ID.</p>':'')+
+  [['FIXTURE_INSTALL','Установка','INSTALL','item'],['WATER','Вода','CONNECT','point'],['SEWER','Канализация','CONNECT','point']].map(([action,label,code,unit])=>{
+   const existing=r.items.find(x=>x.action_type===action);
+   const options=r.candidates.filter(x=>x.action_code===code&&x.default_unit===unit);
+   return '<div class="card" data-est-bridge-row="'+action+'"><strong>'+label+'</strong><p class="small muted">'+esc(existing?.service_id||'Связь не установлена')+'</p>'+
+    (r.writeEnabled?'<label>Услуга · '+code+' / '+unit+'<input name="serviceId" maxlength="100" list="estBridgeOptions_'+action+'" value="'+esc(existing?.service_id||'')+'"></label>'+
+     '<datalist id="estBridgeOptions_'+action+'">'+options.map(x=>'<option value="'+esc(x.service_id)+'">'+esc(x.service_name)+'</option>').join('')+'</datalist>'+
+     '<button type="button" data-est-bridge-save="'+action+'"'+(p.saving?' disabled':'')+'>Сохранить связь</button>'+
+     (existing?'<button type="button" data-est-bridge-archive="'+action+'"'+(p.saving?' disabled':'')+'>Архивировать связь</button>':''):'')+'</div>';
+  }).join('')+'</section>';
+}
+async function submitEstimatorBridge(action,serviceId){
+ const p=estimatorBridgePanel;if(!p?.result?.writeEnabled||p.saving)return;
+ const old=p.result.items.find(x=>x.action_type===action);
+ const payload={cardKey:p.cardKey,actionType:action,serviceId,expectedBridgeId:old?.bridge_id||''};
+ const fingerprint=JSON.stringify(payload);
+ const prior=p.requests[action];const requestKey=prior?.fingerprint===fingerprint?prior.requestKey:crypto.randomUUID();
+ p.requests[action]={fingerprint,requestKey};p.saving=true;
+ try{const out=await api('/api/action',{type:'estimator_bridge_set',payload:{...payload,requestKey}});
+  if(!out.saved)throw Error('Нет подтверждения связи.');
+  if(estimatorBridgePanel===p){await openEstimatorBridges(p.cardKey);message('Связь сохранена. Старые сметы не изменены.');}
+ }catch(error){if(estimatorBridgePanel===p)message('Связь не подтверждена: '+String(error.message||error)+'. Проверь перед повтором.',true);}
+ finally{p.saving=false;}
+}
+
 function estimatorView(){
  const active=estimatorSubtab;
  const nav='<nav class="estimator-legacy-tabs" aria-label="Вкладки калькуляции">'+
@@ -1156,7 +1196,7 @@ function estimatorView(){
     ' · Канализация: '+(p.supportsSewer?esc(p.sewerPoints)+' точек':'нет')+
     ' · Материалы: '+esc(x.materialStatus||'NOT_CONFIGURED')+'</p>'+
     (archived?'':('<button type="button" data-estimator-use-card="'+esc(x.cardKey)+'">Выбрать в расчёт</button>'))+
-    (state.loaded&&!archived?'<button type="button" data-estimator-card-edit="'+esc(x.cardKey)+'">Редактировать</button>':'')+
+    (state.loaded&&!archived?'<button type="button" data-estimator-card-edit="'+esc(x.cardKey)+'">Редактировать</button><button type="button" data-estimator-bridge-open="'+esc(x.cardKey)+'">Связи услуг</button>':'')+
     (state.loaded&&x.sourceType==='USER'&&!archived?'<button type="button" data-estimator-card-archive="'+esc(x.cardKey)+'">Архивировать</button>':'')+
     (state.loaded&&x.sourceType==='SYSTEM'&&x.hasOverride?'<button type="button" data-estimator-card-reset="'+esc(x.cardKey)+'">Вернуть системные значения</button>':'')+
     '</article>';
@@ -1167,7 +1207,7 @@ function estimatorView(){
    (state.loading?'<p class="muted">Загружаю карточки…</p>':'')+
    (state.loaded?'<button type="button" class="primary" data-estimator-card-new>+ Новый прибор</button>':'')+
    '<div class="estimator-card-grid">'+cards+'</div></section>'+
-   (state.editor?estimatorCardEditorMarkup():'');
+   estimatorBridgeMarkup()+(state.editor?estimatorCardEditorMarkup():'');
  }
  const lead=estimateUI.leadId?(data.leads||[]).find(x=>x.id===estimateUI.leadId):null;
  if(lead)return head+plumbingWorkspace(lead);
@@ -1191,12 +1231,48 @@ function estimateAMD(x){
  const decimal=(m[3]||'').replace(/0+$/,'');
  return (m[1]||'')+n+(decimal?','+decimal:'')+' AMD';
 }
+// EST-SAVED-LINK: one immutable input batch per transfer into the draft.
+function estimateAppendCalculated(editor,rows,result,mode,inputSnapshot){
+ const batch={id:crypto.randomUUID(),mode,sourcePackageSha256:result.sourcePackageSha256,inputSnapshot:JSON.parse(JSON.stringify(inputSnapshot))};
+ if(!batch.sourcePackageSha256)throw Error('Нет версии исходного расчёта.');
+ const additions=rows.map(row=>{
+  const cardKey=row.cardKey||(row.sourceAction==='EXTRA_MATERIALS'?'SPECIAL:EXTRA_MATERIALS':row.sourceAction==='CHASING'?'SPECIAL:CHASING':inputSnapshot.cardKey);
+  if(!cardKey||!row.sourceAction)throw Error('Нет исходного кода позиции.');
+  return {lineKey:crypto.randomUUID(),kind:row.kind,description:row.description,quantity:row.quantity,unit:row.unit,unitPriceAMD:row.unitPriceAMD,
+   calculation:{batchId:batch.id,cardKey,sourceAction:row.sourceAction,original:{description:row.description,quantity:String(row.quantity),unit:row.unit,unitPriceAMD:row.unitPriceAMD===null?null:String(row.unitPriceAMD??''),priceMode:row.priceMode||''}}};
+ });
+ editor.calculationBatches??=[];editor.calculationBatches.push(batch);editor.lines.push(...additions);
+}
+function estimateUsedBatches(editor){
+ const used=new Set(editor.lines.filter(x=>x.calculation).map(x=>x.calculation.batchId));
+ return (editor.calculationBatches||[]).filter(b=>used.has(b.id));
+}
+function estimateLinkSupported(line){return line.calculation&&['FIXTURE_INSTALL','WATER','SEWER'].includes(line.calculation.sourceAction);}
+function estimateLineContextMarkup(line,i,readonly=false){
+ if(!line.calculation)return '';
+ const c=line.calculation;
+ return '<p class="muted small">Исходная карточка: '+esc(c.cardKey)+' · действие: '+esc(c.sourceAction)+
+  (line.actionCode?' · '+esc(line.actionCode):'')+' · исходный объём '+esc(c.original.quantity)+' '+esc(c.original.unit)+'</p>'+
+  (line.serviceId?'<p class="small">Услуга: '+esc(line.serviceSnapshot?.serviceName||line.serviceId)+' · '+esc(line.serviceId)+'</p>':
+   (estimateLinkSupported(line)?'<p class="muted small">Связь не установлена; название услуги не угадывается.</p>':''))+
+  (!readonly&&estimateLinkSupported(line)?'<label>Услуга · точный SRV ID (необязательно)<input name="estService_'+i+'" maxlength="100" value="'+esc(line.serviceId||'')+'" placeholder="SRV-YYYY-NNNN"></label>'+
+   '<label><input type="checkbox" name="estRelink_'+i+'"'+(line.relink?' checked':'')+'> Обновить связь из карточки при сохранении</label>':'');
+}
+function estimateBatchesMarkup(batches,readonly=false){
+ return (batches||[]).map((b,i)=>'<details class="card"><summary>Исходный расчёт '+(i+1)+' · '+esc(b.inputSnapshot.tariff)+'</summary>'+
+  '<p class="muted small">Снимок параметров на момент переноса. Изменение справочников не пересчитывает эту смету.</p>'+
+  '<pre style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(JSON.stringify(b.inputSnapshot,null,2))+'</pre>'+
+  (!readonly&&b.mode==='BATCH'?'<button type="button" data-estimate-restore-input="'+esc(b.id)+'">Открыть параметры для нового расчёта</button>':'')+'</details>').join('');
+}
+
 function estimateCaptureForm(){
  const f=$('#estimateDraftEditor');if(!f||!estimateUI.editor)return;
  const d=Object.fromEntries(new FormData(f).entries());
  const editor=estimateUI.editor;
  editor.title=d.title??editor.title;editor.notes=d.notes??editor.notes;
  editor.lines=editor.lines.map((line,i)=>({
+  ...line,
+  ...(estimateLinkSupported(line)?{serviceId:d['estService_'+i]??line.serviceId??'',relink:Object.hasOwn(d,'estRelink_'+i)}:{}),
   lineKey:line.lineKey,
   kind:d['estKind_'+i]||line.kind,
   description:d['estDescription_'+i]??line.description,
@@ -1228,11 +1304,11 @@ function estimateView(lead){
  if(estimate.status==='accepted'){
   const items=(result.lines||[]).map((line,i)=>'<p class="muted small">'+(i+1)+'. '+esc(line.description)+
    ' · '+esc(line.quantity)+' '+esc(line.unit)+' × '+estimateAMD(line.unitPriceAMD)+
-   ' = '+estimateAMD(line.lineTotalAMD)+'</p>').join('');
+   ' = '+estimateAMD(line.lineTotalAMD)+'</p>'+estimateLineContextMarkup(line,i,true)).join('');
   return '<section class="card"><h3>Смета согласована</h3>'+
    '<p class="muted small">Версия '+esc(estimate.acceptedRevision||estimate.revision)+
    ' · Согласовано: '+esc(when(estimate.acceptedAt))+
-   ' · Изменение согласованной сметы заблокировано.</p>'+summary+items+
+   ' · Изменение согласованной сметы заблокировано.</p>'+summary+items+estimateBatchesMarkup(result.calculationBatches,true)+
    '<p><strong>Согласованный итог: '+estimateAMD(estimate.acceptedTotalAMD)+'</strong></p>'+
    (estimate.workOrderId?'<p>Создан открытый заказ: '+esc(estimate.workOrderId)+'</p>'+
     '<button type="button" data-estimate-order-open="'+esc(estimate.workOrderId)+'">Открыть заказ</button>':'<p class="error">Связанный заказ не найден. Обратись к диагностике.</p>')+
@@ -1251,7 +1327,7 @@ function estimateView(lead){
    '<button class="primary wide" type="submit">Согласовать и создать заказ</button></form>':
    '<p class="muted small">Для согласования нужен завершённый лид со связанным клиентом, его объектом и полностью оценённая смета. Сначала сохрани последние изменения сметы.</p>')+'</section>';
  const lineForms=editor.lines.map((line,i)=>
-  '<div class="card"><strong>Позиция '+(i+1)+'</strong>'+
+  '<div class="card"><strong>Позиция '+(i+1)+'</strong>'+estimateLineContextMarkup(line,i)+
   '<label>Тип<select name="estKind_'+i+'"><option value="WORK"'+(line.kind==='WORK'?' selected':'')+'>Работа</option><option value="MATERIAL"'+(line.kind==='MATERIAL'?' selected':'')+'>Материал</option></select></label>'+
   '<label>Наименование<input name="estDescription_'+i+'" maxlength="240" required value="'+esc(line.description)+'"></label>'+
   '<label>Количество<input type="text" inputmode="decimal" name="estQuantity_'+i+'" required value="'+esc(line.quantity)+'" placeholder="1 или 1.250"></label>'+
@@ -1260,7 +1336,7 @@ function estimateView(lead){
   '<button type="button" class="compact" data-estimate-remove="'+i+'">Удалить позицию из черновика</button></div>').join('');
  return '<section class="card"><h3>Внутренняя смета · черновик</h3>'+
   '<p class="muted small">Версия '+esc(estimate.revision)+' · AMD · Только внутренний расчёт. Статус лида и заказ не меняются.</p>'+
-  summary+
+  summary+estimateBatchesMarkup(estimateUsedBatches(editor))+
   '<p class="'+(totals.pricingComplete?'muted':'error')+'">Позиции: '+(totals.lineCount||0)+'. Не оценено: '+(totals.unpricedCount||0)+'. '+
   (totals.pricingComplete?'Все строки имеют указанную цену.':'Итог не окончательный, пока есть строки без цены или нет строк.')+'</p>'+
   '<form id="estimateDraftEditor" data-act="estimate_save" class="grid">'+
@@ -1281,9 +1357,9 @@ async function loadLeadEstimate(){
   if(estimateUI.leadId!==id)return;
   estimateUI.result=result;estimateUI.loaded=true;
   estimateUI.editor=result.estimate?{
-   title:result.estimate.title,notes:result.estimate.notes||'',
+   title:result.estimate.title,notes:result.estimate.notes||'',calculationBatches:result.calculationBatches||[],
    lines:(result.lines||[]).map(x=>({lineKey:x.lineKey,kind:x.kind,description:x.description,
-    quantity:x.quantity,unit:x.unit,unitPriceAMD:x.unitPriceAMD??''}))
+    quantity:x.quantity,unit:x.unit,unitPriceAMD:x.unitPriceAMD??'',...(x.calculation?{calculation:x.calculation,serviceId:x.serviceId,actionCode:x.actionCode,serviceSnapshot:x.serviceSnapshot}:{})}))
   }:null;
   if(result.estimate?.status==='draft'){void ensurePlumbingCalculator();void loadEstimatorCards();}
  }catch(e){if(estimateUI.leadId===id)estimateUI.error=e.message;}
@@ -3232,7 +3308,7 @@ async function sendAction(type,payload,form){
  let id=payload.requestKey||form?.dataset.requestKey||crypto.randomUUID();
  if(form)form.dataset.requestKey=id;
  try{
-  const out=await api('/api/action',{type,payload:{...payload,requestKey:id}});
+  const out=await api(type==='estimate_save'&&payload.calculationBatches?.length?'/api/estimates/save':'/api/action',{type,payload:{...payload,requestKey:id}});
   if(!out.saved)throw Error('Сервер не подтвердил сохранение.');
   if(fromClientLead){crmClientLeadContext=null;crmDetailId=null;}
   if(type==='crm_won_order_create')crmWonOrderClose(true);
@@ -3493,7 +3569,7 @@ if(f.id==='presenceFilters'){
   if(!estimate){message('Черновик сметы не найден.',true);return;}
   await sendAction('estimate_save',{
    estimateId:estimate.id,revision:estimate.revision,title:editor.title,notes:editor.notes,
-   lines:editor.lines.map(x=>({...x,unitPriceAMD:String(x.unitPriceAMD??'').trim()}))
+   lines:editor.lines.map(x=>({...x,unitPriceAMD:String(x.unitPriceAMD??'').trim()})),calculationBatches:estimateUsedBatches(editor)
   },f);return;
  }
   if(type==='close_work_order'&&!confirm('Закрыть этот новый заказ Clean? Операция сохранит оценку и ручную финансовую проверку. Статус полной оплаты останется неподтверждённым.'))return;
@@ -3885,9 +3961,20 @@ $('#content').addEventListener('click',async e=>{
     vipFloorAMD:val('vip')});
    return;
   }
-  if(e.target.closest('button[data-estimator-card-new]')){estimatorStartEditor();return;}
+  const bridgeOpen=e.target.closest('button[data-estimator-bridge-open]');
+  if(bridgeOpen){if(estimatorCardState.editor){message('Сначала сохрани или закрой редактор карточки.',true);return;}await openEstimatorBridges(bridgeOpen.dataset.estimatorBridgeOpen);return;}
+  if(e.target.closest('button[data-est-bridge-close]')){estimatorBridgePanel=null;render();return;}
+  const bridgeSave=e.target.closest('button[data-est-bridge-save]'),bridgeArchive=e.target.closest('button[data-est-bridge-archive]');
+  if(bridgeSave||bridgeArchive){
+   const action=(bridgeSave||bridgeArchive).dataset[bridgeSave?'estBridgeSave':'estBridgeArchive'];
+   const serviceId=bridgeArchive?'':(bridgeSave.closest('[data-est-bridge-row]')?.querySelector('[name=serviceId]')?.value||'').trim();
+   if(bridgeSave&&!serviceId){message('Выбери услугу или используй архивирование.',true);return;}
+   if(bridgeArchive&&!confirm('Архивировать связь? Сохранённые сметы останутся прежними.'))return;
+   await submitEstimatorBridge(action,serviceId);return;
+  }
+  if(e.target.closest('button[data-estimator-card-new]')){estimatorBridgePanel=null;estimatorStartEditor();return;}
   const cardEdit=e.target.closest('button[data-estimator-card-edit]');
-  if(cardEdit){estimatorStartEditor(cardEdit.dataset.estimatorCardEdit);return;}
+  if(cardEdit){estimatorBridgePanel=null;estimatorStartEditor(cardEdit.dataset.estimatorCardEdit);return;}
   if(e.target.closest('button[data-estimator-card-cancel]')){
    estimatorCardState.editor=null;estimatorCardState.requestKey=null;render();return;
   }
@@ -4040,10 +4127,11 @@ $('#content').addEventListener('click',async e=>{
    const verified=plumbingCaptureQuotePrices();
    estimateCaptureForm();
    if(editor.lines.length+verified.lines.length>50)throw Error('Лимит 50 строк сметы. Уменьши выбор.');
-   editor.lines.push(...verified.lines.map(row=>({
-    lineKey:crypto.randomUUID(),kind:row.kind,description:row.description,
-    quantity:row.quantity,unit:row.unit,unitPriceAMD:row.unitPriceAMD
-   })));
+   const w=plumbingWizard;
+   estimateAppendCalculated(editor,verified.lines,result,'BATCH',{tariff:w.tariff,cards:w.cards,config:w.config,
+    includeMaterials:w.includeMaterials,useFixedPrices:w.useFixedPrices,chasing:w.chasing,chasingMeters:w.chasingMeters,chasingPrice:w.chasingPrice,
+    extraMaterials:w.extraMaterials,extraMaterialsAmount:w.extraMaterialsAmount,extraMaterialsNote:w.extraMaterialsNote,
+    quotePrices:w.quotePrices,cardRevisions:estimatorCardCatalog().filter(c=>Object.hasOwn(w.cards,c.cardKey)).map(c=>({cardKey:c.cardKey,revision:c.revision}))});
    plumbingWizard=plumbingNewWizard();
    plumbingDraftPanelOpen=true;
    render();
@@ -4087,12 +4175,20 @@ $('#content').addEventListener('click',async e=>{
    const rows=plumbingUI.preview.result.lines;
    if(ed.lines.length+rows.length>50)throw Error('В смете не может быть больше 50 позиций.');
    estimateCaptureForm();
-   ed.lines.push(...rows.map(x=>({lineKey:crypto.randomUUID(),kind:x.kind,
-    description:x.description,quantity:x.quantity,unit:x.unit,unitPriceAMD:x.unitPriceAMD})));
+   estimateAppendCalculated(ed,rows,plumbingUI.preview.result,'SINGLE',inputs);
    plumbingUI.preview=null;
    render();message('Расчётные позиции добавлены. Проверь цены и сохрани черновик сметы.');
   }catch(error){message('Не удалось добавить позиции: '+String(error.message||error),true);}
   return;
+ }
+ const restoreInputs=e.target.closest('button[data-estimate-restore-input]');
+ if(restoreInputs){
+  const ed=estimateUI.editor,b=ed?.calculationBatches?.find(x=>x.id===restoreInputs.dataset.estimateRestoreInput);
+  if(!b||b.mode!=='BATCH'||estimateUI.result?.estimate?.status!=='draft')return;
+  if(!confirm('Открыть сохранённые параметры для нового расчёта? Сохранённые позиции не изменятся. Новый расчёт использует текущие карточки и цены.'))return;
+  estimateCaptureForm();const s=b.inputSnapshot;const w=plumbingNewWizard();
+  for(const k of ['tariff','cards','config','includeMaterials','useFixedPrices','chasing','chasingMeters','chasingPrice','extraMaterials','extraMaterialsAmount','extraMaterialsNote'])if(Object.hasOwn(s,k))w[k]=JSON.parse(JSON.stringify(s[k]));
+  plumbingWizard=w;plumbingDraftPanelOpen=true;estimatorSubtab='calculator';render();plumbingScrollToActiveStep();return;
  }
  const addLine=e.target.closest('button[data-estimate-add]');
  if(addLine){

@@ -18,6 +18,7 @@ import {crmLeadSignalsRead,crmLeadSignalsSave} from './crm-lead-signals.mjs';
 import {crmScoreHistoryRead,crmScoreHistoryAfterAction} from './crm-score-history.mjs';
 import {crmReminderAction,crmLeadStatusAction} from './crm-reminders.mjs';
 import {estimateRead,estimateDraftAction} from './estimate-drafts.mjs';
+import {estimatorBridgeRead,estimatorBridgeAction} from './estimate-service-links.mjs';
 import {estimateAcceptHandoff} from './estimate-handoff.mjs';
 import {estimatorCardsRead,estimatorCardAction} from './estimator-cards.mjs';
 import {estimatorPricebookRead,estimatorPricebookAction} from './estimator-pricebook.mjs';
@@ -419,6 +420,7 @@ async function action(type,p){
  if(type==='crm_signal_save')return crmLeadSignalsSave({pool,p,key,uuid,safeRevision,AppError});
  if(type==='lead_status')return crmLeadStatusAction({pool,p,uuid,safeRevision,AppError});
  if(['estimate_create','estimate_save'].includes(type))return estimateDraftAction({pool,type,p,key,uuid,safeRevision,AppError});
+ if(type==='estimator_bridge_set')return estimatorBridgeAction({pool,p,key,AppError});
  if(['estimator_card_save','estimator_card_archive','estimator_card_reset'].includes(type))return estimatorCardAction({pool,type,p,key,AppError});
  if(['estimator_tariff_save','estimator_price_save'].includes(type))return estimatorPricebookAction({pool,type,p,key,AppError});
  if(type==='estimate_accept_handoff')return estimateAcceptHandoff({pool,p,key,uuid,safeRevision,AppError});
@@ -772,6 +774,13 @@ async function handler(req,res){
    }
    if(pathname==='/api/estimates'&&req.method==='GET')return json(res,200,await estimateRead({pool,url:new URL(req.url,'http://localhost'),uuid,AppError}));
    if(pathname==='/api/estimator/cards'&&req.method==='GET')return json(res,200,await estimatorCardsRead({pool,AppError}));
+   if(pathname==='/api/estimator/service-bridges'&&req.method==='GET')return json(res,200,await estimatorBridgeRead({pool,url:new URL(req.url,'http://localhost'),AppError}));
+   // Same canonical action with a bounded UTF-8 payload only for structured Estimate saves.
+   if(pathname==='/api/estimates/save'&&req.method==='POST'){
+    req.setEncoding('utf8');const body=await readBody(req,100000);
+    if(body.type!=='estimate_save'||!body.payload||typeof body.payload!=='object'||Array.isArray(body.payload))throw new AppError(400,'Неверное сохранение сметы.');
+    return json(res,200,await action('estimate_save',body.payload));
+   }
    if(pathname==='/api/estimator/pricebook'&&req.method==='GET')return json(res,200,await estimatorPricebookRead({pool,AppError}));
    if(pathname==='/api/orders/close-preview'&&req.method==='GET')return json(res,200,await orderClosePreview(pool,new URL(req.url,'http://localhost'),{authorizeOwner:()=>sessionValid(req),AppError}));
    if(pathname==='/api/orders/close-fact'&&req.method==='GET')return json(res,200,await nativeOrderCloseFactRead({pool,id:new URL(req.url,'http://localhost').searchParams.get('id'),uuid,AppError}));

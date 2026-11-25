@@ -49,3 +49,6 @@ export async function requireActiveWorkLogServiceTx(db,serviceId,E){
   source==='CLEAN'?[serviceId]:[serviceId,REFERENCE_BATCH]);
  if(!r.rowCount)throw new E(409,'Услуга не найдена в активном проверенном справочнике.');
 }
+
+// Estimator uses the same verified local catalog gate; WorkLog behavior unchanged.
+export {sourceTx as verifiedServiceSourceTx};
