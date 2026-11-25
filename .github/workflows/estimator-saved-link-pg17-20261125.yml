@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   verify:
-    if: "github.event.head_commit.message == 'ci(estimator): exact saved-link PG17 qualification attempt 1'"
+    if: "github.event.head_commit.message == 'ci(estimator): exact saved-link PG17 qualification attempt 2'"
     runs-on: ubuntu-24.04
     timeout-minutes: 36
     services:
@@ -28,13 +28,13 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 12
     env:
       CI: 'true'
-      EST_SOURCE_SHA: 29a1194ebec7a11c188297f6368d578c3f62f0fc
+      EST_SOURCE_SHA: 6f0510ccc1fc5789a39b9d29e1bb64c330fdf246
       TEST_DATABASE_URL: postgresql://postgres:synthetic_est_test_only@127.0.0.1:5432/vbos_mvp_ci
     steps:
       - name: Checkout exact application candidate
         uses: actions/checkout@v4
         with:
-          ref: 29a1194ebec7a11c188297f6368d578c3f62f0fc
+          ref: 6f0510ccc1fc5789a39b9d29e1bb64c330fdf246
           persist-credentials: false
       - name: Node 22
         uses: actions/setup-node@v4
