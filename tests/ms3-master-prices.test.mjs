@@ -47,3 +47,13 @@ test('MS3 UI escapes source and does not enable snapshot writes or convert curre
  const html=renderPrices({masterId,services:[],page:{items:[x],writeEnabled:false,source:'VERIFIED_LEGACY_SNAPSHOT'}});
  assert.doesNotMatch(html,/<script>/);assert.match(html,/&lt;script&gt;/);assert.match(html,/data-ms3-new disabled/);assert.doesNotMatch(html,/data-ms3-edit=/);
 });
+
+test('MS3 history reads exact decimal text, independent of JS JSONB numeric precision',async()=>{
+ const calls=[],pool={async query(sql,args){calls.push(sql);
+  if(sql.includes('FROM public.mvp_masters_services_authority'))return {rows:[control]};
+  return {rows:[{previous_row:{...row,price_from:9999999999999999},exact_price_from:'9999999999999999.1234',exact_price_to:null,recorded_at:'2026-11-25T12:00:00Z'}]};
+ }};
+ const got=await masterPricesRead({pool,url:new URL('http://local/api/masters/prices?masterId='+masterId+'&historyId='+priceId),AppError:E});
+ assert.equal(got.items[0].priceFrom,'9999999999999999.1234');assert.equal(got.items[0].priceTo,null);
+ assert.match(calls.at(-1),/previous_row->>'price_from'/);
+});
