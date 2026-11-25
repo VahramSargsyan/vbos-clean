@@ -127,7 +127,33 @@ test('price capture applies only owner quote inputs; result transfer uses verifi
  assert.equal(priced.totals.pricingComplete,true);
  assert.ok(ctx.plumbingWizard.pricedResult?.ownerQuoteOnly);
  assert.match(ui,/const verified=plumbingCaptureQuotePrices\(\);/);
- assert.match(ui,/editor\.lines\.push\(\.\.\.verified\.lines\.map/);
+ assert.match(ui,/estimateAppendCalculated\(editor,verified\.lines,result,'BATCH'/);
+ // Execute the actual transfer adapter, not its old inline implementation.
+ const a=ui.indexOf('function estimateAppendCalculated('),b=ui.indexOf('function estimateUsedBatches(',a);
+ assert.ok(a>=0&&b>a);
+ const editor={lines:[]},input={tariff:src.tariff,cards:{WC:{quantity:2},WASH:{quantity:1}},config:{WC:{install:true,water:true,sewer:true},WASH:{install:true,water:true,sewer:true}}};
+ const inputBefore=JSON.stringify(input),pricedBefore=JSON.stringify(priced);
+ let sequence=0;
+ runInNewContext(ui.slice(a,b)+"\nestimateAppendCalculated(editor,priced.lines,src,'BATCH',input);",{editor,priced,src,input,crypto:{randomUUID:()=>String(++sequence)}});
+ assert.equal(editor.lines.length,priced.lines.length);
+ assert.equal(editor.calculationBatches.length,1);
+ const batch=editor.calculationBatches[0];
+ assert.equal(batch.sourcePackageSha256,src.sourcePackageSha256);
+ assert.equal(batch.mode,'BATCH');
+ assert.equal(JSON.stringify(batch.inputSnapshot),inputBefore);
+ assert.notEqual(batch.inputSnapshot,input);
+ assert.equal(new Set(editor.lines.map(x=>x.lineKey)).size,priced.lines.length);
+ for(const [i,x] of editor.lines.entries()){
+  const original=priced.lines[i];
+  for(const k of ['kind','description','quantity','unit','unitPriceAMD'])assert.equal(x[k],original[k]);
+  assert.equal(x.calculation.batchId,batch.id);
+  assert.equal(x.calculation.cardKey,original.cardKey);
+  assert.equal(x.calculation.sourceAction,original.sourceAction);
+  assert.equal(x.calculation.original.unitPriceAMD,original.unitPriceAMD);
+  assert.equal(x.calculation.original.priceMode,original.priceMode);
+ }
+ assert.equal(JSON.stringify(priced),pricedBefore);
+ assert.equal(JSON.stringify(input),inputBefore);
  assert.match(ui,/estimateCaptureForm\(\)/);
  assert.match(ui,/estimate_save/);
  assert.doesNotMatch(ui.slice(start,end),/fetch\(|sendAction\(|pool\.query\(/);
