@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {normalizeCalculationBatches,normalizeLineCalculation,validateCalculationBatches,resolveEstimateLineLinks,BRIDGE_RULES} from '../estimate-service-links.mjs';
+import {normalizeCalculationBatches,normalizeLineCalculation,validateCalculationBatches,resolveEstimateLineLinks,BRIDGE_RULES,estimatorBridgeAction,bridgeSnapshotManifest,importEstimatorBridgeSnapshotTx} from '../estimate-service-links.mjs';
 class E extends Error{constructor(status,msg){super(msg);this.status=status;}}
 const uuid=x=>{if(!/^[0-9a-f-]{36}$/.test(x))throw new E(400,'UUID');return x;};
 const opts={uuid,AppError:E};
@@ -37,4 +37,46 @@ test('historical service link survives catalog archival without live reads; chan
  await assert.rejects(()=>resolveEstimateLineLinks(db,[line],[{line_key:line.lineKey}],E),e=>e.status===409);
  const [detached]=await resolveEstimateLineLinks(db,[{...line,serviceId:''}],[old],E);
  assert.equal(detached.serviceId,null);assert.equal(detached.actionCode,'INSTALL');
+});
+
+test('restorable batch shape and exact card association are checked',()=>{
+ const {batch,line}=fixture();
+ assert.throws(()=>normalizeCalculationBatches([{...batch,inputSnapshot:{tariff:'ECONOM',cards:[],config:{}}}],opts),e=>e.status===400);
+ assert.throws(()=>normalizeCalculationBatches([{...batch,inputSnapshot:{tariff:'ECONOM',cards:{BATH:{quantity:'99'}},config:{BATH:{}}}}],opts),e=>e.status===400);
+ assert.throws(()=>validateCalculationBatches([{...line,calculation:{...line.calculation,cardKey:'WC'}}],normalizeCalculationBatches([batch],opts),[],E),e=>e.status===400);
+});
+function sourceDb(phase,{status='active',actionCode='INSTALL',unit='item',missing=false}={}){
+ const calls=[];
+ const db={calls,query:async(sql,args=[])=>{
+  calls.push({sql,args});
+  if(sql.includes('to_regclass'))return {rows:[{authority_exists:true,catalog_exists:true,prices_exists:true}]};
+  if(sql.includes('SELECT phase,master_snapshot_hash'))return {rows:[{phase,master_snapshot_hash:'a'.repeat(64),dependency_receipt_hash:'b'.repeat(64)}]};
+  if(sql.includes('mvp_service_reference_batches'))return {rows:[{verified:1}]};
+  if(sql.includes('mvp_estimator_service_bridges'))return {rows:missing?[]:[{service_id:'SRV-2026-9001'}]};
+  if(sql.includes('FROM public.mvp_services_'))return {rows:[{service_id:'SRV-2026-9001',service_name:'Synthetic',category:'Synthetic',status,action_code:actionCode,default_unit:unit}]};
+  if(['BEGIN','ROLLBACK'].includes(sql)||sql.startsWith('SET LOCAL'))return {rows:[]};
+  throw Error(sql);
+ },release(){}};
+ return db;
+}
+test('exact local service source selected, no unsafe fallback, no inferred link',async()=>{
+ const {line}=fixture();
+ for(const phase of ['LEGACY','CLEAN']){
+  const db=sourceDb(phase),[saved]=await resolveEstimateLineLinks(db,[line],[],E);
+  assert.equal(saved.serviceId,'SRV-2026-9001');assert.equal(saved.actionCode,'INSTALL');
+  assert.ok(db.calls.some(x=>x.sql.includes(phase==='CLEAN'?'FROM public.mvp_services_catalog':'FROM public.mvp_services_reference')));
+  assert.ok(!db.calls.some(x=>x.sql.includes(phase==='CLEAN'?'FROM public.mvp_services_reference WHERE service_id':'FROM public.mvp_services_catalog WHERE service_id')));
+ }
+ for(const invalid of [{status:'archived'},{actionCode:'CONNECT'},{unit:'point'}])await assert.rejects(()=>resolveEstimateLineLinks(sourceDb('CLEAN',invalid),[line],[],E),e=>e.status===409);
+ const [unlinked]=await resolveEstimateLineLinks(sourceDb('LEGACY',{missing:true}),[line],[],E);
+ assert.equal(unlinked.serviceId,null);assert.equal(unlinked.actionCode,'INSTALL');
+});
+test('bridge writer denied before ledger or DML under LEGACY; offline import rejects bad manifest before queries',async()=>{
+ const db=sourceDb('LEGACY');
+ await assert.rejects(()=>estimatorBridgeAction({pool:{connect:async()=>db},p:{cardKey:'BATH',actionType:'FIXTURE_INSTALL',serviceId:'SRV-2026-9001'},key:randomUUID(),AppError:E}),e=>e.status===409);
+ assert.ok(db.calls.some(x=>x.sql==='ROLLBACK'));
+ assert.ok(!db.calls.some(x=>x.sql.includes('INSERT INTO')));
+ const manifest=bridgeSnapshotManifest([{estimatorServiceBridgeId:'ESB-2026-9001',cardKey:'BATH'}],E);
+ assert.match(manifest.sha256,/^[a-f0-9]{64}$/);
+ await assert.rejects(()=>importEstimatorBridgeSnapshotTx({query(){throw Error('unexpected query');}},manifest.canonical,'0'.repeat(64),E),e=>e.status===409);
 });

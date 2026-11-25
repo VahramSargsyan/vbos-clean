@@ -29,7 +29,7 @@ const unitCode=v=>({'шт':'item','точка':'point','item':'item','point':'po
 function sortedJson(v,E,depth=0){
  if(depth>8)bad(E,'Слишком глубокий snapshot.');
  if(v===null||typeof v==='boolean')return v;
- if(typeof v==='string'){if(v.length>4000)bad(E,'Слишком длинный параметр расчёта.');return v;}
+ if(typeof v==='string'){if(v.length>6000)bad(E,'Слишком длинный параметр расчёта.');return v;}
  if(typeof v==='number'&&Number.isFinite(v))return v;
  if(Array.isArray(v)){if(v.length>100)bad(E,'Слишком много параметров расчёта.');return v.map(x=>sortedJson(x,E,depth+1));}
  if(!object(v))bad(E,'Неверный snapshot.');
@@ -46,6 +46,16 @@ export function normalizeCalculationBatches(raw,{uuid,AppError:E}){
   const id=uuid(b.id);if(ids.has(id))bad(E,'Повторный ID расчёта.');ids.add(id);
   const inputSnapshot=sortedJson(b.inputSnapshot,E);
   if(!['ECONOM','STANDARD_PLUS','VIP'].includes(inputSnapshot.tariff))bad(E,'Неверный тариф snapshot.');
+  if(b.mode==='BATCH'){
+   const {cards,config}=inputSnapshot;
+   if(!object(cards)||!object(config)||Object.keys(cards).length>12||Object.keys(config).some(k=>!Object.hasOwn(cards,k)))bad(E,'Неверные карточки snapshot.');
+   for(const [k,v] of Object.entries(cards)){
+    cardId(k,E);
+    if(!object(v)||!/^\d{1,2}$/.test(String(v.quantity??''))||Number(v.quantity)<1||Number(v.quantity)>50||!object(config[k]))bad(E,'Неверные параметры карточки snapshot.');
+    for(const flag of ['water','sewer','install'])if(Object.hasOwn(config[k],flag)&&typeof config[k][flag]!=='boolean')bad(E,'Неверный флаг действия snapshot.');
+   }
+   for(const flag of ['includeMaterials','useFixedPrices','chasing','extraMaterials'])if(Object.hasOwn(inputSnapshot,flag)&&typeof inputSnapshot[flag]!=='boolean')bad(E,'Неверный флаг snapshot.');
+  }else cardId(inputSnapshot.cardKey,E);
   if(JSON.stringify(inputSnapshot).length>12000)bad(E,'Слишком большой snapshot расчёта.');
   return {id,mode:b.mode,sourcePackageSha256:b.sourcePackageSha256,inputSnapshot};
  });
@@ -77,6 +87,15 @@ export function normalizeLineCalculation(raw,line,{uuid,AppError:E}){
 export function validateCalculationBatches(lines,batches,previous,E){
  const ids=new Set(batches.map(x=>x.id)),used=new Set(lines.filter(x=>x.calculation).map(x=>x.calculation.batchId));
  if([...used].some(id=>!ids.has(id))||[...ids].some(id=>!used.has(id)))bad(E,'Snapshot и позиции расчёта не совпадают.');
+ const byId=new Map(batches.map(b=>[b.id,b]));
+ for(const line of lines){
+  const c=line.calculation;if(!c)continue;
+  const b=byId.get(c.batchId),input=b.inputSnapshot;
+  if(c.cardKey==='SPECIAL:CHASING'&&c.sourceAction==='CHASING')continue;
+  if(c.cardKey==='SPECIAL:EXTRA_MATERIALS'&&c.sourceAction==='EXTRA_MATERIALS')continue;
+  const keys=b.mode==='BATCH'?Object.keys(input.cards).map(k=>cardId(k,E)):[cardId(input.cardKey,E)];
+  if(!keys.includes(c.cardKey))bad(E,'Карточка позиции отсутствует в исходном snapshot.');
+ }
  const old=new Map((previous||[]).map(x=>[x.id,x]));
  for(const b of batches)if(old.has(b.id)&&!same(old.get(b.id),b,E))bad(E,'Исторические параметры расчёта неизменяемы.',409);
 }
