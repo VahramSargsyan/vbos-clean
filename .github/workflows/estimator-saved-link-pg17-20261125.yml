@@ -1,0 +1,89 @@
+# Owner authorized at most two runs for this bounded block, second only after a concrete repair.
+# No hosted credentials, deployment, working database, or permanent resources.
+name: Estimator saved-link exact Node22 and disposable PG17 qualification
+on:
+  push:
+    branches: [feature/estimator-saved-link-parity-20261125]
+    paths: [.github/workflows/estimator-saved-link-pg17-20261125.yml]
+permissions:
+  contents: read
+concurrency:
+  group: estimator-saved-link-pg17-20261125
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: "github.event.head_commit.message == 'ci(estimator): exact saved-link PG17 qualification attempt 1'"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 36
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic_est_test_only
+          POSTGRES_DB: vbos_mvp_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vbos_mvp_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      CI: 'true'
+      EST_SOURCE_SHA: 29a1194ebec7a11c188297f6368d578c3f62f0fc
+      TEST_DATABASE_URL: postgresql://postgres:synthetic_est_test_only@127.0.0.1:5432/vbos_mvp_ci
+    steps:
+      - name: Checkout exact application candidate
+        uses: actions/checkout@v4
+        with:
+          ref: 29a1194ebec7a11c188297f6368d578c3f62f0fc
+          persist-credentials: false
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund
+      - name: Exact SHA and disposable PG17 boundary
+        id: boundary
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EST_SOURCE_SHA"
+          node --version
+          node --input-type=module <<'NODE'
+          import pg from 'pg';
+          const u=new URL(process.env.TEST_DATABASE_URL);
+          if(u.protocol!=='postgresql:'||u.hostname!=='127.0.0.1'||u.pathname!=='/vbos_mvp_ci')throw Error('EST_DISPOSABLE_ONLY');
+          const c=new pg.Client({connectionString:process.env.TEST_DATABASE_URL,ssl:false});
+          await c.connect();
+          try{
+            const r=(await c.query("SELECT current_database() AS db, current_setting('server_version_num') AS version, (SELECT count(*)::int FROM pg_tables WHERE schemaname='public') AS tables")).rows[0];
+            if(r.db!=='vbos_mvp_ci'||Number(r.version)<170000||Number(r.version)>=180000||r.tables!==0)throw Error('EST_WRONG_DB_VERSION_OR_OCCUPIED');
+            console.log('EST_DISPOSABLE_PG17_VERIFIED',r);
+          }finally{await c.end();}
+          NODE
+      - name: Source verification
+        id: source
+        run: npm run verify:source
+      - name: Focused Estimator, catalog and WorkLog tests
+        id: focused
+        if: "!cancelled() && steps.boundary.outcome == 'success'"
+        run: node --test tests/estimate-service-links.test.mjs tests/estimator-navigation.test.mjs tests/crm05a-estimate-ui.test.mjs tests/crm17-plumbing-estimator.test.mjs tests/crm17b-multicard-ux.test.mjs tests/crm18a-owner-pricing.test.mjs tests/worklog-service-source.test.mjs tests/ms2-services-catalog.test.mjs
+      - name: Full Node regression
+        id: unit
+        if: "!cancelled() && steps.boundary.outcome == 'success'"
+        run: npm test
+      - name: Full disposable PostgreSQL E2E
+        id: pg
+        if: "!cancelled() && steps.boundary.outcome == 'success'"
+        run: npm run test:e2e
+      - name: Exact source receipt
+        if: always()
+        env:
+          BOUNDARY: ${{ steps.boundary.outcome }}
+          SOURCE: ${{ steps.source.outcome }}
+          FOCUSED: ${{ steps.focused.outcome }}
+          UNIT: ${{ steps.unit.outcome }}
+          PG: ${{ steps.pg.outcome }}
+        run: |
+          echo "EST_SOURCE=$EST_SOURCE_SHA BOUNDARY=$BOUNDARY SOURCE=$SOURCE FOCUSED=$FOCUSED UNIT=$UNIT PG17=$PG"
+          echo "EST_NO_HOSTED_WRITES_OR_DEPLOYMENT"
+          test "$BOUNDARY/$SOURCE/$FOCUSED/$UNIT/$PG" = "success/success/success/success/success"
