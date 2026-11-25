@@ -106,12 +106,21 @@ test('No owner approval, exact source or backup => zero connections and zero wri
   }
  }
 });
-test('Migration is additive, original fields preserved, and imported legacy Masters cannot be edited as native',()=>{
+test('Migration is additive; imported Master edits require shared authority and preserve provenance',()=>{
  const schema=readFileSync(new URL('../migrations/0028_crm25a_master_directory_CANDIDATE.sql',import.meta.url),'utf8');
  const editor=readFileSync(new URL('../crm-masters.mjs',import.meta.url),'utf8');
  assert.match(schema,/mvp_history\.crm_legacy_master_receipts/);
  for(const column of ['source_created_at','source_updated_at','source_client_request_id','legacy_receipt_id','row_sha256'])
   assert.ok(schema.includes(column),column);
- assert.match(editor,/source_system='CLEAN_NATIVE' RETURNING/);
+ const gate=editor.indexOf('await requireMastersServicesAuthority(db,AppError)');
+ const update=editor.indexOf("'UPDATE public.mvp_crm_masters SET '");
+ assert.ok(gate>=0&&update>gate,'shared authority must precede mutation');
+ assert.match(editor,/source_system IN \('CLEAN_NATIVE','LEGACY_GOOGLE'\) RETURNING/);
+ const mutation=editor.slice(update,editor.indexOf('WHERE id=$1 AND revision=$2',update));
+ assert.ok(mutation.length>0,'exact revision-scoped update must remain');
+ assert.doesNotMatch(mutation,/\b(?:source_system|source_master_id|source_created_at|source_updated_at|source_client_request_id|legacy_receipt_id|row_sha256)\b/);
+ const authority=readFileSync(new URL('../masters-authority.mjs',import.meta.url),'utf8');
+ assert.match(authority,/phase==='CLEAN'&&hash\(row\.master_snapshot_hash\)&&hash\(row\.dependency_receipt_hash\)/);
+ assert.match(authority,/if\(!state\.writeEnabled\)throw new AppError\(409,/);
  assert.doesNotMatch(schema,/DROP TABLE|TRUNCATE|DELETE FROM/);
 });
