@@ -42,9 +42,12 @@ function fullWorkLogTaxServices(rows,category,action,selectedId){
   category&&action&&String(row.category||'').trim()===category&&fullWorkLogTaxCode(row)===action
  )||(id&&String(row.service_id)===id));
  options.sort((a,b)=>String(a.service_name||'').localeCompare(String(b.service_name||''),'ru'));
- return fullWorkLogOptions(options.map(row=>[
+ const values=options.map(row=>[
   String(row.service_id),String(row.service_name||row.service_id)+(row.status==='active'?'':' · Архив')
- ]),id,'Не связывать с каталогом');
+ ]);
+ // An existing reference outside the current page must never become an empty form value.
+ if(id&&!values.some(row=>row[0]===id))values.push([id,id+' · вне текущего списка']);
+ return fullWorkLogOptions(values,id,'Не связывать с каталогом');
 }
 function fullWorkLogTaxPreselect(form,id){
  const serviceId=String(id||'');
@@ -320,6 +323,7 @@ function fullWorkLogForm(orderId,date,record){
   '</section>'+
   '<p class="full-worklog-gap-feedback muted small" data-full-gap-feedback role="status" aria-live="polite" hidden></p>'+
   '<button type="button" data-full-gap-retry hidden>Повторить проверку пауз</button>'+
+  (data?.workLogServiceReferencesUnavailable?'<p role="status" class="muted small">Справочник услуг не подтверждён. Связанные услуги временно недоступны.</p>':data?.workLogServiceReferencesTruncated?'<p role="status" class="muted small">Показаны первые 200 услуг каталога.</p>':'')+
   '<label>Категория<select data-full-worklog-tax-category>'+
    fullWorkLogOptions(fullWorkLogTaxCategories(references),selectedCategory,'Не связывать с каталогом')+
   '</select></label>'+

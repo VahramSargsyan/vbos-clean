@@ -91,11 +91,15 @@ let financeReviewPanel=null,financeReviewModulePromise=null;
 let financeReviewAuditPanel=null,financeReviewAuditModulePromise=null;
 let financeCorrectionPanel=null,financeCorrectionModulePromise=null;
 let financeAuditPanel=null,financeAuditModulePromise=null;
-let referencePanel=null,referenceModulePromise=null;
+let referencePanel=null,referenceModulePromise=null,ms3Panel=null;
 let closePreviewModulePromise=null,closePreviewModule=null,closePreviewState={id:null,loading:false,result:null,error:''},closePreviewSeq=0;
 let nativeCloseViewPromise=null,nativeCloseView=null,nativeCloseReceipt={id:null,busy:false,result:null,error:''},nativeCloseReceiptSeq=0;
 let catalog={entity:'clients',q:'',status:'',tier:'',referral:'',items:[],nextCursor:null,hasMore:false,loaded:false,loading:false};
-let crmMasters={items:[],loaded:false,loading:false,error:'',q:'',status:'',nextCursor:null,hasMore:false,opened:false};
+const crmMastersInitial=()=>({items:[],loaded:false,loading:false,error:'',q:'',status:'',nextCursor:null,hasMore:false,opened:false,writeEnabled:false});
+let crmMasters=crmMastersInitial();
+const ms1Initial=()=>({q:'',status:'available',category:'',serviceId:'',items:[],loaded:false,loading:false,error:'',nextCursor:null,hasMore:false,reference:null,openId:'',detail:null,linkedServices:[],newOpen:false,writeEnabled:false,seq:0});
+let ms1=ms1Initial();
+function ms1ResetSession(){if(ms3Panel){ms3Panel.unmount();ms3Panel=null;}ms1=ms1Initial();crmMasters=crmMastersInitial();}
 let crmTransferOpenLeadId=null;
 let myWork={snapshot:null,loading:false,loaded:false,selectedOrderId:'',error:''};
 let dailyA1=null;
@@ -1803,7 +1807,8 @@ function crmMasterFields(m={}){
 function crmMastersDirectory(){
  let out='<details class="card" data-crm-master-directory'+(crmMasters.opened?' open':'')+'><summary>Внешние мастера · справочник</summary>'+
   '<p class="muted small">Это внешние специалисты, не работники компании. '+
-  'Исторические записи Google только для просмотра до согласованного перехода полномочий.</p>'+
+  'Происхождение исторических записей сохранено. Запись доступна только после совместного перехода мастеров и услуг.</p>'+
+  '<button type="button" class="compact" data-ms1-directory>Открыть раздел «Мастера»</button>'+
   '<button type="button" class="compact" data-crm-master-load'+(crmMasters.loading?' disabled':'')+'>Обновить справочник</button>';
  if(crmMasters.error)out+='<p class="error" role="alert">'+esc(crmMasters.error)+'</p>';
  if(crmMasters.loaded){
@@ -1819,7 +1824,7 @@ function crmMastersDirectory(){
      (m.phone?' · '+esc(m.phone):'')+'</p>'+
      '<p class="muted small">Оценка: '+esc(masterQualities.find(x=>x[0]===m.quality_tier)?.[1]||'Без оценки')+
      ' · '+esc(m.source_system==='LEGACY_GOOGLE'?'Источник: прежний VBOS':'Источник: VBOS Clean')+'</p>';
-    if(m.source_system==='CLEAN_NATIVE'){
+    if(crmMasters.writeEnabled===true){
      out+='<details><summary>Изменить мастера</summary><form class="grid" data-act="crm_master_update">'+
       '<input type="hidden" name="masterId" value="'+esc(m.id)+'">'+
       '<input type="hidden" name="revision" value="'+esc(m.revision)+'">'+crmMasterFields(m)+
@@ -1829,21 +1834,97 @@ function crmMastersDirectory(){
    }).join(''):'<p class="muted small">Совпадений нет.</p>')+
    (crmMasters.hasMore?'<button type="button" class="compact" data-crm-master-more>Показать ещё мастеров</button>':'');
  }
- out+=form('crm_master_create','+ Новый внешний мастер',crmMasterFields())+'</details>';
+ out+=(crmMasters.writeEnabled===true?form('crm_master_create','+ Новый внешний мастер',crmMasterFields()):'<p class="muted small">Запись мастеров пока заблокирована.</p>')+'</details>';
  return out;
 }
 async function loadCrmMasters(append=false){
- if(crmMasters.loading)return;
- crmMasters.loading=true;crmMasters.error='';
+ const state=crmMasters;
+ if(state.loading)return;
+ state.loading=true;state.error='';state.writeEnabled=false;
  try{
-  const params=new URLSearchParams({limit:'50',q:crmMasters.q,status:crmMasters.status});
-  if(append&&crmMasters.nextCursor)params.set('cursor',crmMasters.nextCursor);
+  const params=new URLSearchParams({limit:'50',q:state.q,status:state.status,authority:'1'});
+  if(append&&state.nextCursor)params.set('cursor',state.nextCursor);
   const result=await api('/api/crm/masters?'+params.toString());
-  crmMasters.items=append?crmMasters.items.concat(result.items):result.items;
-  crmMasters.hasMore=result.hasMore;crmMasters.nextCursor=result.nextCursor;crmMasters.loaded=true;
- }catch(err){crmMasters.error=err.message;}
- finally{crmMasters.loading=false;if(tab==='crm')render();}
+  if(crmMasters!==state)return;
+  state.writeEnabled=result.authority?.writeEnabled===true;
+  state.items=append?state.items.concat(result.items):result.items;
+  state.hasMore=result.hasMore;state.nextCursor=result.nextCursor;state.loaded=true;
+ }catch(err){if(crmMasters===state)state.error=err.message;}
+ finally{if(crmMasters===state){state.loading=false;if(tab==='crm')render();}}
 }
+
+/* MS1 external Masters: independent view, existing CRM25 writer and exact reference IDs. */
+function ms1Options(rows,selected,placeholder){
+ return '<option value="">'+esc(placeholder)+'</option>'+rows.map(([v,t])=>'<option value="'+esc(v)+'"'+(v===selected?' selected':'')+'>'+esc(t)+'</option>').join('');
+}
+function ms1ServiceOptions(category,selected=''){
+ return ms1Options((ms1.reference?.services||[]).filter(s=>category&&s.category===category).map(s=>[s.serviceId,s.serviceName]),selected,category?'Все услуги':'Сначала выберите категорию');
+}
+function ms1Label(rows,value,fallback='Не указано'){return rows.find(x=>x[0]===value)?.[1]||fallback;}
+function ms1Card(m){
+ const messenger=m.messenger_type&&m.messenger_type!=='none'?[ms1Label(masterMessengers,m.messenger_type),m.messenger_contact].filter(Boolean).join(': '):'';
+ return '<button type="button" class="client-list-card" data-ms1-card="'+esc(m.id)+'" aria-label="Открыть карточку мастера '+esc(m.name)+'">'+
+ '<span class="client-list-info"><strong class="client-list-name">'+esc(m.name)+'</strong><span class="client-list-phone">'+esc(m.phone||'Телефон не указан')+'</span>'+
+ '<span class="muted small">'+esc([messenger,m.service_area||'География не указана',ms1Label(masterQualities,m.quality_tier),ms1Label(masterStatuses,m.status)].filter(Boolean).join(' · '))+'</span></span><span class="client-list-open">Открыть</span></button>';
+}
+function ms1Detail(m){
+ const messenger=m.messenger_type&&m.messenger_type!=='none'?[ms1Label(masterMessengers,m.messenger_type),m.messenger_contact].filter(Boolean).join(': '):'Не указан';
+ const row=(label,value)=>'<p><strong>'+esc(label)+':</strong> '+esc(value||'Не указано')+'</p>';
+ let out='<section class="card"><h1>'+esc(m.name)+'</h1><p class="muted">'+esc(ms1Label(masterQualities,m.quality_tier)+' · '+ms1Label(masterStatuses,m.status))+'</p>'+
+ row('ID мастера',m.source_master_id||m.id)+row('Телефон',m.phone)+row('Мессенджер',messenger)+row('География работы',m.service_area)+row('Email',m.email)+row('Заметки',m.notes);
+ if(ms1.writeEnabled===true){
+  out+='<details><summary>Редактировать мастера</summary><form class="grid" data-act="crm_master_update"><input type="hidden" name="masterId" value="'+esc(m.id)+'"><input type="hidden" name="revision" value="'+esc(m.revision)+'">'+crmMasterFields(m)+'<button type="submit" class="primary wide">Сохранить мастера</button></form></details>';
+ }else out+='<p class="muted small">Редактирование заблокировано до совместного перехода права записи.</p>';
+ return out+'</section><section class="card"><h2>Связанные услуги</h2><p class="muted small">Связи из действующих индивидуальных расценок. Источник показан в прайсе ниже.</p>'+
+ (!ms1.reference?'<p class="error">Снимок связей не подтверждён.</p>':ms1.linkedServices.length?ms1.linkedServices.map(s=>'<p>'+esc(s.category+' · '+s.serviceName)+'</p>').join(''):'<p class="muted">Нет действующих связей.</p>')+'</section><div id="ms3Mount" role="region" aria-label="Расценки мастера"></div>';
+}
+function ms1View(){
+ const error=ms1.error?'<p class="error" role="alert">'+esc(ms1.error)+'</p>':'';
+ const loading=ms1.loading?'<p class="muted" role="status">Загружаю…</p>':'';
+ if(ms1.openId)return '<button type="button" class="compact" data-ms1-back>← К списку мастеров</button>'+error+loading+
+  (ms1.detail?ms1Detail(ms1.detail):(!ms1.loading?'<button type="button" class="compact" data-ms1-refresh>Повторить</button>':''));
+ const services=ms1.reference?.services||[],categories=[...new Set(services.map(s=>s.category))].map(s=>[s,s]);
+ const snapshot=ms1.reference?(ms1.reference.readonly?'<p class="muted small">Категории и услуги: проверенный снимок от '+esc(ms1.reference.sourceModifiedAt.slice(0,10))+'.</p>':'<p class="muted small">Категории и услуги: действующий каталог Clean.</p>'):ms1.loaded?'<p class="error">Снимок связей не подтверждён; фильтры услуг недоступны.</p>':'';
+ return '<h1>Мастера</h1><p class="muted">Внутренняя база внешних мастеров. Исполнители компании остаются отдельным справочником.</p>'+
+ '<div class="actions"><button type="button" class="primary" data-ms1-new'+(ms1.writeEnabled?'':' disabled')+'>+ Новый мастер</button><button type="button" class="compact" data-ms1-refresh'+(ms1.loading?' disabled':'')+'>Обновить</button></div>'+
+ (!ms1.writeEnabled?'<p class="muted small">Запись пока заблокирована; просмотр и поиск доступны.</p>':'')+
+ (ms1.newOpen&&ms1.writeEnabled?'<section class="card"><h2>Новый мастер</h2><form data-act="crm_master_create" class="grid">'+crmMasterFields({quality_tier:'normal'})+'<button class="primary wide" type="submit">Сохранить мастера</button><button class="compact" type="button" data-ms1-new>Отмена</button></form></section>':'')+
+ '<section class="card"><form id="ms1Filters" class="grid">'+editText('q','Имя, телефон или география работы',ms1.q,'search','maxlength="80"')+
+ select('status','Статус',ms1Options([['available','Активные и доступные'],...masterStatuses],ms1.status,'Все статусы'),false)+
+ '<label>Категория услуги<select name="category"'+(!ms1.reference?' disabled':'')+'>'+ms1Options(categories,ms1.category,'Все категории')+'</select></label>'+
+ '<label>Услуга<select name="serviceId"'+(!ms1.reference||!ms1.category?' disabled':'')+'>'+ms1ServiceOptions(ms1.category,ms1.serviceId)+'</select></label>'+
+ '<button type="submit" class="compact"'+(ms1.loading?' disabled':'')+'>Найти</button><button type="button" class="compact" data-ms1-reset>Сбросить</button></form>'+snapshot+'</section>'+error+loading+
+ (ms1.reference?'<div id="ms3Mount" role="region" aria-label="Сравнение мастеров"></div>':'')+
+ (ms1.loaded?(ms1.items.length?ms1.items.map(ms1Card).join(''):'<p class="muted">Мастеров по выбранным фильтрам нет.</p>'):'')+
+ (ms1.hasMore?'<button type="button" class="compact" data-ms1-more'+(ms1.loading?' disabled':'')+'>Показать ещё</button>':'');
+}
+async function loadMs1(append=false){
+ const state=ms1,seq=++state.seq,openId=state.openId;
+ state.loading=true;state.error='';state.writeEnabled=false;
+ if(openId){state.detail=null;state.linkedServices=[];}
+ else if(!append){state.items=[];state.loaded=false;state.nextCursor=null;state.hasMore=false;}
+ if(tab==='masters')render();
+ try{
+  const p=new URLSearchParams({reference:'1',limit:'50'});
+  if(openId)p.set('masterId',openId);
+  else{p.set('q',state.q);p.set('status',state.status);p.set('category',state.category);p.set('serviceId',state.serviceId);if(append&&state.nextCursor)p.set('cursor',state.nextCursor);}
+  const result=await api('/api/crm/masters?'+p.toString());
+  if(ms1!==state||state.seq!==seq)return;
+  state.reference=result.reference;state.writeEnabled=result.authority?.writeEnabled===true;
+  if(openId){if(result.items.length!==1||result.items[0].id!==openId)throw Error('Карточка не совпала с ID.');state.detail=result.items[0];state.linkedServices=result.linkedServices||[];}
+  else{state.items=append?state.items.concat(result.items):result.items;state.loaded=true;state.hasMore=result.hasMore;state.nextCursor=result.nextCursor;}
+ }catch(err){if(ms1===state&&state.seq===seq)state.error=err.message;}
+ finally{if(ms1===state&&state.seq===seq){state.loading=false;if(tab==='masters')render();}}
+}
+async function mountMs3(){
+ const root=$('#ms3Mount'),state=ms1,masterId=state.openId||'';
+ if(!data||tab!=='masters'||!root||!state.reference)return;
+ try{const mod=await import('/master-prices-view.mjs');
+ if(!data||tab!=='masters'||ms1!==state||state.openId!==masterId||root!==$('#ms3Mount'))return;
+ ms3Panel=mod.mountPrices(root,{masterId,services:state.reference.services,fetchPage:path=>api(path),save:(path,payload)=>api(path,payload),onSaved:()=>{if(ms1===state&&tab==='masters'&&state.openId===masterId){message('Расценка сохранена.');void loadMs1(false);}}});
+ }catch{if(root===$('#ms3Mount'))root.textContent='Экран расценок недоступен.';}
+}
+function ms1Open(){tab='masters';ms1.openId='';ms1.newOpen=false;setMenuOpen(false);message('');void loadMs1(false);}
 
 /* CRM-22A manual external Master/recipient transfer; never map Workers. */
 const leadTransferReasons=[
@@ -2652,7 +2733,7 @@ function drawingRecalculate(){
  catch(e){edResult={status:'INVALID',invalidInputs:[String(e.message)]};}
 }
 function serviceReferenceView(){
- return '<section class="card"><div id="serviceReferenceMount" role="region" aria-label="Справочник услуг"><p class="muted">Загрузка справочника…</p></div></section>';
+ return '<section class="card"><div id="ms2CatalogMount" role="region" aria-label="Каталог услуг"><p class="muted">Загрузка каталога…</p></div></section><details class="card"><summary>Исторический снимок услуг и расценок</summary><div id="serviceReferenceMount" role="region" aria-label="Исторический справочник"><p class="muted">Загрузка справочника…</p></div></details>';
 }
 async function mountServiceReference(){
  const root=$('#serviceReferenceMount');
@@ -2660,7 +2741,12 @@ async function mountServiceReference(){
  try{
   const mod=await (referenceModulePromise??=import('/service-reference-view.mjs'));
   if(!data||tab!=='serviceReference'||root!==$('#serviceReferenceMount'))return;
-  referencePanel=mod.mountReferencePanel(root,{fetchPage:path=>api(path)});
+  const catalogRoot=$('#ms2CatalogMount');
+  const catalog=await import('/services-catalog-view.mjs');
+  if(!data||tab!=='serviceReference'||root!==$('#serviceReferenceMount')||catalogRoot!==$('#ms2CatalogMount'))return;
+  const legacyPanel=mod.mountReferencePanel(root,{fetchPage:path=>api(path)});
+  const currentPanel=catalog.mountServiceCatalog(catalogRoot,{fetchPage:path=>api(path),save:(path,payload)=>api(path,payload)});
+  referencePanel={unmount(){currentPanel.unmount();legacyPanel.unmount();}};
  }catch{
   if(data&&tab==='serviceReference'&&root===$('#serviceReferenceMount'))
    root.textContent='Экран справочника услуг пока недоступен.';
@@ -3063,6 +3149,7 @@ function scheduleRevealSection(selector){
  return true;
 }
 function render(){
+ if(ms3Panel){ms3Panel.unmount();ms3Panel=null;}
  if(analyticsA1Panel){analyticsA1Panel.unmount();analyticsA1Panel=null;}
  if(financeOpeningPanel){financeOpeningPanel.unmount();financeOpeningPanel=null;}
  if(financeNativePanel){financeNativePanel.unmount();financeNativePanel=null;}
@@ -3087,7 +3174,7 @@ function render(){
  if(tab!=='finance')financeDraftIntent='';
  if(tab!=='crm'){estimateWorkspaceOpen=false;if(crmDetailId){crmDetailId=null;crmReminderEditorLeadId=null;}}
  $('#tabs').querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
- $('#content').innerHTML=tab==='today'?todayView():tab==='myWork'?myWorkView():tab==='schedule'?scheduleView():tab==='crm'?crmView():tab==='knowledge'?knowledgeView():tab==='estimator'?estimatorView():tab==='clients'?clientsView():tab==='objects'?objectsView():tab==='orders'?ordersView():tab==='workers'?workersView():tab==='serviceReference'?serviceReferenceView():tab==='historyOrders'?historyOrdersView():tab==='historyCrm'?historyCrmView():tab==='history'?historyView():tab==='catalog'?catalogView():tab==='engineering'?engineeringView():tab==='finance'||tab==='capital'?financeCapitalView(tab):tab==='analytics'?'<div id="analyticsA1Mount"><h1>Аналитика</h1><p class="muted">Загружаю…</p></div>':reportView();
+ $('#content').innerHTML=tab==='today'?todayView():tab==='myWork'?myWorkView():tab==='schedule'?scheduleView():tab==='crm'?crmView():tab==='knowledge'?knowledgeView():tab==='estimator'?estimatorView():tab==='clients'?clientsView():tab==='objects'?objectsView():tab==='orders'?ordersView():tab==='workers'?workersView():tab==='masters'?ms1View():tab==='serviceReference'?serviceReferenceView():tab==='historyOrders'?historyOrdersView():tab==='historyCrm'?historyCrmView():tab==='history'?historyView():tab==='catalog'?catalogView():tab==='engineering'?engineeringView():tab==='finance'||tab==='capital'?financeCapitalView(tab):tab==='analytics'?'<div id="analyticsA1Mount"><h1>Аналитика</h1><p class="muted">Загружаю…</p></div>':reportView();
  if(tab==='myWork'&&workFlowModalState.kind){
   // render() replaces #content; a recreated WorkLog must be owner-scoped again.
   // Never silently apply a saved draft: offer explicit recovery before input or replay.
@@ -3116,6 +3203,7 @@ function render(){
  if(tab==='capital')void mountCapitalP2();
  if(tab==='finance'||tab==='capital'){void mountFinanceOpening();void mountFinanceNative();void mountFinanceCapitalArchive();void mountFinanceReview();void mountFinanceReviewAudit();void mountFinanceCorrections();void mountFinanceAudit();}
  if(tab==='serviceReference')void mountServiceReference();
+ if(tab==='masters')void mountMs3();
  if(clientDetailId&&(tab==='clients'||(tab==='catalog'&&catalog.entity==='clients'))){
   void loadClientPortfolio(clientDetailId,'objects');
   void loadClientPortfolio(clientDetailId,'orders');
@@ -3182,7 +3270,7 @@ async function sendAction(type,payload,form){
    }
    if(type==='crm_interaction_add'){crmQuickAction={leadId:null,context:null,kind:null};await loadCrmInteractions(false);}
    if(type==='lead_convert'&&crmInteractionState.entityType==='Lead'&&crmInteractionState.entityId===payload.leadId)await loadCrmInteractions(false);
-   if(['crm_master_create','crm_master_update'].includes(type)){crmMasters.opened=true;await loadCrmMasters(false);}
+   if(['crm_master_create','crm_master_update'].includes(type)){crmMasters.opened=true;await loadCrmMasters(false);if(tab==='masters'){ms1.newOpen=false;ms1.openId=String(out.item?.id||payload.masterId||'');await loadMs1(false);}else{ms1.loaded=false;ms1.items=[];ms1.detail=null;}}
    if(type==='crm_signal_save'){crmSignalView={leadId:null,loading:false,signal:null,history:null,error:''};if(tab==='crm')await loadCrmLeadSignals(payload.leadId);}
    if(['crm_reminder_save','lead_status','lead_convert'].includes(type))schedule.loaded=false;
   // A saved schedule/order/reminder change invalidates advisory Capacity windows.
@@ -3232,8 +3320,9 @@ document.addEventListener('keydown',e=>{
  if(e.key==='Escape'&&workFlowModalState.kind){workFlowModalClose();return;}
  if(e.key==='Escape'&&!$('#tabs').hidden)setMenuOpen(false);
 });
-$('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b){crmWonOrderClose(true);workFlowModalClose({force:true});tab=b.dataset.tab;crmClientLeadContext=null;crmDetailId=null;crmReminderEditorLeadId=null;clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;objectReturnId=null;objectReturnTab=null;setMenuOpen(false);message('');render();if(tab==='today')void loadTodayDashboard();if(tab==='crm'&&!crmFollowupState.loaded)void loadCrmFollowups();if(tab==='history'&&!history.loaded)loadHistory();if(tab==='catalog'&&!catalog.loaded)loadCatalog();if(tab==='myWork'){loadMyWork();loadPresence(false);loadOwnerActivity(false);}if(tab==='schedule'){capacity.loaded=false;capacity.result=null;capacity.error='';loadSchedule(false);}else resetHourlyManual();if(tab==='engineering'){loadEngineeringCalculation();loadEngineeringDrawing();loadEngineeringFloor();}if(tab==='estimator'){estimatorSubtab='calculator';void ensurePlumbingCalculator();void loadEstimatorCards();void loadEstimatorPricebook();}}});
+$('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b){crmWonOrderClose(true);workFlowModalClose({force:true});tab=b.dataset.tab;crmClientLeadContext=null;crmDetailId=null;crmReminderEditorLeadId=null;clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;objectReturnId=null;objectReturnTab=null;setMenuOpen(false);message('');render();if(tab==='today')void loadTodayDashboard();if(tab==='crm'&&!crmFollowupState.loaded)void loadCrmFollowups();if(tab==='masters'){ms1.openId='';ms1.newOpen=false;void loadMs1(false);}if(tab==='history'&&!history.loaded)loadHistory();if(tab==='catalog'&&!catalog.loaded)loadCatalog();if(tab==='myWork'){loadMyWork();loadPresence(false);loadOwnerActivity(false);}if(tab==='schedule'){capacity.loaded=false;capacity.result=null;capacity.error='';loadSchedule(false);}else resetHourlyManual();if(tab==='engineering'){loadEngineeringCalculation();loadEngineeringDrawing();loadEngineeringFloor();}if(tab==='estimator'){estimatorSubtab='calculator';void ensurePlumbingCalculator();void loadEstimatorCards();void loadEstimatorPricebook();}}});
 $('#content').addEventListener('change',async e=>{
+ if(e.target.form?.id==='ms1Filters'&&e.target.name==='category'){const services=e.target.form.elements.namedItem('serviceId');services.innerHTML=ms1ServiceOptions(e.target.value);services.disabled=!e.target.value;return;}
   if(tab==='estimator'&&e.target?.matches?.('[data-est-price-card-select]')){
    estimatorPriceState.selectedCardKey=e.target.value;render();return;
   }
@@ -3340,7 +3429,10 @@ $('#content').addEventListener('submit',async e=>{
   return;
  }
  if(f.id==='passwordForm'){
-  const o=Object.fromEntries(new FormData(f));try{await api('/api/password',o);clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;crmClientLeadContext=null;data=null;worklogDraftSetOwner('');crmFollowupState={loaded:false,loading:false,result:null,error:''};dailyA1=null;workerBenchmarkCache={};benchmarkProposalState={loaded:false,loading:false,error:'',payload:null};schedule.loaded=false;schedule.items=[];schedule.dayFilter='all';schedule.error='';capacity={startDate:'',durationWorkingDays:3,result:null,loading:false,loaded:false,error:''};capacityWorkOrderContext=null;workOrderCapacityOpenSeq++;scheduleCapacityDraft=null;resetHourlyManual();ownerActivity.loaded=false;ownerActivity.active=null;ownerActivity.items=[];presence.loaded=false;presence.active=null;presence.items=[];myWork.snapshot=null;myWork.loaded=false;myWork.selectedOrderId='';myWork.error='';clearDrawingSession();setMenuOpen(false,{restoreFocus:false});$('#menuToggle').hidden=true;$('#loginPanel').hidden=false;$('#appPanel').hidden=true;$('#logout').hidden=true;alert('Пароль изменён. Войди с новым.');}catch(err){message(err.message,true);}return;
+  const o=Object.fromEntries(new FormData(f));try{await api('/api/password',o);ms1ResetSession();clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;crmClientLeadContext=null;data=null;worklogDraftSetOwner('');crmFollowupState={loaded:false,loading:false,result:null,error:''};dailyA1=null;workerBenchmarkCache={};benchmarkProposalState={loaded:false,loading:false,error:'',payload:null};schedule.loaded=false;schedule.items=[];schedule.dayFilter='all';schedule.error='';capacity={startDate:'',durationWorkingDays:3,result:null,loading:false,loaded:false,error:''};capacityWorkOrderContext=null;workOrderCapacityOpenSeq++;scheduleCapacityDraft=null;resetHourlyManual();ownerActivity.loaded=false;ownerActivity.active=null;ownerActivity.items=[];presence.loaded=false;presence.active=null;presence.items=[];myWork.snapshot=null;myWork.loaded=false;myWork.selectedOrderId='';myWork.error='';clearDrawingSession();setMenuOpen(false,{restoreFocus:false});$('#menuToggle').hidden=true;$('#loginPanel').hidden=false;$('#appPanel').hidden=true;$('#logout').hidden=true;alert('Пароль изменён. Войди с новым.');}catch(err){message(err.message,true);}return;
+ }
+ if(f.id==='ms1Filters'){
+  const fields=Object.fromEntries(new FormData(f));ms1.q=String(fields.q||'').trim();ms1.status=fields.status||'';ms1.category=fields.category||'';ms1.serviceId=fields.serviceId||'';await loadMs1(false);return;
  }
  if(f.id==='crmMasterFilters'){
   const fields=Object.fromEntries(new FormData(f));
@@ -3520,6 +3612,16 @@ $('#content').addEventListener('click',async e=>{
  const copy=e.target.closest('button[data-full-worklog-copy]');
  if(copy){fullWorkLogCopyPrevious(copy.closest('form'),orderLogs);worklogDraftAutosave(copy.closest('form'));return;}
  if(tab==='schedule'&&legacyConflictHandleClick(e.target))return;
+ if(e.target.closest('button[data-ms1-directory]')){ms1Open();return;}
+ if(tab==='masters'){
+  const card=e.target.closest('button[data-ms1-card]');
+  if(card){ms1.openId=card.dataset.ms1Card;ms1.newOpen=false;await loadMs1(false);return;}
+  if(e.target.closest('button[data-ms1-back]')){ms1.openId='';ms1.detail=null;await loadMs1(false);return;}
+  if(e.target.closest('button[data-ms1-refresh]')){await loadMs1(false);return;}
+  if(e.target.closest('button[data-ms1-new]')){if(ms1.writeEnabled)ms1.newOpen=!ms1.newOpen;render();return;}
+  if(e.target.closest('button[data-ms1-reset]')){ms1.q='';ms1.status='available';ms1.category='';ms1.serviceId='';await loadMs1(false);return;}
+  if(e.target.closest('button[data-ms1-more]')){if(!ms1.loading&&ms1.hasMore)await loadMs1(true);return;}
+ }
  if(e.target.closest('button[data-crm-master-load]')){
   const openLead=e.target.closest('[data-crm-detail-page]');
   if(openLead)crmTransferOpenLeadId=openLead.dataset.crmDetailPage;
@@ -4430,7 +4532,7 @@ $('#loginForm').addEventListener('submit',async e=>{
  catch(err){const el=e.target.querySelector('p');if(el)el.remove();const p=document.createElement('p');p.textContent=err.message;p.className='muted';e.target.append(p);}
  finally{btn.disabled=false;}
 });
-$('#logout').addEventListener('click',async()=>{try{await api('/api/logout',{});}finally{knowledgeResetSession();if(analyticsA1Panel){analyticsA1Panel.unmount();analyticsA1Panel=null;}analyticsA1State={monthKey:''};crmWonOrderClose(true);if(historicalOrdersPanel){historicalOrdersPanel.unmount();historicalOrdersPanel=null;}if(financeAuditPanel){financeAuditPanel.unmount();financeAuditPanel=null;}if(financeCorrectionPanel){financeCorrectionPanel.unmount();financeCorrectionPanel=null;}if(financeReviewPanel){financeReviewPanel.unmount();financeReviewPanel=null;}if(financeReviewAuditPanel){financeReviewAuditPanel.unmount();financeReviewAuditPanel=null;}if(financeWorkerPanel){financeWorkerPanel.unmount();financeWorkerPanel=null;}if(financeArchivePanel){financeArchivePanel.unmount();financeArchivePanel=null;}if(financeHistoryPanel){financeHistoryPanel.unmount();financeHistoryPanel=null;}if(referencePanel){referencePanel.unmount();referencePanel=null;}closePreviewSeq++;closePreviewState={id:null,loading:false,result:null,error:''};nativeCloseReceiptSeq++;nativeCloseReceipt={id:null,busy:false,result:null,error:''};tab='today';crmDetailId=null;crmReminderEditorLeadId=null;crmListScrollY=0;clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;crmInteractionState={entityType:'',entityId:'',items:[],hasMore:false,nextCursor:null,loaded:false,loading:false,error:''};crmFollowupState={loaded:false,loading:false,result:null,error:''};todayDashboard={date:'',loaded:false,loading:false,work:null,crm:null,plan:null,errors:{}};data=null;worklogDraftSetOwner('');dailyA1=null;workerBenchmarkCache={};benchmarkProposalState={loaded:false,loading:false,error:'',payload:null};schedule.loaded=false;schedule.items=[];schedule.dayFilter='all';schedule.error='';capacity={startDate:'',durationWorkingDays:3,result:null,loading:false,loaded:false,error:''};capacityWorkOrderContext=null;workOrderCapacityOpenSeq++;scheduleCapacityDraft=null;resetHourlyManual();ownerActivity.loaded=false;ownerActivity.active=null;ownerActivity.items=[];presence.loaded=false;presence.active=null;presence.items=[];myWork.snapshot=null;myWork.loaded=false;myWork.selectedOrderId='';myWork.error='';clearDrawingSession();setMenuOpen(false,{restoreFocus:false});$('#menuToggle').hidden=true;$('#loginPanel').hidden=false;$('#appPanel').hidden=true;$('#logout').hidden=true;}});
+$('#logout').addEventListener('click',async()=>{try{await api('/api/logout',{});}finally{knowledgeResetSession();ms1ResetSession();if(analyticsA1Panel){analyticsA1Panel.unmount();analyticsA1Panel=null;}analyticsA1State={monthKey:''};crmWonOrderClose(true);if(historicalOrdersPanel){historicalOrdersPanel.unmount();historicalOrdersPanel=null;}if(financeAuditPanel){financeAuditPanel.unmount();financeAuditPanel=null;}if(financeCorrectionPanel){financeCorrectionPanel.unmount();financeCorrectionPanel=null;}if(financeReviewPanel){financeReviewPanel.unmount();financeReviewPanel=null;}if(financeReviewAuditPanel){financeReviewAuditPanel.unmount();financeReviewAuditPanel=null;}if(financeWorkerPanel){financeWorkerPanel.unmount();financeWorkerPanel=null;}if(financeArchivePanel){financeArchivePanel.unmount();financeArchivePanel=null;}if(financeHistoryPanel){financeHistoryPanel.unmount();financeHistoryPanel=null;}if(referencePanel){referencePanel.unmount();referencePanel=null;}closePreviewSeq++;closePreviewState={id:null,loading:false,result:null,error:''};nativeCloseReceiptSeq++;nativeCloseReceipt={id:null,busy:false,result:null,error:''};tab='today';crmDetailId=null;crmReminderEditorLeadId=null;crmListScrollY=0;clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;crmInteractionState={entityType:'',entityId:'',items:[],hasMore:false,nextCursor:null,loaded:false,loading:false,error:''};crmFollowupState={loaded:false,loading:false,result:null,error:''};todayDashboard={date:'',loaded:false,loading:false,work:null,crm:null,plan:null,errors:{}};data=null;worklogDraftSetOwner('');dailyA1=null;workerBenchmarkCache={};benchmarkProposalState={loaded:false,loading:false,error:'',payload:null};schedule.loaded=false;schedule.items=[];schedule.dayFilter='all';schedule.error='';capacity={startDate:'',durationWorkingDays:3,result:null,loading:false,loaded:false,error:''};capacityWorkOrderContext=null;workOrderCapacityOpenSeq++;scheduleCapacityDraft=null;resetHourlyManual();ownerActivity.loaded=false;ownerActivity.active=null;ownerActivity.items=[];presence.loaded=false;presence.active=null;presence.items=[];myWork.snapshot=null;myWork.loaded=false;myWork.selectedOrderId='';myWork.error='';clearDrawingSession();setMenuOpen(false,{restoreFocus:false});$('#menuToggle').hidden=true;$('#loginPanel').hidden=false;$('#appPanel').hidden=true;$('#logout').hidden=true;}});
 $('#setupForm').addEventListener('submit',async e=>{
  e.preventDefault();const f=e.target,btn=f.querySelector('button');if(!f.reportValidity())return;
  if(f.elements.password.value!==f.elements.confirmPassword.value){message('Пароли не совпадают.',true);return;}

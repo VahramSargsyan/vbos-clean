@@ -40,6 +40,7 @@ import {objectCardOrdersRead} from './object-card-orders.mjs';
 import {clientPortfolioRead} from './client-portfolio.mjs';
 import {orderCardWorklogsRead} from './order-card-worklogs.mjs';
 import {workLogFullAction,workLogFullContextRead} from './worklog-full.mjs';
+import {readWorkLogServiceReferences} from './worklog-service-source.mjs';
 import {objectInteractionAction,objectInteractionsPage} from './object-interactions.mjs';
 import {orderInteractionAction,orderInteractionsPage} from './order-interactions.mjs';
 import {orderClosePreview} from './order-close-preview.mjs';
@@ -72,6 +73,8 @@ import {validateFinanceB15ServerDraft,FinanceB15DraftError} from './domains/fina
 import {financeCsrfForValidatedSession,verifyFinanceCsrfForValidatedSession} from './domains/finance/finance-session-csrf.mjs';
 import {financeB12CutoverReadiness,FinanceB12ReadinessError} from './domains/finance/finance-cutover-readiness.mjs';
 import {referenceCatalogPage,ReferenceCatalogError} from './service-reference.mjs';
+import {servicesCatalogRead,servicesCatalogSave} from './services-catalog.mjs';
+import {masterPricesRead,masterPriceSave} from './master-prices.mjs';
 
 const isolatedCiDatabase = process.env.NODE_ENV==='test' && process.env.MVP_DATABASE_SSL==='disable';
 const pool = new Pool({connectionString:process.env.DATABASE_URL, ssl:isolatedCiDatabase?false:{rejectUnauthorized:false}, max:4, connectionTimeoutMillis:10000, idleTimeoutMillis:10000});
@@ -146,6 +149,8 @@ const files = {
  '/finance-corrections-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-corrections-view.mjs',import.meta.url))],
  '/finance-correction-audit-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./domains/finance/finance-correction-audit-view.mjs',import.meta.url))],
  '/history-orders-view.css': ['text/css; charset=utf-8',readFileSync(new URL('./domains/finance/history-orders-view.css',import.meta.url))],
+ '/master-prices-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/master-prices-view.mjs',import.meta.url))],
+ '/services-catalog-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/services-catalog-view.mjs',import.meta.url))],
  '/service-reference-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/service-reference-view.mjs',import.meta.url))],
  '/crm-legacy-transfers-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/crm-legacy-transfers-view.mjs',import.meta.url))],
  '/crm-history-archive-view.mjs': ['text/javascript; charset=utf-8',readFileSync(new URL('./public/crm-history-archive-view.mjs',import.meta.url))],
@@ -275,7 +280,7 @@ async function state(){
  const workerSources=['mvp_workers','mvp_worker_order_assignments','mvp_manual_plan_workers','mvp_worker_days','mvp_worker_day_orders','mvp_worker_tasks'];
  const workerOrders=['created_at','assigned_at','assigned_at','day_date','linked_at','created_at'];
  const linked=await Promise.all(workerSources.map((name,i)=>pool.query('SELECT '+(name==='mvp_worker_days'?'w.*,w.day_date::text AS day_date':'w.*')+' FROM public.'+name+' AS w ORDER BY w.'+workerOrders[i]+' DESC,w.id LIMIT 501')));
- const workLogReferences=await pool.query('SELECT service_id,service_name,category,action_code,status FROM public.mvp_services_reference ORDER BY category,service_name,service_id LIMIT 201');
+ const workLogReferences=await readWorkLogServiceReferences(pool,AppError);
  const crmLinks=await pool.query('SELECT lead_id,client_id,object_id,source_kind,created_at FROM public.mvp_crm_lead_client_links ORDER BY created_at DESC,lead_id LIMIT 501');
  const crmIntakes=await pool.query('SELECT lead_id,client_id,source_kind,created_at FROM public.mvp_crm_lead_intakes ORDER BY created_at DESC,lead_id LIMIT 501');
  const leadTransfers=await pool.query('SELECT id,lead_id,recipient_name,master_id,reason,comment,transferred_at,source_system FROM public.mvp_crm_lead_transfers ORDER BY transferred_at DESC,id DESC LIMIT 501');
@@ -287,6 +292,7 @@ async function state(){
   legacyReport:q.rows[0]||null,
   workLogServiceReferences:workLogReferences.rows.slice(0,200),
   workLogServiceReferencesTruncated:workLogReferences.rows.length>200,
+  workLogServiceReferencesUnavailable:workLogReferences.unavailable,
   legacyGoogleOrderIds:legacyOrders.rows.slice(0,500).map(x=>x.target_id),
   legacyGoogleOrderStatusById:Object.fromEntries(legacyOrders.rows.slice(0,500).map(x=>[x.target_id,x.source_status])),
   leadClientLinks:crmLinks.rows.slice(0,500),
@@ -773,6 +779,20 @@ async function handler(req,res){
    if(pathname==='/api/worker-tasks'&&req.method==='GET')return json(res,200,await workerTasksRead(pool,new URL(req.url,'http://localhost'),{uuid,safeDate,AppError}));
     if(pathname==='/api/worker-benchmarks'&&req.method==='GET')return json(res,200,await workerBenchmarksRead(pool,new URL(req.url,'http://localhost'),{uuid,safeDate,dayYerevan,AppError}));
     if(pathname==='/api/benchmark-proposals'&&req.method==='GET')return json(res,200,await benchmarkProposalsRead(pool,{AppError}));
+   // MS3: owner-only master-specific reference prices, not finance.
+   if(pathname==='/api/masters/prices'&&req.method==='GET')return json(res,200,await masterPricesRead({pool,url:new URL(req.url,'http://localhost'),AppError}));
+   if(pathname==='/api/masters/prices/save'&&req.method==='POST'){
+    if(!financeStrictSameOrigin(req))throw new AppError(403,'Запрос отклонён.');
+    req.setEncoding('utf8');const body=await readBody(req,30000);
+    return json(res,200,await masterPriceSave({pool,p:body.payload,key:body.requestKey,AppError}));
+   }
+   // MS2: owner catalog; legacy reference remains unchanged.
+   if(pathname==='/api/masters/services'&&req.method==='GET')return json(res,200,await servicesCatalogRead({pool,url:new URL(req.url,'http://localhost'),AppError}));
+   if(pathname==='/api/masters/services/save'&&req.method==='POST'){
+    if(!financeStrictSameOrigin(req))throw new AppError(403,'Запрос отклонён.');
+    req.setEncoding('utf8');const body=await readBody(req,30000);
+    return json(res,200,await servicesCatalogSave({pool,p:body.payload,key:body.requestKey,AppError}));
+   }
    // Owner-only immutable Google legacy Services/MasterPrices reference; never use as price or wage authority.
    if(pathname==='/api/reference/services'&&req.method==='GET'){
      try{
