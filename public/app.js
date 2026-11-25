@@ -95,8 +95,8 @@ let referencePanel=null,referenceModulePromise=null;
 let closePreviewModulePromise=null,closePreviewModule=null,closePreviewState={id:null,loading:false,result:null,error:''},closePreviewSeq=0;
 let nativeCloseViewPromise=null,nativeCloseView=null,nativeCloseReceipt={id:null,busy:false,result:null,error:''},nativeCloseReceiptSeq=0;
 let catalog={entity:'clients',q:'',status:'',tier:'',referral:'',items:[],nextCursor:null,hasMore:false,loaded:false,loading:false};
-let crmMasters={items:[],loaded:false,loading:false,error:'',q:'',status:'',nextCursor:null,hasMore:false,opened:false};
-const ms1Initial=()=>({q:'',status:'available',category:'',serviceId:'',items:[],loaded:false,loading:false,error:'',nextCursor:null,hasMore:false,reference:null,openId:'',detail:null,linkedServices:[],newOpen:false,seq:0});
+let crmMasters={items:[],loaded:false,loading:false,error:'',q:'',status:'',nextCursor:null,hasMore:false,opened:false,writeEnabled:false};
+const ms1Initial=()=>({q:'',status:'available',category:'',serviceId:'',items:[],loaded:false,loading:false,error:'',nextCursor:null,hasMore:false,reference:null,openId:'',detail:null,linkedServices:[],newOpen:false,writeEnabled:false,seq:0});
 let ms1=ms1Initial();
 function ms1ResetSession(){ms1=ms1Initial();}
 let crmTransferOpenLeadId=null;
@@ -1806,7 +1806,7 @@ function crmMasterFields(m={}){
 function crmMastersDirectory(){
  let out='<details class="card" data-crm-master-directory'+(crmMasters.opened?' open':'')+'><summary>Внешние мастера · справочник</summary>'+
   '<p class="muted small">Это внешние специалисты, не работники компании. '+
-  'Исторические записи Google только для просмотра до согласованного перехода полномочий.</p>'+
+  'Происхождение исторических записей сохранено. Запись доступна только после совместного перехода мастеров и услуг.</p>'+
   '<button type="button" class="compact" data-ms1-directory>Открыть раздел «Мастера»</button>'+
   '<button type="button" class="compact" data-crm-master-load'+(crmMasters.loading?' disabled':'')+'>Обновить справочник</button>';
  if(crmMasters.error)out+='<p class="error" role="alert">'+esc(crmMasters.error)+'</p>';
@@ -1823,7 +1823,7 @@ function crmMastersDirectory(){
      (m.phone?' · '+esc(m.phone):'')+'</p>'+
      '<p class="muted small">Оценка: '+esc(masterQualities.find(x=>x[0]===m.quality_tier)?.[1]||'Без оценки')+
      ' · '+esc(m.source_system==='LEGACY_GOOGLE'?'Источник: прежний VBOS':'Источник: VBOS Clean')+'</p>';
-    if(m.source_system==='CLEAN_NATIVE'){
+    if(crmMasters.writeEnabled===true){
      out+='<details><summary>Изменить мастера</summary><form class="grid" data-act="crm_master_update">'+
       '<input type="hidden" name="masterId" value="'+esc(m.id)+'">'+
       '<input type="hidden" name="revision" value="'+esc(m.revision)+'">'+crmMasterFields(m)+
@@ -1833,16 +1833,17 @@ function crmMastersDirectory(){
    }).join(''):'<p class="muted small">Совпадений нет.</p>')+
    (crmMasters.hasMore?'<button type="button" class="compact" data-crm-master-more>Показать ещё мастеров</button>':'');
  }
- out+=form('crm_master_create','+ Новый внешний мастер',crmMasterFields())+'</details>';
+ out+=(crmMasters.writeEnabled===true?form('crm_master_create','+ Новый внешний мастер',crmMasterFields()):'<p class="muted small">Запись мастеров пока заблокирована.</p>')+'</details>';
  return out;
 }
 async function loadCrmMasters(append=false){
  if(crmMasters.loading)return;
- crmMasters.loading=true;crmMasters.error='';
+ crmMasters.loading=true;crmMasters.error='';crmMasters.writeEnabled=false;
  try{
-  const params=new URLSearchParams({limit:'50',q:crmMasters.q,status:crmMasters.status});
+  const params=new URLSearchParams({limit:'50',q:crmMasters.q,status:crmMasters.status,authority:'1'});
   if(append&&crmMasters.nextCursor)params.set('cursor',crmMasters.nextCursor);
   const result=await api('/api/crm/masters?'+params.toString());
+  crmMasters.writeEnabled=result.authority?.writeEnabled===true;
   crmMasters.items=append?crmMasters.items.concat(result.items):result.items;
   crmMasters.hasMore=result.hasMore;crmMasters.nextCursor=result.nextCursor;crmMasters.loaded=true;
  }catch(err){crmMasters.error=err.message;}
@@ -1868,9 +1869,9 @@ function ms1Detail(m){
  const row=(label,value)=>'<p><strong>'+esc(label)+':</strong> '+esc(value||'Не указано')+'</p>';
  let out='<section class="card"><h1>'+esc(m.name)+'</h1><p class="muted">'+esc(ms1Label(masterQualities,m.quality_tier)+' · '+ms1Label(masterStatuses,m.status))+'</p>'+
  row('ID мастера',m.source_master_id||m.id)+row('Телефон',m.phone)+row('Мессенджер',messenger)+row('География работы',m.service_area)+row('Email',m.email)+row('Заметки',m.notes);
- if(m.source_system==='CLEAN_NATIVE'){
+ if(ms1.writeEnabled===true){
   out+='<details><summary>Редактировать мастера</summary><form class="grid" data-act="crm_master_update"><input type="hidden" name="masterId" value="'+esc(m.id)+'"><input type="hidden" name="revision" value="'+esc(m.revision)+'">'+crmMasterFields(m)+'<button type="submit" class="primary wide">Сохранить мастера</button></form></details>';
- }else out+='<p class="muted small">Историческая карточка прежнего VBOS. Редактирование заблокировано до отдельного согласования перехода права записи.</p>';
+ }else out+='<p class="muted small">Редактирование заблокировано до совместного перехода права записи.</p>';
  return out+'</section><section class="card"><h2>Связанные услуги</h2><p class="muted small">Только подтверждённый снимок действующих связей старого прайса; не полный текущий каталог. Цены здесь не редактируются.</p>'+
  (!ms1.reference?'<p class="error">Снимок связей не подтверждён.</p>':ms1.linkedServices.length?ms1.linkedServices.map(s=>'<p>'+esc(s.category+' · '+s.serviceName)+'</p>').join(''):'<p class="muted">В снимке нет действующих связей.</p>')+'</section>';
 }
@@ -1882,8 +1883,9 @@ function ms1View(){
  const services=ms1.reference?.services||[],categories=[...new Set(services.map(s=>s.category))].map(s=>[s,s]);
  const snapshot=ms1.reference?'<p class="muted small">Категории и услуги: проверенный снимок от '+esc(ms1.reference.sourceModifiedAt.slice(0,10))+'. Связи определяются по исходному ID мастера, не по имени.</p>':ms1.loaded?'<p class="error">Снимок связей не подтверждён; фильтры услуг недоступны.</p>':'';
  return '<h1>Мастера</h1><p class="muted">Внутренняя база внешних мастеров. Исполнители компании остаются отдельным справочником.</p>'+
- '<div class="actions"><button type="button" class="primary" data-ms1-new>+ Новый мастер</button><button type="button" class="compact" data-ms1-refresh'+(ms1.loading?' disabled':'')+'>Обновить</button></div>'+
- (ms1.newOpen?'<section class="card"><h2>Новый мастер</h2><form data-act="crm_master_create" class="grid">'+crmMasterFields({quality_tier:'normal'})+'<button class="primary wide" type="submit">Сохранить мастера</button><button class="compact" type="button" data-ms1-new>Отмена</button></form></section>':'')+
+ '<div class="actions"><button type="button" class="primary" data-ms1-new'+(ms1.writeEnabled?'':' disabled')+'>+ Новый мастер</button><button type="button" class="compact" data-ms1-refresh'+(ms1.loading?' disabled':'')+'>Обновить</button></div>'+
+ (!ms1.writeEnabled?'<p class="muted small">Запись пока заблокирована; просмотр и поиск доступны.</p>':'')+
+ (ms1.newOpen&&ms1.writeEnabled?'<section class="card"><h2>Новый мастер</h2><form data-act="crm_master_create" class="grid">'+crmMasterFields({quality_tier:'normal'})+'<button class="primary wide" type="submit">Сохранить мастера</button><button class="compact" type="button" data-ms1-new>Отмена</button></form></section>':'')+
  '<section class="card"><form id="ms1Filters" class="grid">'+editText('q','Имя, телефон или география работы',ms1.q,'search','maxlength="80"')+
  select('status','Статус',ms1Options([['available','Активные и доступные'],...masterStatuses],ms1.status,'Все статусы'),false)+
  '<label>Категория услуги<select name="category"'+(!ms1.reference?' disabled':'')+'>'+ms1Options(categories,ms1.category,'Все категории')+'</select></label>'+
@@ -1894,7 +1896,7 @@ function ms1View(){
 }
 async function loadMs1(append=false){
  const state=ms1,seq=++state.seq,openId=state.openId;
- state.loading=true;state.error='';
+ state.loading=true;state.error='';state.writeEnabled=false;
  if(openId){state.detail=null;state.linkedServices=[];}
  else if(!append){state.items=[];state.loaded=false;state.nextCursor=null;state.hasMore=false;}
  if(tab==='masters')render();
@@ -1904,7 +1906,7 @@ async function loadMs1(append=false){
   else{p.set('q',state.q);p.set('status',state.status);p.set('category',state.category);p.set('serviceId',state.serviceId);if(append&&state.nextCursor)p.set('cursor',state.nextCursor);}
   const result=await api('/api/crm/masters?'+p.toString());
   if(ms1!==state||state.seq!==seq)return;
-  state.reference=result.reference;
+  state.reference=result.reference;state.writeEnabled=result.authority?.writeEnabled===true;
   if(openId){if(result.items.length!==1||result.items[0].id!==openId)throw Error('Карточка не совпала с ID.');state.detail=result.items[0];state.linkedServices=result.linkedServices||[];}
   else{state.items=append?state.items.concat(result.items):result.items;state.loaded=true;state.hasMore=result.hasMore;state.nextCursor=result.nextCursor;}
  }catch(err){if(ms1===state&&state.seq===seq)state.error=err.message;}
@@ -3597,7 +3599,7 @@ $('#content').addEventListener('click',async e=>{
   if(card){ms1.openId=card.dataset.ms1Card;ms1.newOpen=false;await loadMs1(false);return;}
   if(e.target.closest('button[data-ms1-back]')){ms1.openId='';ms1.detail=null;await loadMs1(false);return;}
   if(e.target.closest('button[data-ms1-refresh]')){await loadMs1(false);return;}
-  if(e.target.closest('button[data-ms1-new]')){ms1.newOpen=!ms1.newOpen;render();return;}
+  if(e.target.closest('button[data-ms1-new]')){if(ms1.writeEnabled)ms1.newOpen=!ms1.newOpen;render();return;}
   if(e.target.closest('button[data-ms1-reset]')){ms1.q='';ms1.status='available';ms1.category='';ms1.serviceId='';await loadMs1(false);return;}
   if(e.target.closest('button[data-ms1-more]')){if(!ms1.loading&&ms1.hasMore)await loadMs1(true);return;}
  }

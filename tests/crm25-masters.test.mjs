@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {randomUUID,createHash} from 'node:crypto';
 import {masterPayload,mastersRead,mastersAction,normalizeMasterPhone} from '../crm-masters.mjs';
+import {mastersServicesAuthority,requireMastersServicesAuthority} from '../masters-authority.mjs';
 import {leadTransferAction} from '../crm-lead-transfer.mjs';
 class AppError extends Error{constructor(status,message){super(message);this.status=status;}}
 const uuid=x=>{if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(x)))throw new AppError(400,'ID');return x;};
@@ -12,6 +13,7 @@ const schema=file('../migrations/0028_crm25a_master_directory_CANDIDATE.sql');
 const plan=file('../migrations/0028_crm25a_master_directory_MIGRATION_PLAN.md');
 const legacy=file('./fixtures/legacy/Config.snippets.txt');
 const ui=file('../public/app.js'),server=file('../server.mjs');
+const activeAuthority={phase:'CLEAN',master_snapshot_hash:'a'.repeat(64),dependency_receipt_hash:'b'.repeat(64)};
 const good={name:'Внешний мастер',phone:'',email:'',serviceArea:'Ереван',notes:'',status:'active',qualityTier:'normal',messengerType:'none',messengerContact:''};
 
 test('CRM25 historical source contract, separate external Masters and additive migration',()=>{
@@ -56,7 +58,7 @@ test('CRM25 master read filters are SQL-bound and cursor is scope-bound',async()
 });
 test('CRM25 native master create is idempotent and updates validate source/canonical revision',async()=>{
  const id=randomUUID(),key=randomUUID(),calls=[],item={id,source_system:'CLEAN_NATIVE',revision:1};
- const db={async query(sql,args){calls.push({sql,args});if(sql.startsWith('INSERT INTO public.mvp_crm_masters'))return {rows:[item]};if(sql.startsWith('SELECT source_system,revision'))return {rows:[item]};if(sql.startsWith('UPDATE'))return {rows:[{...item,revision:2}]};return {rows:[]};},release(){}};
+ const db={async query(sql,args){calls.push({sql,args});if(sql.includes('FROM public.mvp_masters_services_authority'))return {rows:[activeAuthority]};if(sql.startsWith('INSERT INTO public.mvp_crm_masters'))return {rows:[item]};if(sql.startsWith('SELECT source_system,revision'))return {rows:[item]};if(sql.startsWith('UPDATE'))return {rows:[{...item,revision:2}]};return {rows:[]};},release(){}};
  const pool={async connect(){return db;},async query(sql,args){
   calls.push({sql,args}); if(sql.startsWith('UPDATE'))return {rows:[{...item,revision:2}]};return {rows:[]};
  }};
@@ -65,7 +67,7 @@ test('CRM25 native master create is idempotent and updates validate source/canon
  assert.ok(calls.some(x=>/ON CONFLICT\(request_key\) DO NOTHING/.test(x.sql)));
  const changed=await mastersAction({pool,type:'crm_master_update',p:{...good,masterId:id,revision:1},key,uuid,safeRevision,AppError});
  assert.equal(changed.item.revision,2);
- assert.ok(calls.some(x=>/source_system='CLEAN_NATIVE' RETURNING/.test(x.sql)));
+ assert.ok(calls.some(x=>x.sql.includes("source_system IN ('CLEAN_NATIVE','LEGACY_GOOGLE') RETURNING")));
  await assert.rejects(mastersAction({pool,type:'crm_master_create',p:{...good,sourceMasterId:'LEGACY-1'},key,uuid,safeRevision,AppError}),e=>e.status===400);
 });
 test('CRM25 selected Master snapshots verified foreign ID and disallows archive/unknown',async()=>{
@@ -111,6 +113,7 @@ test('MS1 filters use verified snapshot and exact source IDs; cursor binds every
  const id=randomUUID(), date='2026-11-09T08:02:03.123456Z',calls=[];
  const options=[{serviceId:'SVC-1',category:'A',serviceName:'Монтаж'},{serviceId:'SVC-2',category:'B',serviceName:'Ремонт'}];
  const pool={async query(sql,args){calls.push({sql,args});
+  if(sql.includes('FROM public.mvp_masters_services_authority'))return {rows:[activeAuthority]};
   if(sql.includes('SELECT 1 AS verified'))return {rows:[{verified:1}]};
   if(sql.includes('FROM public.mvp_services_reference WHERE'))return {rows:options};
   return {rows:[{id,cursor_at:date,source_system:'LEGACY_GOOGLE',source_master_id:'MST-1'},{id:randomUUID(),cursor_at:date}]};
@@ -118,7 +121,7 @@ test('MS1 filters use verified snapshot and exact source IDs; cursor binds every
  const make=query=>mastersRead({pool,AppError,url:new URL('http://local/api/crm/masters?'+query)});
  const got=await make('reference=1&status=available&category=A&serviceId=SVC-1&limit=1');
  assert.equal(got.reference.readonly,true);assert.equal(got.reference.services.length,2);assert.equal(got.hasMore,true);
- const filtered=calls.at(-1);
+ const filtered=calls.find(x=>x.sql.includes('EXISTS('));
  assert.match(filtered.sql,/p\.master_id=m\.source_master_id/);assert.match(filtered.sql,/m\.source_system='LEGACY_GOOGLE'/);
  assert.match(filtered.sql,/status<>'archived'/);assert.match(filtered.sql,/Asia\/Yerevan/);assert.match(filtered.sql,/p\.valid_from/);
  assert.deepEqual(filtered.args.slice(-3),['A','SVC-1',2]);
@@ -127,11 +130,12 @@ test('MS1 filters use verified snapshot and exact source IDs; cursor binds every
  assert.equal(calls.length,before);
  await assert.rejects(make('reference=1&category=A&serviceId=SVC-2'),e=>e.status===400);
  const next=await make('reference=1&status=available&category=A&serviceId=SVC-1&limit=1&cursor='+got.nextCursor);
- assert.equal(next.items.length,1);assert.match(calls.at(-1).sql,/\(created_at,id\)</);
+ assert.equal(next.items.length,1);assert.match(calls.filter(x=>x.sql.includes('EXISTS(')).at(-1).sql,/\(created_at,id\)</);
 });
 test('MS1 direct card preserves source ID, native revision and historical write fence',async()=>{
  const id=randomUUID(),calls=[];
  const pool={async query(sql,args){calls.push({sql,args});
+  if(sql.includes('FROM public.mvp_masters_services_authority'))return {rows:[{phase:'LEGACY'}]};
   if(sql.includes('SELECT 1 AS verified'))return {rows:[{verified:1}]};
   if(sql.includes('FROM public.mvp_services_reference WHERE'))return {rows:[]};
   if(sql.includes('SELECT DISTINCT'))return {rows:[{serviceId:'SVC-1',category:'A',serviceName:'Монтаж'}]};
@@ -141,7 +145,7 @@ test('MS1 direct card preserves source ID, native revision and historical write 
  }};
  pool.connect=async()=>({query:pool.query.bind(pool),release(){}});
  const detail=await mastersRead({pool,AppError,url:new URL('http://local/api/crm/masters?reference=1&masterId='+id)});
- assert.equal(detail.items[0].id,id);assert.equal(detail.linkedServices.length,1);assert.equal(calls.at(-1).args[1],'MST-1');
+ assert.equal(detail.items[0].id,id);assert.equal(detail.linkedServices.length,1);assert.equal(calls.find(x=>x.sql.includes('SELECT DISTINCT')).args[1],'MST-1');
  await assert.rejects(mastersAction({pool,type:'crm_master_update',p:{...good,masterId:id,revision:1},key:randomUUID(),uuid,safeRevision,AppError}),e=>e.status===409);
  await assert.rejects(mastersRead({pool,AppError,url:new URL('http://local/api/crm/masters?masterId='+id+'&q=other')}),e=>e.status===400);
  const noReceipt={async query(){return {rows:[]};}};
@@ -153,7 +157,7 @@ test('MS1 standalone navigation and session scope preserve existing CRM recipien
  assert.match(ui,/tab==='masters'\?ms1View\(\)/);assert.match(ui,/function ms1ResetSession\(\)/);
  assert.match(ui,/ms1!==state\|\|state\.seq!==seq/);assert.match(ui,/knowledgeResetSession\(\);ms1ResetSession\(\)/);
  assert.match(ui,/data-ms1-directory/);assert.match(ui,/data-ms1-back/);assert.match(ui,/data-ms1-reset/);
- assert.match(ui,/function ms1Detail/);assert.match(ui,/source_system==='CLEAN_NATIVE'/);
+ assert.match(ui,/function ms1Detail/);assert.match(ui,/ms1\.writeEnabled===true/);
  assert.match(ui,/function crmLeadTransferCard/);assert.match(ui,/data-crm-master-load/);
 });
 
@@ -170,6 +174,7 @@ test('MS1.2 duplicate check is serialized; same-key replay precedes duplicate lo
  const calls=[],id=randomUUID(),key=randomUUID(),raw={...good,phone:'099123456'};
  let previous=null,duplicate=true,old={id,source_system:'CLEAN_NATIVE',revision:1};
  const db={async query(sql,args){calls.push({sql,args});
+  if(sql.includes('FROM public.mvp_masters_services_authority'))return {rows:[activeAuthority]};
   if(sql.startsWith('SELECT * FROM public.mvp_crm_masters WHERE request_key'))return {rows:previous?[previous]:[]};
   if(sql.startsWith('SELECT source_system,revision'))return {rows:[old]};
   if(sql.startsWith('SELECT id FROM public.mvp_crm_masters'))return {rows:duplicate?[{id:randomUUID()}]:[]};
@@ -193,5 +198,37 @@ test('MS1.2 duplicate check is serialized; same-key replay precedes duplicate lo
  assert.equal((await update()).item.revision,2);
  assert.deepEqual(calls.filter(x=>x.sql.startsWith('SELECT id FROM')).at(-1).args,['+37499123456',id]);
  old={...old,source_system:'LEGACY_GOOGLE'};
+ assert.equal((await update()).item.revision,2);
+});
+
+test('MS1 shared authority denies missing, legacy and incomplete receipt; reads remain available',async()=>{
+ for(const row of [null,{phase:'LEGACY'}, {phase:'CLEAN',master_snapshot_hash:'a'.repeat(64)}]){
+  const db={async query(){return {rows:row?[row]:[]}}};
+  assert.equal((await mastersServicesAuthority(db)).writeEnabled,false);
+  await assert.rejects(requireMastersServicesAuthority(db,AppError),e=>e.status===409);
+ }
+ const absent={async query(){throw Object.assign(Error('missing'),{code:'42P01'})}};
+ assert.equal((await mastersServicesAuthority(absent)).phase,'UNAVAILABLE');
+ await assert.rejects(requireMastersServicesAuthority(absent,AppError),e=>e.status===503);
+ assert.equal((await mastersServicesAuthority({async query(){return {rows:[activeAuthority]}}})).writeEnabled,true);
+ const ddl=file('../migrations/ms1_masters_services_authority_CANDIDATE_TEST_ONLY.sql');
+ assert.match(ddl,/VALUES\(1,'LEGACY'\)/);assert.doesNotMatch(ddl,/UPDATE public\.mvp_crm_masters|UPDATE public\.mvp_masters_services_authority/);
+});
+test('MS1 activation gate precedes all writes, and imported provenance is not reassigned',async()=>{
+ const id=randomUUID(),key=randomUUID(),calls=[];let phase='LEGACY';
+ const db={async query(sql,args){calls.push({sql,args});
+  if(sql.includes('FROM public.mvp_masters_services_authority'))return {rows:[{...activeAuthority,phase}]};
+  if(sql.startsWith('SELECT source_system,revision'))return {rows:[{source_system:'LEGACY_GOOGLE',revision:1}]};
+  if(sql.startsWith('UPDATE public.mvp_crm_masters'))return {rows:[{id,source_system:'LEGACY_GOOGLE',source_master_id:'MST-1',revision:2}]};
+  return {rows:[]};},release(){}};
+ const pool={async connect(){return db;}};
+ const update=()=>mastersAction({pool,type:'crm_master_update',p:{...good,masterId:id,revision:1},key,uuid,safeRevision,AppError});
  await assert.rejects(update(),e=>e.status===409);
+ assert.equal(calls.some(x=>x.sql.startsWith('UPDATE')),false);
+ assert.ok(calls.some(x=>x.sql==='ROLLBACK'));
+ phase='CLEAN';const result=await update();
+ assert.equal(result.item.source_master_id,'MST-1');assert.equal(result.item.source_system,'LEGACY_GOOGLE');
+ const mutation=calls.find(x=>x.sql.startsWith('UPDATE'));
+ assert.doesNotMatch(mutation.sql.split(' WHERE ')[0],/source_master_id|source_system|legacy_receipt_id|row_sha256|source_client_request_id/);
+ assert.ok(calls.some(x=>x.sql.includes('FROM public.mvp_masters_services_authority')&&x.sql.endsWith(' FOR SHARE')));
 });

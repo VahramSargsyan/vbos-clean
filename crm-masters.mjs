@@ -4,6 +4,7 @@
  * read-only until the owner authorizes external-master authority cutover.
  */
 import {createHash} from 'node:crypto';
+import {mastersServicesAuthority,requireMastersServicesAuthority} from './masters-authority.mjs';
 import {REFERENCE_BATCH,REFERENCE_SOURCE_MANIFEST,REFERENCE_SOURCE_MODIFIED} from './service-reference.mjs';
 export const MASTER_STATUS=Object.freeze(['active','unavailable','archived']);
 export const MASTER_QUALITY=Object.freeze(['','good','normal','problematic']);
@@ -75,6 +76,7 @@ export async function mastersAction({pool,type,p,key,uuid,safeRevision,AppError}
  try{
   await db.query('BEGIN');
   await db.query("SET LOCAL lock_timeout='5s'");
+  await requireMastersServicesAuthority(db,AppError);
   // Short table-scoped serialization of master writes only; reads remain available.
   await db.query('LOCK TABLE public.mvp_crm_masters IN SHARE ROW EXCLUSIVE MODE');
   if(creating){
@@ -90,7 +92,7 @@ export async function mastersAction({pool,type,p,key,uuid,safeRevision,AppError}
   }else{
    const old=(await db.query('SELECT source_system,revision FROM public.mvp_crm_masters WHERE id=$1 FOR UPDATE',[id])).rows[0];
    if(!old)throw new AppError(404,'Мастер не найден.');
-   if(old.source_system!=='CLEAN_NATIVE')throw new AppError(409,'Исторический мастер пока доступен только для просмотра. Изменение источника требует отдельного согласования.');
+   if(!['CLEAN_NATIVE','LEGACY_GOOGLE'].includes(old.source_system))throw new AppError(409,'Неизвестное происхождение карточки мастера.');
    if(Number(old.revision)!==revision)throw new AppError(409,'Карточка мастера изменилась. Обнови страницу.');
   }
   const value={...raw,phone:normalizeMasterPhone(raw.phone,AppError)};
@@ -105,7 +107,7 @@ export async function mastersAction({pool,type,p,key,uuid,safeRevision,AppError}
    item=(await db.query('UPDATE public.mvp_crm_masters SET '+
     'name=$3,phone=$4,email=$5,service_area=$6,notes=$7,status=$8,quality_tier=$9,'+
     'messenger_type=$10,messenger_contact=$11,revision=revision+1,updated_at=now() '+
-    "WHERE id=$1 AND revision=$2 AND source_system='CLEAN_NATIVE' RETURNING *",
+    "WHERE id=$1 AND revision=$2 AND source_system IN ('CLEAN_NATIVE','LEGACY_GOOGLE') RETURNING *",
     [id,revision,...rowFrom(value)])).rows[0];
   }
   if(!item)throw new AppError(409,'Карточка мастера изменилась. Обнови страницу.');
@@ -136,6 +138,7 @@ export async function mastersRead({pool,url,AppError}){
  const catalog=params.get('reference')??'';
  if(catalog&&catalog!=='1')invalid(AppError,'Неизвестный режим справочника.');
  const wantReference=catalog==='1'||Boolean(category||serviceId);
+ const wantAuthority=wantReference||params.get('authority')==='1';
  const scope=wantReference||masterId?[q,status,category,serviceId,masterId,catalog]:[q,status];
  const limit=Number(params.get('limit')||50);
  if(!Number.isInteger(limit)||limit<1||limit>100)invalid(AppError,'Размер страницы — от 1 до 100.');
@@ -183,5 +186,6 @@ export async function mastersRead({pool,url,AppError}){
   const got=await pool.query('SELECT DISTINCT s.service_id AS "serviceId",s.category,s.service_name AS "serviceName" FROM public.mvp_master_prices_reference p JOIN public.mvp_services_reference s ON s.batch_id=p.batch_id AND s.service_id=p.service_id '+"WHERE p.batch_id=$1 AND p.master_id=$2 AND s.status='active' AND "+effectivePrice+' ORDER BY s.category,s.service_name,s.service_id',[REFERENCE_BATCH,items[0].source_master_id]);
   linkedServices=got.rows;
  }
- return {items,nextCursor,hasMore,limit,q,status,source:'CLEAN_CRM25_MASTERS',...(wantReference?{category,serviceId,reference,linkedServices}:{})};
+ const authority=wantAuthority?await mastersServicesAuthority(pool):null;
+ return {items,nextCursor,hasMore,limit,q,status,source:'CLEAN_CRM25_MASTERS',...(wantReference?{category,serviceId,reference,linkedServices}:{}),...(wantAuthority?{authority}: {})};
 }
