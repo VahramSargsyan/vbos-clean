@@ -57,7 +57,7 @@ export async function servicesCatalogSave({pool,p,key,AppError:E}){
   if(v.serviceId&&!old)throw new E(404,'Услуга не найдена.');
   if(old&&Number(old.revision)!==v.revision)throw new E(409,'Услуга изменилась. Обнови карточку.');
   if(v.status==='active'){
-   const dup=(await db.query("SELECT service_id FROM public.mvp_services_catalog WHERE status='active' AND service_id<>$1 AND lower(regexp_replace(btrim(category),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($2::text),'[[:space:]]+',' ','g')) AND lower(regexp_replace(btrim(service_name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($3::text),'[[:space:]]+',' ','g')) LIMIT 1",[v.serviceId,v.category,v.serviceName])).rows;
+   const dup=(await db.query("SELECT service_id FROM public.mvp_services_catalog WHERE status='active' AND service_id<>$1 AND lower(regexp_replace(btrim(category),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($2::text),'[[:space:]]+',' ','g')) AND lower(regexp_replace(btrim(service_name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($3::text),'[[:space:]]+',' ','g')) AND NOT EXISTS (SELECT 1 FROM public.mvp_services_catalog own WHERE own.service_id=$1 AND own.status='active' AND lower(regexp_replace(btrim(own.category),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($2::text),'[[:space:]]+',' ','g')) AND lower(regexp_replace(btrim(own.service_name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($3::text),'[[:space:]]+',' ','g'))) LIMIT 1",[v.serviceId,v.category,v.serviceName])).rows;
    if(dup.length)throw new E(409,'Услуга с таким названием в категории уже существует.');
   }
   let id=v.serviceId;

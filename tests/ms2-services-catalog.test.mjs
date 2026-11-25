@@ -44,10 +44,11 @@ test('MS2 shared gate, duplicates, revision and replay',async()=>{
  prior=null;await assert.rejects(save({...good,serviceId:row.service_id,revision:2}),e=>e.status===409);
  const changed=await save({...good,serviceId:row.service_id,revision:1});assert.equal(changed.data.revision,2);
  const update=calls.find(x=>x.sql.startsWith('UPDATE public.mvp_services_catalog SET'));assert.doesNotMatch(update.sql.split(' WHERE ')[0],/source_|service_id=|created_at/);
+ const guard=calls.find(x=>x.sql.startsWith('SELECT service_id'));assert.match(guard.sql,/NOT EXISTS \(SELECT 1 FROM public\.mvp_services_catalog own WHERE own\.service_id=\$1 AND own\.status='active'/);
 });
 test('MS2 UI escapes data and snapshot cannot grant writes',()=>{
  const state={page:{items:[{serviceId:'SRV-2026-0001',serviceName:'<script>',category:'A&B',defaultUnit:'item',status:'active'}],categories:['A&B'],writeEnabled:false,source:'VERIFIED_LEGACY_SNAPSHOT'},filters:{q:'',status:'active',category:'',action:''}};
  const html=renderServiceCatalog(state);assert.doesNotMatch(html,/<script>/);assert.match(html,/&lt;script&gt;/);assert.match(html,/data-ms2-new disabled/);
- const ddl=readFileSync(new URL('../migrations/ms2_services_catalog_CANDIDATE_TEST_ONLY.sql',import.meta.url),'utf8');assert.match(ddl,/SELECT service_id,created_at,updated_at/);assert.doesNotMatch(ddl,/UPDATE public\.mvp_services_reference|DELETE FROM public\.mvp_services_reference|UPDATE public\.mvp_masters_services_authority/);
+ const ddl=readFileSync(new URL('../migrations/ms2_services_catalog_CANDIDATE_TEST_ONLY.sql',import.meta.url),'utf8');assert.match(ddl,/SELECT service_id,created_at,updated_at/);assert.doesNotMatch(ddl,/CREATE UNIQUE INDEX mvp_services_catalog_active_name/);assert.doesNotMatch(ddl,/UPDATE public\.mvp_services_reference|DELETE FROM public\.mvp_services_reference|UPDATE public\.mvp_masters_services_authority/);
  const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');assert.match(server,/\/api\/masters\/services\/save/);assert.match(server,/\/api\/reference\/services/);
 });

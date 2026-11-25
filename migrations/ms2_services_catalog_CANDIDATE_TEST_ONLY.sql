@@ -17,7 +17,9 @@ CREATE TABLE public.mvp_services_catalog (
  OR (source_system='CLEAN_NATIVE' AND source_batch_id IS NULL AND source_client_request_id IS NULL AND source_created_at IS NULL AND source_updated_at IS NULL))
 );
 CREATE INDEX mvp_services_catalog_status_id_idx ON public.mvp_services_catalog(status,service_id);
-CREATE UNIQUE INDEX mvp_services_catalog_active_name_uq ON public.mvp_services_catalog(lower(regexp_replace(btrim(category),'[[:space:]]+',' ','g')),lower(regexp_replace(btrim(service_name),'[[:space:]]+',' ','g'))) WHERE status='active';
+-- Existing active duplicate names are legitimate historical distinct IDs; retain them.
+-- New collisions are blocked by the serialized writer, not a destructive uniqueness migration.
+CREATE INDEX mvp_services_catalog_active_name_idx ON public.mvp_services_catalog(lower(regexp_replace(btrim(category),'[[:space:]]+',' ','g')),lower(regexp_replace(btrim(service_name),'[[:space:]]+',' ','g'))) WHERE status='active';
 CREATE TABLE public.mvp_services_catalog_requests(request_key uuid PRIMARY KEY,payload_sha256 text NOT NULL CHECK(payload_sha256 ~ '^[a-f0-9]{64}$'),response jsonb NOT NULL);
 CREATE TABLE public.mvp_services_catalog_sequences(year integer PRIMARY KEY CHECK(year BETWEEN 2000 AND 9999),last_value bigint NOT NULL CHECK(last_value>=0));
 DO $seed$
