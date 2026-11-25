@@ -14,6 +14,7 @@ const port=34271,base='http://127.0.0.1:'+port;
 const claim='CI-ONLY-SYNTHETIC-ACTIVATION-CODE';
 const password='CI-only-strong-password-1234';
 let server;
+let msWorklogService,msArchivedServiceId;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function request(path,payload,cookie='') {
  const r=await fetch(base+path,{
@@ -537,7 +538,7 @@ try{
  await database.query("INSERT INTO public.mvp_service_reference_batches(batch_id,source_system,source_modified_at,services_count,prices_count,manifest_sha256,verified_at,status) VALUES ($1,'LEGACY_GOOGLE_VBOS','2026-11-03T19:06:09.263Z',37,1,$2,now(),'VERIFIED')",[refBatch,'fc85e0e51751b50c689fceaba8d6c273706a25e577e798df3e886deef3a8d674']);
  await database.query(`INSERT INTO public.mvp_services_reference(batch_id,service_id,created_at,updated_at,status,category,service_name,default_unit,notes,action_code)
   SELECT $1,'SRV-2026-'||lpad(n::text,4,'0'), '2026-11-05T00:00:00Z','2026-11-05T00:00:00Z','active','Сантехника',
-  'Пробная услуга '||n,'item','',CASE WHEN n=37 THEN NULL ELSE 'INSTALL' END
+  'Пробная услуга '||CASE WHEN n IN (3,5,7) THEN n-1 ELSE n END,'item','',CASE WHEN n=37 THEN NULL ELSE 'INSTALL' END
   FROM generate_series(1,37) n`,[refBatch]);
  await database.query("INSERT INTO public.mvp_master_prices_reference(batch_id,master_price_id,created_at,updated_at,status,master_id,service_id,price_type,price_from,price_to,currency,unit,valid_from) VALUES ($1,'MPR-2026-0001','2026-11-05T00:00:00Z','2026-11-05T00:00:00Z','active','MST-2026-0001','SRV-2026-0001','range',3000,5000,'AMD','item','2026-08-16')",[refBatch]);
  const refFirst=await request('/api/reference/services?limit=20',undefined,cookie);
@@ -2981,7 +2982,8 @@ try{
   // Rollback rehearsal: DDL and seed are transactional. Original IDs must remain unchanged.
   await database.query('BEGIN');
   try{for(const sql of msSql)await database.query(sql);}finally{await database.query('ROLLBACK');}
-  assert.equal((await database.query("SELECT to_regclass('public.mvp_services_catalog') IS NULL AS absent")).rows[0].absent,true);
+  assert.equal((await database.query("SELECT to_regclass('public.mvp_masters_services_authority') IS NULL AND to_regclass('public.mvp_services_catalog') IS NULL AND to_regclass('public.mvp_master_prices_catalog') IS NULL AS absent")).rows[0].absent,true);
+  assert.deepEqual((await database.query("SELECT id,source_master_id FROM public.mvp_crm_masters ORDER BY source_master_id")).rows,beforeMasters);
   await database.query('BEGIN');
   try{for(const sql of msSql)await database.query(sql);await database.query('COMMIT');}catch(err){await database.query('ROLLBACK');throw err;}
   assert.deepEqual((await database.query("SELECT id,source_master_id FROM public.mvp_crm_masters ORDER BY source_master_id")).rows,beforeMasters);
@@ -3005,8 +3007,23 @@ try{
   assert.ok(/^SRV-[0-9]{4}-[0-9]{4,}$/.test(svcId));assert.ok(!beforeServices.some(x=>x.service_id===svcId));
   assert.deepEqual((await saveService(serviceFixture,svcKey)).body,svc.body);
   assert.equal((await saveService(serviceFixture)).status,409);
+  // Three pre-existing duplicate-name groups survive the import, but no new collisions are permitted.
+  assert.equal((await database.query("SELECT count(*)::int AS n FROM (SELECT category,service_name FROM public.mvp_services_catalog WHERE status='active' GROUP BY category,service_name HAVING count(*)>1) q")).rows[0].n,3);
+  const historicalDup={category:'Сантехника',serviceName:'Пробная услуга 2',defaultUnit:'item',status:'active',actionCode:'INSTALL'};
+  assert.equal((await saveService(historicalDup)).status,409);
+  assert.equal((await saveService({...historicalDup,serviceId:beforeServices[1].service_id,revision:1,notes:'Synthetic unchanged key edit'})).status,200);
+  assert.equal((await saveService({...historicalDup,serviceId:beforeServices[1].service_id,revision:1})).status,409);
+  // Two distinct concurrent request keys, same normalized category/name: one winner.
+  const svcRace=await Promise.all([saveService({...serviceFixture,serviceName:'MS WorkLog concurrent'}),saveService({...serviceFixture,serviceName:'ms  worklog concurrent'})]);
+  assert.deepEqual(svcRace.map(x=>x.status).sort(),[200,409]);
+  msWorklogService=svcRace.find(x=>x.status===200).body.data;
+  msArchivedServiceId=svcId;
   assert.equal((await request('/api/state',undefined,cookie)).body.workLogServiceReferences.some(x=>x.service_id===svcId&&x.status==='active'),true);
-  const priceKey=randomUUID(),price=await savePrice({...priceFixture,serviceId:svcId},priceKey);
+  // Two concurrent exact price retries must produce one durable record and equal response.
+  const priceKey=randomUUID();
+  const [price,priceConcurrentReplay]=await Promise.all([savePrice({...priceFixture,serviceId:svcId},priceKey),savePrice({...priceFixture,serviceId:svcId},priceKey)]);
+  assert.equal(priceConcurrentReplay.status,200,priceConcurrentReplay.body.error);
+  assert.deepEqual(priceConcurrentReplay.body,price.body);
   assert.equal(price.status,200,price.body.error);
   assert.deepEqual((await savePrice({...priceFixture,serviceId:svcId},priceKey)).body,price.body);
   const priceId=price.body.entityId;
@@ -3032,6 +3049,8 @@ try{
   assert.equal(replay.body.item.id,master.id);
   assert.equal(replay.body.deduplicated,true);
   assert.equal((await request('/api/action',{type:'crm_master_create',payload:{...ownerMaster,name:'mutated'}},cookie)).status,409);
+  const masterRace=await Promise.all(['A','B'].map(label=>request('/api/action',{type:'crm_master_create',payload:{...ownerMaster,name:'MS concurrency '+label,phone:label==='A'?'095654321':'+37495654321',requestKey:randomUUID()}},cookie)));
+  assert.deepEqual(masterRace.map(x=>x.status).sort(),[200,409]);
   const listed=await request('/api/crm/masters?q=synthetic&status=active',undefined,cookie);
   assert.equal(listed.status,200,listed.body.error);
   assert.equal(listed.body.items.some(x=>x.id===master.id),true);
@@ -3601,11 +3620,12 @@ try{
   const payload={orderId:fullOrder.id,dayDate:fullDay,startClock:'08:00',endClock:'10:00',
    performerMode:'OWNER',location:'Кухня',workType:'Монтаж труб',workDetail:'20 мм',
    quantity:'12.5',unit:'м',points:'4',nodes:'2',meters:'12.5',complexity:'3',
-   lossMinutes:'15',lossReason:'материалы',reworkStatus:'no',reworkMinutes:'0',notes:'CI work'};
+   lossMinutes:'15',lossReason:'материалы',reworkStatus:'no',reworkMinutes:'0',notes:'CI work',serviceId:msWorklogService.serviceId};
   const k=randomUUID();
   assert.equal((await request('/api/action',{type:'work_log_full_create',payload:{...payload,requestKey:k}})).status,401);
   assert.equal((await request('/api/worklogs/full-context?orderId='+fullOrder.id+
    '&dayDate='+fullDay+'&startClock=08%3A00&endClock=10%3A00')).status,401);
+  assert.equal((await request('/api/action',{type:'work_log_full_create',payload:{...payload,serviceId:msArchivedServiceId,requestKey:randomUUID()}},cookie)).status,409);
   const saved=await request('/api/action',{type:'work_log_full_create',payload:{...payload,requestKey:k}},cookie);
   assert.equal(saved.status,200,saved.body.error);
   assert.equal(saved.body.saved,true);
@@ -3613,6 +3633,7 @@ try{
   assert.equal(saved.body.item.minutes,120);
   assert.equal(saved.body.item.detail.clean_minutes,105);
   assert.equal(saved.body.item.detail.work_day_id,ciDay);
+  assert.equal(saved.body.item.detail.service_id,msWorklogService.serviceId);
   assert.equal(saved.body.item.detail.loss_minutes,15);
   const id=saved.body.item.id;
   assert.equal((await request('/api/action',{type:'work_log_full_create',payload:{...payload,requestKey:k}},cookie)).body.deduplicated,true);
@@ -3652,6 +3673,17 @@ try{
   assert.equal((await request('/api/action',{type:'work_log_full_create',payload:{...payload,dayDate:'2030-03-16',requestKey:randomUUID()}},cookie)).status,409);
   assert.equal((await request('/api/action',{type:'work_log_full_create',payload:{...payload,performerMode:'WORKER',workerId:randomUUID(),requestKey:randomUUID()}},cookie)).status,409);
   assert.equal((await database.query('SELECT COUNT(*)::int n FROM public.mvp_work_log_full_requests WHERE work_log_id=$1',[id])).rows[0].n,1);
+  // Archiving the canonical service must not rewrite either saved WorkLog or prevent exact replay.
+  const archService=await request('/api/masters/services/save',{requestKey:randomUUID(),payload:{
+   serviceId:msWorklogService.serviceId,revision:msWorklogService.revision,status:'archived',
+   category:msWorklogService.category,serviceName:msWorklogService.serviceName,
+   defaultUnit:msWorklogService.defaultUnit,actionCode:msWorklogService.actionCode,notes:msWorklogService.notes}},cookie);
+  assert.equal(archService.status,200,archService.body.error);
+  const postArchiveHistory=await request('/api/history?from='+fullDay+'&to='+fullDay+'&orderId='+fullOrder.id,undefined,cookie);
+  assert.equal(postArchiveHistory.status,200,postArchiveHistory.body.error);
+  assert.equal(postArchiveHistory.body.items.find(x=>x.id===id).detail.service_id,msWorklogService.serviceId);
+  assert.equal((await request('/api/action',{type:'work_log_full_update',payload:changed},cookie)).body.deduplicated,true);
+  assert.equal((await request('/api/action',{type:'work_log_full_create',payload:{...payload,startClock:'13:00',endClock:'14:00',requestKey:randomUUID()}},cookie)).status,409);
   console.log('FULL_WORKLOG_OWNER_TRANSACTION_PG_CLOCK_CLEAN_TIME_REPLAY_GAP_OVERLAP_HISTORY_AND_LEGACY_COMPAT_PASS');
  }
 
