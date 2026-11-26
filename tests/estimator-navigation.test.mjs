@@ -149,3 +149,40 @@ test('mobile UX has large touch targets and retained lead picker, no schema/API 
  assert.match(app,/data-act="estimate_create"/);
  assert.match(app,/data-act="estimate_save"/);
 });
+
+test('service bridge opens visibly inside the chosen card, not after the grid',()=>{
+ const source=extract('var estimatorBridgePanel=null;','async function submitEstimatorBridge');
+ const view=extract('function estimatorView(){','function estimateAMD(x){');
+ const context={estimatorSubtab:'cards',tab:'estimator',data:picker,estimateUI:{leadId:null},
+  plumbingUI:{module:moduleRef},esc,estimatorCardState:{loaded:true,items:listPlumbingItems().map(x=>({...x,sourceType:'SYSTEM',status:'active'})),editor:null}};
+ const out=runInNewContext(source+view+`;estimatorBridgePanel={cardKey:"BATH",result:{writeEnabled:false,items:[{action_type:"FIXTURE_INSTALL",service_id:"SRV-2026-0013"},{action_type:"WATER",service_id:"SRV-2026-0024"},{action_type:"SEWER",service_id:"SRV-2026-0025"}],candidates:[]}};estimatorView()`,context);
+ const selected=out.indexOf('data-estimator-bridge-open="BATH" aria-expanded="true"');
+ const panel=out.indexOf('id="estimatorBridgePanel"');
+ assert.ok(selected>=0&&panel>selected&&panel<out.indexOf('</article>',selected));
+ assert.equal((out.match(/id="estimatorBridgePanel"/g)||[]).length,1);
+ assert.match(out,/data-estimator-bridge-open="WC" aria-expanded="false"/);
+ for(const id of ['SRV-2026-0013','SRV-2026-0024','SRV-2026-0025'])assert.ok(out.includes(id));
+ assert.doesNotMatch(out,/data-est-bridge-save=|data-est-bridge-archive=/);
+});
+test('bridge open shows loading immediately, handles errors and restores trigger focus on close',async()=>{
+ const source=extract('var estimatorBridgePanel=null;','async function submitEstimatorBridge');
+ let html='',focused=0,scrolled=0,triggerFocused=0,triggerScrolled=0,resolve,reject;
+ const heading={focus:()=>{focused++;document.activeElement=heading;}};
+ const document={activeElement:null};
+ const root={querySelector:()=>heading,contains:x=>x===heading,scrollIntoView:()=>scrolled++};
+ const trigger={dataset:{estimatorBridgeOpen:'BATH'},focus:()=>triggerFocused++,scrollIntoView:()=>triggerScrolled++};
+ const context={tab:'estimator',estimatorSubtab:'cards',esc,document,
+  $:selector=>selector==='#estimatorBridgePanel'?root:selector==='#content'?{querySelectorAll:()=>[trigger]}:null,
+  render:()=>{html=controller.markup('BATH')},api:path=>{assert.equal(path,'/api/estimator/service-bridges?cardKey=BATH');return new Promise((yes,no)=>{resolve=yes;reject=no;});}};
+ const controller=runInNewContext(source+';({open:openEstimatorBridges,close:closeEstimatorBridges,markup:estimatorBridgeMarkup})',context);
+ const pending=controller.open('BATH');
+ assert.match(html,/role="status">Загружаю/);assert.equal(focused,1);assert.equal(scrolled,1);
+ resolve({writeEnabled:false,items:[],candidates:[]});await pending;
+ assert.match(html,/Связи доступны для чтения/);assert.equal(focused,2);
+ assert.equal(controller.markup('WC'),'');
+ controller.close();assert.equal(html,'');assert.equal(triggerFocused,1);assert.equal(triggerScrolled,1);
+ const failed=controller.open('BATH');reject(Error('test API error'));await failed;
+ assert.match(html,/role="alert">test API error/);
+ const stale=controller.open('BATH');controller.close();resolve({writeEnabled:false,items:[],candidates:[]});await stale;
+ assert.equal(html,'');
+});

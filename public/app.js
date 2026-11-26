@@ -1109,17 +1109,34 @@ function estimatorSaveVisibleWizard(){
 }
 // Existing Estimator card/action bridge editor; no writes while LEGACY.
 var estimatorBridgePanel=null;
+function focusEstimatorBridgePanel(){
+ const root=$('#estimatorBridgePanel');
+ root?.querySelector('h3')?.focus({preventScroll:true});
+ root?.scrollIntoView({block:'nearest',behavior:'auto'});
+}
+function closeEstimatorBridges(){
+ const cardKey=estimatorBridgePanel?.cardKey;estimatorBridgePanel=null;render();
+ const trigger=Array.from($('#content').querySelectorAll('button[data-estimator-bridge-open]')).find(b=>b.dataset.estimatorBridgeOpen===cardKey);
+ trigger?.focus({preventScroll:true});
+ trigger?.scrollIntoView({block:'nearest',behavior:'auto'});
+}
 async function openEstimatorBridges(cardKey){
  const panel={cardKey,loading:true,error:'',result:null,requests:{},saving:false};estimatorBridgePanel=panel;
- render();
+ render();focusEstimatorBridgePanel();
  try{panel.result=await api('/api/estimator/service-bridges?cardKey='+encodeURIComponent(cardKey));}
  catch(error){panel.error=String(error.message||error);}
- finally{panel.loading=false;if(estimatorBridgePanel===panel&&tab==='estimator'&&estimatorSubtab==='cards')render();}
+ finally{
+  panel.loading=false;
+  if(estimatorBridgePanel===panel&&tab==='estimator'&&estimatorSubtab==='cards'){
+   const hadFocus=$('#estimatorBridgePanel')?.contains(document.activeElement);
+   render();if(hadFocus)focusEstimatorBridgePanel();
+  }
+ }
 }
-function estimatorBridgeMarkup(){
- const p=estimatorBridgePanel;if(!p)return '';
- const head='<section class="card"><h3>Связи услуг · '+esc(p.cardKey)+'</h3><button type="button" data-est-bridge-close>Закрыть</button>';
- if(!p.result)return head+'<p class="muted">'+esc(p.error||'Загружаю связи…')+'</p></section>';
+function estimatorBridgeMarkup(cardKey){
+ const p=estimatorBridgePanel;if(!p||p.cardKey!==cardKey)return '';
+ const head='<section class="card" id="estimatorBridgePanel" aria-labelledby="estimatorBridgeHeading"><h3 id="estimatorBridgeHeading" tabindex="-1">Связи услуг · '+esc(p.cardKey)+'</h3><button type="button" data-est-bridge-close>Закрыть</button>';
+ if(!p.result)return head+(p.error?'<p class="error" role="alert">'+esc(p.error)+'</p>':'<p class="muted" role="status">Загружаю связи…</p>')+'</section>';
  const r=p.result;
  return head+(!r.writeEnabled?'<p class="muted">Связи доступны для чтения. Изменение разрешится только после перехода authority в CLEAN.</p>':'')+
   (r.truncated?'<p class="muted small">Показаны первые 200 кандидатов; можно ввести точный SRV ID.</p>':'')+
@@ -1188,6 +1205,7 @@ function estimatorView(){
   const list=state.loaded?state.items:items.map(x=>({...x,sourceType:'SYSTEM',status:'active',revision:0}));
   const cards=list.map(x=>{
    const archived=x.status==='archived';
+   const bridgeExpanded=!archived&&typeof estimatorBridgePanel!=='undefined'&&estimatorBridgePanel?.cardKey===x.cardKey;
    const p=archived?x:mod.plumbingStandardForCard(x.cardKey,typeof estimatorCardCatalog==='function'?estimatorCardCatalog():[]);
    return '<article class="estimator-source-card"><h3>'+esc(x.displayName)+'</h3>'+
     '<p class="muted">'+(x.sourceType==='USER'?'Моя карточка':'Системная карточка')+
@@ -1196,10 +1214,10 @@ function estimatorView(){
     ' · Канализация: '+(p.supportsSewer?esc(p.sewerPoints)+' точек':'нет')+
     ' · Материалы: '+esc(x.materialStatus||'NOT_CONFIGURED')+'</p>'+
     (archived?'':('<button type="button" data-estimator-use-card="'+esc(x.cardKey)+'">Выбрать в расчёт</button>'))+
-    (state.loaded&&!archived?'<button type="button" data-estimator-card-edit="'+esc(x.cardKey)+'">Редактировать</button><button type="button" data-estimator-bridge-open="'+esc(x.cardKey)+'">Связи услуг</button>':'')+
+    (state.loaded&&!archived?'<button type="button" data-estimator-card-edit="'+esc(x.cardKey)+'">Редактировать</button><button type="button" data-estimator-bridge-open="'+esc(x.cardKey)+'" aria-expanded="'+(bridgeExpanded?'true':'false')+'"'+(bridgeExpanded?' aria-controls="estimatorBridgePanel"':'')+'>Связи услуг</button>':'')+
     (state.loaded&&x.sourceType==='USER'&&!archived?'<button type="button" data-estimator-card-archive="'+esc(x.cardKey)+'">Архивировать</button>':'')+
     (state.loaded&&x.sourceType==='SYSTEM'&&x.hasOverride?'<button type="button" data-estimator-card-reset="'+esc(x.cardKey)+'">Вернуть системные значения</button>':'')+
-    '</article>';
+    (bridgeExpanded?estimatorBridgeMarkup(x.cardKey):'')+'</article>';
   }).join('');
   return head+'<section class="card" aria-label="Карточки приборов"><h2>Карточки</h2>'+
    '<p class="muted">Системные карточки старого Estimator сохраняют код. Мои карточки и материалы можно редактировать отдельно.</p>'+
@@ -1207,7 +1225,7 @@ function estimatorView(){
    (state.loading?'<p class="muted">Загружаю карточки…</p>':'')+
    (state.loaded?'<button type="button" class="primary" data-estimator-card-new>+ Новый прибор</button>':'')+
    '<div class="estimator-card-grid">'+cards+'</div></section>'+
-   estimatorBridgeMarkup()+(state.editor?estimatorCardEditorMarkup():'');
+   (state.editor?estimatorCardEditorMarkup():'');
  }
  const lead=estimateUI.leadId?(data.leads||[]).find(x=>x.id===estimateUI.leadId):null;
  if(lead)return head+plumbingWorkspace(lead);
@@ -3963,7 +3981,7 @@ $('#content').addEventListener('click',async e=>{
   }
   const bridgeOpen=e.target.closest('button[data-estimator-bridge-open]');
   if(bridgeOpen){if(estimatorCardState.editor){message('Сначала сохрани или закрой редактор карточки.',true);return;}await openEstimatorBridges(bridgeOpen.dataset.estimatorBridgeOpen);return;}
-  if(e.target.closest('button[data-est-bridge-close]')){estimatorBridgePanel=null;render();return;}
+  if(e.target.closest('button[data-est-bridge-close]')){closeEstimatorBridges();return;}
   const bridgeSave=e.target.closest('button[data-est-bridge-save]'),bridgeArchive=e.target.closest('button[data-est-bridge-archive]');
   if(bridgeSave||bridgeArchive){
    const action=(bridgeSave||bridgeArchive).dataset[bridgeSave?'estBridgeSave':'estBridgeArchive'];
