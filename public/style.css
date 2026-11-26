@@ -648,8 +648,8 @@ html[data-theme] .finance-legacy-reference-search [data-finance-legacy-search-mo
 .estimator-price-scroll table{border-collapse:collapse;min-width:520px;width:100%}
 .estimator-price-scroll th,.estimator-price-scroll td{text-align:left;padding:10px;border-bottom:1px solid var(--hairline,#d9e0e7);font-size:13px;white-space:nowrap}
 .estimator-card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:10px}
-.estimator-source-card{padding:12px;border:1px solid var(--hairline,#d9e0e7);border-radius:12px;min-width:0}
-.estimator-source-card button{width:100%;min-height:44px}
+.estimator-source-card{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:8px;padding:10px 12px;border:1px solid var(--hairline,#d9e0e7);border-radius:12px;min-width:0}
+.est-card-info{min-width:0;overflow-wrap:anywhere}.est-card-info h3{margin:0 0 3px}.est-card-info p{margin:3px 0;font-size:12px;line-height:1.4}
 @media(max-width:520px){.estimator-legacy-tabs{gap:5px}.estimator-legacy-tabs button{padding:12px 8px;flex:1;min-width:0}.estimator-card-grid{grid-template-columns:minmax(0,1fr)}}
 
 /* EST-CARDS-01: owner mobile card editor; content stays within 320px. */
@@ -658,7 +658,7 @@ html[data-theme] .finance-legacy-reference-search [data-finance-legacy-search-mo
 .estimator-material-edit{border:1px solid var(--hairline,#d2d5dc);border-radius:12px;padding:12px;margin:12px 0;min-width:0}
 .estimator-material-edit button{min-height:44px;width:100%}
 .estimator-card-editor .actions button{min-height:48px;flex:1 1 120px}
-.estimator-source-card button{margin:4px 0}
+
 @media(max-width:550px){.estimator-card-editor .estimator-card-actions{display:grid}.estimator-material-edit .grid{grid-template-columns:1fr}}
 
 /* EST-PRICES-01: readable inherited legacy price editor on Android. */
@@ -685,3 +685,23 @@ html[data-theme] .finance-legacy-reference-search [data-finance-legacy-search-mo
 .crm-won-order-actions>button{display:flex;width:100%;min-height:52px;font-size:16px}
 .crm-won-order-actions [data-crm-won-feedback]{margin:5px 0 0;min-height:1em;overflow-wrap:anywhere}
 @media(max-width:560px){.crm-won-order-actions{padding:10px 14px calc(10px + env(safe-area-inset-bottom))}.crm-won-order-object-choice{padding:10px}}
+
+/* Estimator: compact card disclosure and native modal bottom sheet. */
+.est-card-menu{position:relative;align-self:start;margin:0;padding:0}
+html[data-theme] .est-card-menu>summary,.est-card-menu>summary{display:grid;place-items:center;list-style:none;width:44px;height:44px;min-height:44px;margin:0;padding:0;border:1px solid var(--hairline,#d9e0e7);border-radius:10px;font-size:25px;line-height:1;cursor:pointer;color:var(--ink,#172033);background:var(--s2,#f5f7fa)}
+.est-card-menu>summary::-webkit-details-marker{display:none}
+.est-card-menu[open]>summary{border-color:var(--accent,#1557b0)}
+.est-card-actions{position:absolute;z-index:25;right:0;top:calc(100% + 4px);width:min(244px,calc(100vw - 48px));padding:5px;background:var(--s1,#fff);border:1px solid var(--hairline,#d9e0e7);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.24)}
+.est-card-actions button{width:100%;min-height:44px;justify-content:flex-start;text-align:left;white-space:normal;margin:0;padding:8px 10px;border:0;background:transparent;color:var(--ink,#172033)}
+.est-card-actions button:hover,.est-card-actions button:focus-visible{background:var(--s2,#eef2f6)}
+.est-bridge-dialog{position:fixed;inset:auto 0 0;margin:0 auto;width:min(100%,520px);max-width:100%;max-height:calc(100% - 16px);max-height:calc(100dvh - 16px);padding:0;border:1px solid var(--hairline,#d9e0e7);border-radius:18px 18px 0 0;background:var(--s1,#fff);color:var(--ink,#172033);overflow:hidden;box-shadow:0 -10px 45px rgba(0,0,0,.28)}
+.est-bridge-dialog::backdrop{background:rgba(0,0,0,.56)}
+.est-bridge-sheet{display:flex;flex-direction:column;max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px)}
+.est-bridge-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--hairline,#d9e0e7);flex:none}
+.est-bridge-head h2{margin:0;font-size:18px}.est-bridge-head p{margin:3px 0 0}.est-bridge-head button{width:44px;min-width:44px;height:44px;min-height:44px;font-size:24px;padding:0}
+.est-bridge-body{overflow-y:auto;overscroll-behavior:contain;padding:10px 16px calc(16px + env(safe-area-inset-bottom));min-height:0}
+.est-bridge-note{margin:0 0 5px}.est-bridge-row{padding:11px 0;border-bottom:1px solid var(--hairline,#d9e0e7)}.est-bridge-row:last-child{border-bottom:0}
+.est-bridge-line{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:4px 10px}.est-bridge-line strong{font-size:14px}.est-bridge-line span{overflow-wrap:anywhere}
+.est-bridge-actions{display:flex;flex-wrap:wrap;gap:6px}.est-bridge-actions button{min-height:44px}
+#estimatorBridgeFeedback:empty{display:none}
+html:has(.est-bridge-dialog[open]),body:has(.est-bridge-dialog[open]){overflow:hidden}

@@ -1109,46 +1109,67 @@ function estimatorSaveVisibleWizard(){
 }
 // Existing Estimator card/action bridge editor; no writes while LEGACY.
 var estimatorBridgePanel=null;
-function focusEstimatorBridgePanel(){
+function closeEstimatorCardMenus(except=null){
+ for(const menu of document.querySelectorAll('details[data-est-card-menu][open]')){
+  if(menu!==except)menu.open=false;
+ }
+}
+function mountEstimatorBridgeDialog(){
  const root=$('#estimatorBridgePanel');
- root?.querySelector('h3')?.focus({preventScroll:true});
- root?.scrollIntoView({block:'nearest',behavior:'auto'});
+ if(!root||root.open)return;
+ root.addEventListener('cancel',e=>{e.preventDefault();closeEstimatorBridges();});
+ root.addEventListener('click',e=>{if(e.target===root)closeEstimatorBridges();});
+ root.showModal();
+ root.querySelector('h2')?.focus({preventScroll:true});
 }
 function closeEstimatorBridges(){
- const cardKey=estimatorBridgePanel?.cardKey;estimatorBridgePanel=null;render();
- const trigger=Array.from($('#content').querySelectorAll('button[data-estimator-bridge-open]')).find(b=>b.dataset.estimatorBridgeOpen===cardKey);
- trigger?.focus({preventScroll:true});
- trigger?.scrollIntoView({block:'nearest',behavior:'auto'});
+ const cardKey=estimatorBridgePanel?.cardKey;estimatorBridgePanel=null;
+ const root=$('#estimatorBridgePanel');
+ if(root?.open)root.close();
+ root?.remove();
+ const menu=Array.from($('#content').querySelectorAll('details[data-est-card-menu]')).find(m=>m.dataset.estCardMenu===cardKey);
+ menu?.querySelector('summary')?.focus({preventScroll:true});
+}
+function estimatorBridgeFeedback(text,error=false){
+ const p=estimatorBridgePanel;if(!p)return;
+ p.feedback=text;p.feedbackError=error;
+ const node=$('#estimatorBridgeFeedback');
+ if(node){node.textContent=text;node.classList.toggle('error',error);}
 }
 async function openEstimatorBridges(cardKey){
- const panel={cardKey,loading:true,error:'',result:null,requests:{},saving:false};estimatorBridgePanel=panel;
- render();focusEstimatorBridgePanel();
+ const displayName=estimatorCardState.items.find(x=>x.cardKey===cardKey)?.displayName||cardKey;
+ const panel={cardKey,displayName,loading:true,error:'',result:null,requests:{},saving:false,feedback:'',feedbackError:false};estimatorBridgePanel=panel;
+ render();
  try{panel.result=await api('/api/estimator/service-bridges?cardKey='+encodeURIComponent(cardKey));}
  catch(error){panel.error=String(error.message||error);}
  finally{
   panel.loading=false;
   if(estimatorBridgePanel===panel&&tab==='estimator'&&estimatorSubtab==='cards'){
-   const hadFocus=$('#estimatorBridgePanel')?.contains(document.activeElement);
-   render();if(hadFocus)focusEstimatorBridgePanel();
+   const body=$('#estimatorBridgeBody');if(body)body.innerHTML=estimatorBridgeBody(panel);
   }
  }
 }
-function estimatorBridgeMarkup(cardKey){
- const p=estimatorBridgePanel;if(!p||p.cardKey!==cardKey)return '';
- const head='<section class="card" id="estimatorBridgePanel" aria-labelledby="estimatorBridgeHeading"><h3 id="estimatorBridgeHeading" tabindex="-1">Связи услуг · '+esc(p.cardKey)+'</h3><button type="button" data-est-bridge-close>Закрыть</button>';
- if(!p.result)return head+(p.error?'<p class="error" role="alert">'+esc(p.error)+'</p>':'<p class="muted" role="status">Загружаю связи…</p>')+'</section>';
+function estimatorBridgeBody(p){
+ if(!p.result)return p.error?'<p class="error" role="alert">'+esc(p.error)+'</p>':'<p class="muted" role="status">Загружаю связи…</p>';
  const r=p.result;
- return head+(!r.writeEnabled?'<p class="muted">Связи доступны для чтения. Изменение разрешится только после перехода authority в CLEAN.</p>':'')+
+ return (!r.writeEnabled?'<p class="muted est-bridge-note">Только чтение · LEGACY</p>':'')+
   (r.truncated?'<p class="muted small">Показаны первые 200 кандидатов; можно ввести точный SRV ID.</p>':'')+
   [['FIXTURE_INSTALL','Установка','INSTALL','item'],['WATER','Вода','CONNECT','point'],['SEWER','Канализация','CONNECT','point']].map(([action,label,code,unit])=>{
    const existing=r.items.find(x=>x.action_type===action);
    const options=r.candidates.filter(x=>x.action_code===code&&x.default_unit===unit);
-   return '<div class="card" data-est-bridge-row="'+action+'"><strong>'+label+'</strong><p class="small muted">'+esc(existing?.service_id||'Связь не установлена')+'</p>'+
+   return '<div class="est-bridge-row" data-est-bridge-row="'+action+'"><div class="est-bridge-line"><strong>'+label+'</strong><span class="small muted">'+esc(existing?.service_id||'Связь не установлена')+'</span></div>'+
     (r.writeEnabled?'<label>Услуга · '+code+' / '+unit+'<input name="serviceId" maxlength="100" list="estBridgeOptions_'+action+'" value="'+esc(existing?.service_id||'')+'"></label>'+
      '<datalist id="estBridgeOptions_'+action+'">'+options.map(x=>'<option value="'+esc(x.service_id)+'">'+esc(x.service_name)+'</option>').join('')+'</datalist>'+
-     '<button type="button" data-est-bridge-save="'+action+'"'+(p.saving?' disabled':'')+'>Сохранить связь</button>'+
-     (existing?'<button type="button" data-est-bridge-archive="'+action+'"'+(p.saving?' disabled':'')+'>Архивировать связь</button>':''):'')+'</div>';
-  }).join('')+'</section>';
+     '<div class="est-bridge-actions"><button type="button" data-est-bridge-save="'+action+'"'+(p.saving?' disabled':'')+'>Сохранить связь</button>'+
+     (existing?'<button type="button" data-est-bridge-archive="'+action+'"'+(p.saving?' disabled':'')+'>Архивировать связь</button>':'')+'</div>':'')+'</div>';
+  }).join('');
+}
+function estimatorBridgeMarkup(){
+ const p=estimatorBridgePanel;if(!p)return '';
+ return '<dialog id="estimatorBridgePanel" class="est-bridge-dialog" aria-labelledby="estimatorBridgeHeading"><div class="est-bridge-sheet">'+
+  '<div class="est-bridge-head"><div><h2 id="estimatorBridgeHeading" tabindex="-1">Связи услуг</h2><p class="muted">'+esc(p.displayName||p.cardKey)+' · '+esc(p.cardKey)+'</p></div>'+
+  '<button type="button" data-est-bridge-close aria-label="Закрыть связи услуг">×</button></div>'+
+  '<div class="est-bridge-body"><div id="estimatorBridgeBody">'+estimatorBridgeBody(p)+'</div><p id="estimatorBridgeFeedback" role="status" class="'+(p.feedbackError?'error':'muted')+'">'+esc(p.feedback||'')+'</p></div></div></dialog>';
 }
 async function submitEstimatorBridge(action,serviceId){
  const p=estimatorBridgePanel;if(!p?.result?.writeEnabled||p.saving)return;
@@ -1159,8 +1180,8 @@ async function submitEstimatorBridge(action,serviceId){
  p.requests[action]={fingerprint,requestKey};p.saving=true;
  try{const out=await api('/api/action',{type:'estimator_bridge_set',payload:{...payload,requestKey}});
   if(!out.saved)throw Error('Нет подтверждения связи.');
-  if(estimatorBridgePanel===p){await openEstimatorBridges(p.cardKey);message('Связь сохранена. Старые сметы не изменены.');}
- }catch(error){if(estimatorBridgePanel===p)message('Связь не подтверждена: '+String(error.message||error)+'. Проверь перед повтором.',true);}
+  if(estimatorBridgePanel===p){await openEstimatorBridges(p.cardKey);estimatorBridgeFeedback('Связь сохранена. Старые сметы не изменены.');}
+ }catch(error){if(estimatorBridgePanel===p)estimatorBridgeFeedback('Связь не подтверждена: '+String(error.message||error)+'. Проверь перед повтором.',true);}
  finally{p.saving=false;}
 }
 
@@ -1205,19 +1226,15 @@ function estimatorView(){
   const list=state.loaded?state.items:items.map(x=>({...x,sourceType:'SYSTEM',status:'active',revision:0}));
   const cards=list.map(x=>{
    const archived=x.status==='archived';
-   const bridgeExpanded=!archived&&typeof estimatorBridgePanel!=='undefined'&&estimatorBridgePanel?.cardKey===x.cardKey;
    const p=archived?x:mod.plumbingStandardForCard(x.cardKey,typeof estimatorCardCatalog==='function'?estimatorCardCatalog():[]);
-   return '<article class="estimator-source-card"><h3>'+esc(x.displayName)+'</h3>'+
-    '<p class="muted">'+(x.sourceType==='USER'?'Моя карточка':'Системная карточка')+
-    ' · '+esc(x.category||'')+(archived?' · Архив':'')+'</p>'+
-    '<p class="muted">Вода: '+(p.supportsWater?esc(p.waterPoints)+' точек':'нет')+
-    ' · Канализация: '+(p.supportsSewer?esc(p.sewerPoints)+' точек':'нет')+
-    ' · Материалы: '+esc(x.materialStatus||'NOT_CONFIGURED')+'</p>'+
-    (archived?'':('<button type="button" data-estimator-use-card="'+esc(x.cardKey)+'">Выбрать в расчёт</button>'))+
-    (state.loaded&&!archived?'<button type="button" data-estimator-card-edit="'+esc(x.cardKey)+'">Редактировать</button><button type="button" data-estimator-bridge-open="'+esc(x.cardKey)+'" aria-expanded="'+(bridgeExpanded?'true':'false')+'"'+(bridgeExpanded?' aria-controls="estimatorBridgePanel"':'')+'>Связи услуг</button>':'')+
+   const actions=(archived?'':'<button type="button" data-estimator-use-card="'+esc(x.cardKey)+'">Выбрать в расчёт</button>')+
+    (state.loaded&&!archived?'<button type="button" data-estimator-card-edit="'+esc(x.cardKey)+'">Редактировать</button><button type="button" data-estimator-bridge-open="'+esc(x.cardKey)+'">Связи услуг</button>':'')+
     (state.loaded&&x.sourceType==='USER'&&!archived?'<button type="button" data-estimator-card-archive="'+esc(x.cardKey)+'">Архивировать</button>':'')+
-    (state.loaded&&x.sourceType==='SYSTEM'&&x.hasOverride?'<button type="button" data-estimator-card-reset="'+esc(x.cardKey)+'">Вернуть системные значения</button>':'')+
-    (bridgeExpanded?estimatorBridgeMarkup(x.cardKey):'')+'</article>';
+    (state.loaded&&x.sourceType==='SYSTEM'&&x.hasOverride?'<button type="button" data-estimator-card-reset="'+esc(x.cardKey)+'">Вернуть системные значения</button>':'');
+   return '<article class="estimator-source-card"><div class="est-card-info"><h3>'+esc(x.displayName)+'</h3>'+
+    '<p class="muted">'+(x.sourceType==='USER'?'Моя карточка':'Системная карточка')+' · '+esc(x.category||'')+(archived?' · Архив':'')+'</p>'+
+    '<p class="muted">Вода: '+(p.supportsWater?esc(p.waterPoints)+' точек':'нет')+' · Канализация: '+(p.supportsSewer?esc(p.sewerPoints)+' точек':'нет')+' · Материалы: '+esc(x.materialStatus||'NOT_CONFIGURED')+'</p></div>'+
+    (actions?'<details class="est-card-menu" data-est-card-menu="'+esc(x.cardKey)+'"><summary aria-label="Действия: '+esc(x.displayName)+'"><span aria-hidden="true">⋮</span></summary><div class="est-card-actions">'+actions+'</div></details>':'')+'</article>';
   }).join('');
   return head+'<section class="card" aria-label="Карточки приборов"><h2>Карточки</h2>'+
    '<p class="muted">Системные карточки старого Estimator сохраняют код. Мои карточки и материалы можно редактировать отдельно.</p>'+
@@ -1225,7 +1242,7 @@ function estimatorView(){
    (state.loading?'<p class="muted">Загружаю карточки…</p>':'')+
    (state.loaded?'<button type="button" class="primary" data-estimator-card-new>+ Новый прибор</button>':'')+
    '<div class="estimator-card-grid">'+cards+'</div></section>'+
-   (state.editor?estimatorCardEditorMarkup():'');
+   (state.editor?estimatorCardEditorMarkup():'')+estimatorBridgeMarkup();
  }
  const lead=estimateUI.leadId?(data.leads||[]).find(x=>x.id===estimateUI.leadId):null;
  if(lead)return head+plumbingWorkspace(lead);
@@ -3269,6 +3286,7 @@ function render(){
  if(tab!=='crm'){estimateWorkspaceOpen=false;if(crmDetailId){crmDetailId=null;crmReminderEditorLeadId=null;}}
  $('#tabs').querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
  $('#content').innerHTML=tab==='today'?todayView():tab==='myWork'?myWorkView():tab==='schedule'?scheduleView():tab==='crm'?crmView():tab==='knowledge'?knowledgeView():tab==='estimator'?estimatorView():tab==='clients'?clientsView():tab==='objects'?objectsView():tab==='orders'?ordersView():tab==='workers'?workersView():tab==='masters'?ms1View():tab==='serviceReference'?serviceReferenceView():tab==='historyOrders'?historyOrdersView():tab==='historyCrm'?historyCrmView():tab==='history'?historyView():tab==='catalog'?catalogView():tab==='engineering'?engineeringView():tab==='finance'||tab==='capital'?financeCapitalView(tab):tab==='analytics'?'<div id="analyticsA1Mount"><h1>Аналитика</h1><p class="muted">Загружаю…</p></div>':reportView();
+ if(tab==='estimator'&&estimatorSubtab==='cards')mountEstimatorBridgeDialog();
  if(tab==='myWork'&&workFlowModalState.kind){
   // render() replaces #content; a recreated WorkLog must be owner-scoped again.
   // Never silently apply a saved draft: offer explicit recovery before input or replay.
@@ -3409,12 +3427,15 @@ async function sendAction(type,payload,form){
 $('#menuToggle').addEventListener('click',()=>setMenuOpen($('#tabs').hidden));
 $('#menuClose').addEventListener('click',()=>setMenuOpen(false));
 $('#menuBackdrop').addEventListener('click',()=>setMenuOpen(false));
+document.addEventListener('click',e=>{closeEstimatorCardMenus(e.target.closest?.('details[data-est-card-menu]')||null);});
 document.addEventListener('keydown',e=>{
+ if(e.key==='Escape'&&estimatorBridgePanel&&$('#estimatorBridgePanel')?.open){e.preventDefault();closeEstimatorBridges();return;}
+ if(e.key==='Escape'){const menu=document.querySelector('details[data-est-card-menu][open]');if(menu){menu.open=false;menu.querySelector('summary')?.focus({preventScroll:true});return;}}
  if(e.key==='Escape'&&document.getElementById?.('crmWonOrderModal')){crmWonOrderClose();return;}
  if(e.key==='Escape'&&workFlowModalState.kind){workFlowModalClose();return;}
  if(e.key==='Escape'&&!$('#tabs').hidden)setMenuOpen(false);
 });
-$('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b){crmWonOrderClose(true);workFlowModalClose({force:true});tab=b.dataset.tab;crmClientLeadContext=null;crmDetailId=null;crmReminderEditorLeadId=null;clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;objectReturnId=null;objectReturnTab=null;setMenuOpen(false);message('');render();if(tab==='today')void loadTodayDashboard();if(tab==='crm'&&!crmFollowupState.loaded)void loadCrmFollowups();if(tab==='masters'){ms1.openId='';ms1.newOpen=false;void loadMs1(false);}if(tab==='history'&&!history.loaded)loadHistory();if(tab==='catalog'&&!catalog.loaded)loadCatalog();if(tab==='myWork'){loadMyWork();loadPresence(false);loadOwnerActivity(false);}if(tab==='schedule'){capacity.loaded=false;capacity.result=null;capacity.error='';loadSchedule(false);}else resetHourlyManual();if(tab==='engineering'){loadEngineeringCalculation();loadEngineeringDrawing();loadEngineeringFloor();}if(tab==='estimator'){estimatorSubtab='calculator';void ensurePlumbingCalculator();void loadEstimatorCards();void loadEstimatorPricebook();}}});
+$('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b){crmWonOrderClose(true);workFlowModalClose({force:true});estimatorBridgePanel=null;tab=b.dataset.tab;crmClientLeadContext=null;crmDetailId=null;crmReminderEditorLeadId=null;clientDetailId=null;objectDetailId=null;orderDetailId=null;clientReturn=null;objectReturnId=null;objectReturnTab=null;setMenuOpen(false);message('');render();if(tab==='today')void loadTodayDashboard();if(tab==='crm'&&!crmFollowupState.loaded)void loadCrmFollowups();if(tab==='masters'){ms1.openId='';ms1.newOpen=false;void loadMs1(false);}if(tab==='history'&&!history.loaded)loadHistory();if(tab==='catalog'&&!catalog.loaded)loadCatalog();if(tab==='myWork'){loadMyWork();loadPresence(false);loadOwnerActivity(false);}if(tab==='schedule'){capacity.loaded=false;capacity.result=null;capacity.error='';loadSchedule(false);}else resetHourlyManual();if(tab==='engineering'){loadEngineeringCalculation();loadEngineeringDrawing();loadEngineeringFloor();}if(tab==='estimator'){estimatorSubtab='calculator';void ensurePlumbingCalculator();void loadEstimatorCards();void loadEstimatorPricebook();}}});
 $('#content').addEventListener('change',async e=>{
  if(e.target.form?.id==='ms1Filters'&&e.target.name==='category'){const services=e.target.form.elements.namedItem('serviceId');services.innerHTML=ms1ServiceOptions(e.target.value);services.disabled=!e.target.value;return;}
   if(tab==='estimator'&&e.target?.matches?.('[data-est-price-card-select]')){
@@ -3950,6 +3971,7 @@ $('#content').addEventListener('click',async e=>{
  }
  if(e.target.closest('button[data-crm-interaction-more]')){await loadCrmInteractions(true);return;}
  if(tab==='estimator'){
+  const cardActionMenu=e.target.closest('button')?.closest('details[data-est-card-menu]');if(cardActionMenu)cardActionMenu.open=false;
   if(e.target.closest('button[data-est-price-retry]')){
    void loadEstimatorPricebook(true);return;
   }
@@ -3986,7 +4008,7 @@ $('#content').addEventListener('click',async e=>{
   if(bridgeSave||bridgeArchive){
    const action=(bridgeSave||bridgeArchive).dataset[bridgeSave?'estBridgeSave':'estBridgeArchive'];
    const serviceId=bridgeArchive?'':(bridgeSave.closest('[data-est-bridge-row]')?.querySelector('[name=serviceId]')?.value||'').trim();
-   if(bridgeSave&&!serviceId){message('Выбери услугу или используй архивирование.',true);return;}
+   if(bridgeSave&&!serviceId){estimatorBridgeFeedback('Выбери услугу или используй архивирование.',true);return;}
    if(bridgeArchive&&!confirm('Архивировать связь? Сохранённые сметы останутся прежними.'))return;
    await submitEstimatorBridge(action,serviceId);return;
   }
@@ -4048,7 +4070,7 @@ $('#content').addEventListener('click',async e=>{
   const choice=estimatorSubtabButton.dataset.estimatorSubtab;
   if(!['calculator','prices','cards'].includes(choice))return;
   try{estimatorSaveVisibleWizard();}catch(error){plumbingShowStepError(error);return;}
-  estimatorSubtab=choice;render();if(choice==='prices')void loadEstimatorPricebook();window.scrollTo(0,0);return;
+  estimatorBridgePanel=null;estimatorSubtab=choice;render();if(choice==='prices')void loadEstimatorPricebook();window.scrollTo(0,0);return;
  }
  if(e.target.closest('button[data-estimator-retry]')){
   plumbingUI.error='';void ensurePlumbingCalculator();return;

@@ -150,39 +150,58 @@ test('mobile UX has large touch targets and retained lead picker, no schema/API 
  assert.match(app,/data-act="estimate_save"/);
 });
 
-test('service bridge opens visibly inside the chosen card, not after the grid',()=>{
+test('compact card disclosure preserves actions and separate bridge dialog',()=>{
  const source=extract('var estimatorBridgePanel=null;','async function submitEstimatorBridge');
  const view=extract('function estimatorView(){','function estimateAMD(x){');
+ const items=listPlumbingItems().map(x=>({...x,sourceType:'SYSTEM',status:'active'}));
+ items[0].hasOverride=true;
  const context={estimatorSubtab:'cards',tab:'estimator',data:picker,estimateUI:{leadId:null},
-  plumbingUI:{module:moduleRef},esc,estimatorCardState:{loaded:true,items:listPlumbingItems().map(x=>({...x,sourceType:'SYSTEM',status:'active'})),editor:null}};
- const out=runInNewContext(source+view+`;estimatorBridgePanel={cardKey:"BATH",result:{writeEnabled:false,items:[{action_type:"FIXTURE_INSTALL",service_id:"SRV-2026-0013"},{action_type:"WATER",service_id:"SRV-2026-0024"},{action_type:"SEWER",service_id:"SRV-2026-0025"}],candidates:[]}};estimatorView()`,context);
- const selected=out.indexOf('data-estimator-bridge-open="BATH" aria-expanded="true"');
- const panel=out.indexOf('id="estimatorBridgePanel"');
- assert.ok(selected>=0&&panel>selected&&panel<out.indexOf('</article>',selected));
+  plumbingUI:{module:moduleRef},esc,estimatorCardState:{loaded:true,items,editor:null}};
+ const closed=runInNewContext(source+view+';estimatorView()',context);
+ assert.equal((closed.match(/<details class="est-card-menu"/g)||[]).length,items.length);
+ assert.equal((closed.match(/data-estimator-use-card=/g)||[]).length,items.length);
+ assert.match(closed,/data-estimator-card-reset=/);
+ assert.doesNotMatch(closed,/<details[^>]* open|<dialog/);
+ const out=runInNewContext(source+view+`;estimatorBridgePanel={cardKey:"BATH",displayName:"Ванна",result:{writeEnabled:false,items:[{action_type:"FIXTURE_INSTALL",service_id:"SRV-2026-0013"},{action_type:"WATER",service_id:"SRV-2026-0024"},{action_type:"SEWER",service_id:"SRV-2026-0025"}],candidates:[]}};estimatorView()`,context);
+ const panel=out.indexOf('<dialog id="estimatorBridgePanel"');
+ assert.ok(panel>out.lastIndexOf('</article>'));
  assert.equal((out.match(/id="estimatorBridgePanel"/g)||[]).length,1);
- assert.match(out,/data-estimator-bridge-open="WC" aria-expanded="false"/);
+ assert.match(out,/aria-labelledby="estimatorBridgeHeading"/);
  for(const id of ['SRV-2026-0013','SRV-2026-0024','SRV-2026-0025'])assert.ok(out.includes(id));
  assert.doesNotMatch(out,/data-est-bridge-save=|data-est-bridge-archive=/);
+ assert.match(css,/\.est-bridge-dialog\{position:fixed;inset:auto 0 0/);
+ assert.match(css,/\.est-card-actions\{position:absolute/);
 });
-test('bridge open shows loading immediately, handles errors and restores trigger focus on close',async()=>{
+test('bridge dialog opens with loading, updates in place, closes and ignores stale response',async()=>{
  const source=extract('var estimatorBridgePanel=null;','async function submitEstimatorBridge');
- let html='',focused=0,scrolled=0,triggerFocused=0,triggerScrolled=0,resolve,reject;
- const heading={focus:()=>{focused++;document.activeElement=heading;}};
- const document={activeElement:null};
- const root={querySelector:()=>heading,contains:x=>x===heading,scrollIntoView:()=>scrolled++};
- const trigger={dataset:{estimatorBridgeOpen:'BATH'},focus:()=>triggerFocused++,scrollIntoView:()=>triggerScrolled++};
- const context={tab:'estimator',estimatorSubtab:'cards',esc,document,
-  $:selector=>selector==='#estimatorBridgePanel'?root:selector==='#content'?{querySelectorAll:()=>[trigger]}:null,
-  render:()=>{html=controller.markup('BATH')},api:path=>{assert.equal(path,'/api/estimator/service-bridges?cardKey=BATH');return new Promise((yes,no)=>{resolve=yes;reject=no;});}};
- const controller=runInNewContext(source+';({open:openEstimatorBridges,close:closeEstimatorBridges,markup:estimatorBridgeMarkup})',context);
+ let html='',focused=0,triggerFocused=0,renders=0,resolve,reject,handlers={};
+ const heading={focus:()=>focused++};
+ const body={innerHTML:''};
+ const root={open:false,showModal(){this.open=true;},close(){this.open=false;},remove(){html='';},
+  querySelector:()=>heading,addEventListener:(type,fn)=>handlers[type]=fn};
+ const menu={dataset:{estCardMenu:'BATH'},querySelector:()=>({focus:()=>triggerFocused++})};
+ const context={tab:'estimator',estimatorSubtab:'cards',esc,estimatorCardState:{items:[{cardKey:'BATH',displayName:'Ванна'}]},
+  $:selector=>selector==='#estimatorBridgePanel'?root:selector==='#estimatorBridgeBody'?body:selector==='#content'?{querySelectorAll:()=>[menu]}:null,
+  render:()=>{renders++;html=controller.markup();root.open=false;controller.mount()},api:path=>{assert.equal(path,'/api/estimator/service-bridges?cardKey=BATH');return new Promise((yes,no)=>{resolve=yes;reject=no;});}};
+ const controller=runInNewContext(source+';({open:openEstimatorBridges,close:closeEstimatorBridges,markup:estimatorBridgeMarkup,mount:mountEstimatorBridgeDialog})',context);
  const pending=controller.open('BATH');
- assert.match(html,/role="status">Загружаю/);assert.equal(focused,1);assert.equal(scrolled,1);
+ assert.match(html,/role="status">Загружаю/);assert.equal(focused,1);assert.equal(root.open,true);
  resolve({writeEnabled:false,items:[],candidates:[]});await pending;
- assert.match(html,/Связи доступны для чтения/);assert.equal(focused,2);
- assert.equal(controller.markup('WC'),'');
- controller.close();assert.equal(html,'');assert.equal(triggerFocused,1);assert.equal(triggerScrolled,1);
+ assert.match(body.innerHTML,/Только чтение/);assert.equal(renders,1);
+ handlers.cancel({preventDefault(){}});assert.equal(html,'');assert.equal(triggerFocused,1);assert.equal(root.open,false);
  const failed=controller.open('BATH');reject(Error('test API error'));await failed;
- assert.match(html,/role="alert">test API error/);
- const stale=controller.open('BATH');controller.close();resolve({writeEnabled:false,items:[],candidates:[]});await stale;
- assert.equal(html,'');
+ assert.match(body.innerHTML,/role="alert">test API error/);
+ const stale=controller.open('BATH');const previous=body.innerHTML;handlers.click({target:root});resolve({writeEnabled:false,items:[],candidates:[]});await stale;
+ assert.equal(html,'');assert.equal(body.innerHTML,previous);
+});
+test('CLEAN service dialog retains all three action controls and LEGACY has none',()=>{
+ const source=extract('var estimatorBridgePanel=null;','async function submitEstimatorBridge');
+ const r={writeEnabled:true,items:[{action_type:'WATER',service_id:'SRV-2026-0024'}],candidates:[{action_code:'CONNECT',default_unit:'point',service_id:'SRV-2026-0024',service_name:'Вода'}]};
+ const ctx={esc,p:{result:r}};
+ const out=runInNewContext(source+';estimatorBridgeBody(p)',ctx);
+ assert.equal((out.match(/data-est-bridge-save=/g)||[]).length,3);
+ assert.match(out,/data-est-bridge-archive="WATER"/);
+ assert.match(out,/name="serviceId"/);
+ r.writeEnabled=false;const ro=runInNewContext(source+';estimatorBridgeBody(p)',ctx);
+ assert.doesNotMatch(ro,/data-est-bridge-save=|data-est-bridge-archive=|name="serviceId"/);
 });
