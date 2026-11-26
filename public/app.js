@@ -1114,6 +1114,14 @@ function closeEstimatorCardMenus(except=null){
   if(menu!==except)menu.open=false;
  }
 }
+function revealEstimatorCardMenu(menu){
+ if(!menu.open)return;
+ closeEstimatorCardMenus(menu);
+ const actions=menu.querySelector('.est-card-actions');
+ if(!actions)return;
+ const bounds=actions.getBoundingClientRect(),viewport=window.visualViewport?.height||window.innerHeight;
+ if(bounds.bottom>viewport-8)actions.scrollIntoView({block:'nearest',behavior:'auto'});
+}
 function mountEstimatorBridgeDialog(){
  const root=$('#estimatorBridgePanel');
  if(!root||root.open)return;
@@ -3427,7 +3435,12 @@ async function sendAction(type,payload,form){
 $('#menuToggle').addEventListener('click',()=>setMenuOpen($('#tabs').hidden));
 $('#menuClose').addEventListener('click',()=>setMenuOpen(false));
 $('#menuBackdrop').addEventListener('click',()=>setMenuOpen(false));
-document.addEventListener('click',e=>{closeEstimatorCardMenus(e.target.closest?.('details[data-est-card-menu]')||null);});
+document.addEventListener('toggle',e=>{
+ if(tab==='estimator'&&estimatorSubtab==='cards'&&e.target.matches?.('details[data-est-card-menu]'))revealEstimatorCardMenu(e.target);
+},true);
+document.addEventListener('click',e=>{
+ if(tab==='estimator'&&estimatorSubtab==='cards')closeEstimatorCardMenus(e.target.closest?.('details[data-est-card-menu]')||null);
+});
 document.addEventListener('keydown',e=>{
  if(e.key==='Escape'&&estimatorBridgePanel&&$('#estimatorBridgePanel')?.open){e.preventDefault();closeEstimatorBridges();return;}
  if(e.key==='Escape'){const menu=document.querySelector('details[data-est-card-menu][open]');if(menu){menu.open=false;menu.querySelector('summary')?.focus({preventScroll:true});return;}}

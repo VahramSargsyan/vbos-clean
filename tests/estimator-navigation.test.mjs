@@ -205,3 +205,17 @@ test('CLEAN service dialog retains all three action controls and LEGACY has none
  r.writeEnabled=false;const ro=runInNewContext(source+';estimatorBridgeBody(p)',ctx);
  assert.doesNotMatch(ro,/data-est-bridge-save=|data-est-bridge-archive=|name="serviceId"/);
 });
+
+test('only one dropdown stays open and bottom actions are revealed without moving a visible menu',()=>{
+ const source=extract('var estimatorBridgePanel=null;','async function submitEstimatorBridge');
+ let scrolled=0;const other={open:true};
+ const actions={getBoundingClientRect:()=>({bottom:650}),scrollIntoView:()=>scrolled++};
+ const menu={open:true,querySelector:()=>actions};
+ const context={document:{querySelectorAll:()=>[menu,other]},window:{innerHeight:600}};
+ const controller=runInNewContext(source+';({reveal:revealEstimatorCardMenu,close:closeEstimatorCardMenus})',context);
+ controller.reveal(menu);assert.equal(other.open,false);assert.equal(menu.open,true);assert.equal(scrolled,1);
+ actions.getBoundingClientRect=()=>({bottom:500});
+ controller.reveal(menu);assert.equal(scrolled,1);
+ controller.close();assert.equal(menu.open,false);
+ assert.match(css,/html\[data-theme\] \.est-card-menu\[open\]>summary[^{}]*\{margin:0;padding:0/);
+});
